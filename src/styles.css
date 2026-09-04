@@ -1,5 +1,12 @@
 @import "tailwindcss";
 
+/* Two builds consume this file — the web app (root: repo) and the Electron
+   renderer (root: electron/renderer). Automatic content detection follows the
+   build root, so the desktop bundle would otherwise ship a stylesheet with
+   almost no utilities in it. Name the sources explicitly instead. */
+@source "./";
+@source "../electron/renderer";
+
 @theme {
   --font-sans: "IBM Plex Sans", "Source Han Sans SC", "Noto Sans SC",
     ui-sans-serif, system-ui, sans-serif;
@@ -559,4 +566,30 @@
   .anim-drawer {
     transform: none;
   }
+}
+
+/* ------------------------------------------------- desktop window chrome ---
+   Deliberately outside @layer: these have to beat Tailwind utilities such as
+   `pt-3`, and unlayered rules outrank every layer. Only Electron adds
+   `is-desktop`, so the web build never sees any of this. */
+
+.is-desktop .drag-strip {
+  -webkit-app-region: drag;
+  app-region: drag;
+}
+.is-desktop .drag-strip button,
+.is-desktop .drag-strip a,
+.is-desktop .drag-strip input,
+.is-desktop .no-drag {
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
+}
+
+/* The platform paints minimise/maximise/close over the top-right corner, which
+   lands on the rail. Reserve that band so nothing scrolls underneath it. */
+.is-desktop .rail-inset {
+  padding-top: 52px;
+}
+.is-desktop .rail-sticky {
+  top: 52px;
 }

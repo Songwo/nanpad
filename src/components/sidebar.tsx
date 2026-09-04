@@ -51,7 +51,8 @@ export function Sidebar({ className, ...rest }: HTMLAttributes<HTMLElement>) {
       )}
       {...rest}
     >
-      <div className="px-3 pb-4 pt-2">
+      {/* Doubles as the window drag strip in the desktop build. */}
+      <div className="drag-strip px-3 pb-4 pt-2">
         <LogoWord />
       </div>
 

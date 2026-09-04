@@ -21,3 +21,5 @@ Thumbs.db
 
 # local dev-server launcher (machine specific)
 .claude/
+dist-desktop/
+release/

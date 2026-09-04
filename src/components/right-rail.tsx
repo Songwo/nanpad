@@ -141,8 +141,8 @@ export function RightRail({ className }: { className?: string }) {
   const alerts = useAlerts();
 
   return (
-    <aside className={cn("w-rail shrink-0 px-5 pb-24 pt-3", className)}>
-      <div className="sticky top-3 space-y-4">
+    <aside className={cn("rail-inset w-rail shrink-0 px-5 pb-24 pt-3", className)}>
+      <div className="rail-sticky sticky top-3 space-y-4">
         <button type="button" className="rail-search" onClick={() => setCommandOpen(true)}>
           <Search className="size-4 shrink-0" />
           <span className="flex-1 text-left">搜索资产、跳转、连接</span>

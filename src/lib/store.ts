@@ -1,5 +1,6 @@
 import { create } from "zustand";
-import { persist } from "zustand/middleware";
+import { createJSONStorage, persist, type StateStorage } from "zustand/middleware";
+import { desktop, isDesktop } from "./desktop";
 import { SEED_ACTIVITY, SEED_SNAPSHOT } from "./seed";
 import type {
   ActivityItem,
@@ -78,6 +79,38 @@ const emptyUi = {
   mobileNav: false,
 };
 
+/**
+ * On the desktop the assets live in a real file under the user's app-data
+ * directory, not in a browser origin that an update or a cache clear can wipe.
+ * The shape is the same either way, so the store does not care which it got.
+ */
+const diskStorage: StateStorage = {
+  getItem: async () => {
+    const file = await desktop()?.store.load();
+    return file ? JSON.stringify(file) : null;
+  },
+  setItem: async (_name, value) => {
+    await desktop()?.store.save(JSON.parse(value));
+  },
+  removeItem: async () => {
+    await desktop()?.store.save({} as never);
+  },
+};
+
+/** SSR has neither a bridge nor a browser; hydration happens after mount. */
+const noopStorage: StateStorage = {
+  getItem: () => null,
+  setItem: () => {},
+  removeItem: () => {},
+};
+
+// `createJSONStorage` calls this immediately, so it must be declared above the
+// store — and must not touch `window` on the server render.
+function pickStorage(): StateStorage {
+  if (typeof window === "undefined") return noopStorage;
+  return isDesktop() ? diskStorage : window.localStorage;
+}
+
 export const useAppStore = create<AppState>()(
   persist(
     (set, get) => ({
@@ -154,8 +187,9 @@ export const useAppStore = create<AppState>()(
         }),
     }),
     {
-      name: "nexus-assets-v1",
+      name: "sinan-assets-v1",
       skipHydration: true,
+      storage: createJSONStorage(pickStorage),
       partialize: (s) => ({
         servers: s.servers,
         domains: s.domains,
