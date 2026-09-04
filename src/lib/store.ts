@@ -49,6 +49,8 @@ export interface AppState extends Snapshot {
   setFilter: (f: "all" | "attention") => void;
   setQuery: (q: string) => void;
   toggleTag: (tag: string) => void;
+  /** Jump to the cross-kind view for one tag. */
+  focusTag: (tag: string) => void;
   clearTags: () => void;
   setGroupByTag: (v: boolean) => void;
   setExpanded: (e: ExpandState | null) => void;
@@ -143,6 +145,10 @@ export const useAppStore = create<AppState>()(
             : [...get().tagFilter, tag],
         }),
       clearTags: () => set({ tagFilter: [] }),
+      // Sets both at once: `setView` clears the selection on its own, which is
+      // right everywhere except here, where the tag *is* the destination.
+      focusTag: (tag) =>
+        set({ view: "tags", tagFilter: [tag], query: "", mobileNav: false, expanded: null }),
       setGroupByTag: (groupByTag) => set({ groupByTag }),
       setExpanded: (expanded) => set({ expanded }),
       openSsh: (sshServerId) => set({ sshServerId, expanded: null }),

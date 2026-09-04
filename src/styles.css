@@ -112,23 +112,48 @@
     color: var(--color-card);
   }
 
-  /* Scrollbars belong to the chrome, not to the OS. */
+  /* Scrollbars belong to the chrome, not to the OS — and they should not draw
+     a permanent grey stripe down the edge of every panel. The thumb is fully
+     transparent until the pointer is over the thing that scrolls, then fades
+     in as a soft ink wash with no track behind it. */
   ::-webkit-scrollbar {
-    width: 12px;
-    height: 12px;
+    width: 10px;
+    height: 10px;
+    background: transparent;
+  }
+  ::-webkit-scrollbar-track,
+  ::-webkit-scrollbar-corner {
+    background: transparent;
   }
   ::-webkit-scrollbar-thumb {
-    background: var(--color-line-strong);
-    border: 4px solid transparent;
+    background-color: transparent;
+    border: 3px solid transparent;
     background-clip: padding-box;
     border-radius: 999px;
+    transition: background-color var(--dur-base) var(--ease-out);
   }
-  ::-webkit-scrollbar-thumb:hover {
-    background: var(--color-subtle);
-    background-clip: padding-box;
+  :hover::-webkit-scrollbar-thumb {
+    background-color: color-mix(in oklab, var(--color-ink) 16%, transparent);
   }
-  ::-webkit-scrollbar-track {
-    background: transparent;
+  :hover::-webkit-scrollbar-thumb:hover {
+    background-color: color-mix(in oklab, var(--color-ink) 30%, transparent);
+  }
+  ::-webkit-scrollbar-thumb:active {
+    background-color: color-mix(in oklab, var(--color-ink) 38%, transparent);
+  }
+  /* Firefox has no per-state control; thin and quiet is the closest match. */
+  @supports not selector(::-webkit-scrollbar) {
+    * {
+      scrollbar-width: thin;
+      scrollbar-color: color-mix(in oklab, var(--color-ink) 18%, transparent) transparent;
+    }
+  }
+  /* The terminal is dark; an ink thumb would vanish into it. */
+  .glass-terminal :hover::-webkit-scrollbar-thumb {
+    background-color: rgba(255, 255, 255, 0.18);
+  }
+  .glass-terminal :hover::-webkit-scrollbar-thumb:hover {
+    background-color: rgba(255, 255, 255, 0.3);
   }
 }
 
@@ -385,6 +410,55 @@
      inside them, and an equal z-index leaves it hidden behind its own caller. */
   .z-gate {
     z-index: 60;
+  }
+
+  /* Window controls sit above even the gate — a title bar is always reachable,
+     modal or not — and hover the way every other control in the app hovers:
+     a rounded fill in --color-line, not the platform's grey square. */
+  .win-controls {
+    position: fixed;
+    top: 6px;
+    right: 8px;
+    z-index: 70;
+    display: flex;
+    align-items: center;
+    gap: 2px;
+  }
+  .win-controls button {
+    display: grid;
+    place-items: center;
+    width: 34px;
+    height: 32px;
+    border-radius: var(--radius-sm);
+    color: var(--color-muted);
+    transition:
+      background-color var(--dur-fast) var(--ease-out),
+      color var(--dur-fast) var(--ease-out),
+      transform var(--dur-fast) var(--ease-out);
+  }
+  .win-controls button:hover {
+    background: var(--color-line);
+    color: var(--color-ink);
+  }
+  .win-controls button:active {
+    transform: scale(0.92);
+  }
+  .win-controls button[data-close]:hover {
+    background: var(--color-crit);
+    color: var(--color-card);
+  }
+
+  /* Command palette group headings, in one place instead of a wall of
+     arbitrary [&_[cmdk-group-heading]] variants on every group. */
+  .cmd-group [cmdk-group-heading] {
+    padding: 10px 10px 4px;
+    font-size: var(--text-2xs);
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    color: var(--color-subtle);
+  }
+  .cmd-group:first-child [cmdk-group-heading] {
+    padding-top: 4px;
   }
 
   /* ------------------------------------------------------------------ tags */

@@ -1,4 +1,4 @@
-import type { Taggable } from "./types";
+import type { AssetKind, Taggable } from "./types";
 
 /** Tolerates records written before tags existed. */
 export function tagsOf(asset: Partial<Taggable> | null | undefined): string[] {
@@ -84,4 +84,53 @@ export function groupByTag<T extends Partial<Taggable>>(items: T[]): TagGroup<T>
     groups.push({ tag: UNTAGGED, label: UNTAGGED_LABEL, items: loose });
   }
   return groups;
+}
+
+export interface TagIndexEntry {
+  tag: string;
+  total: number;
+  byKind: Array<{ kind: AssetKind; count: number }>;
+}
+
+/**
+ * Every tag across every collection, with a per-kind breakdown.
+ *
+ * This is what makes tags worth having: `生产` is not a server label or a
+ * domain label, it is the thing that ties one project's host, domain and
+ * certificate together, and only a cross-kind index can show that.
+ */
+export function tagIndex(snapshot: {
+  servers: Array<Partial<Taggable>>;
+  domains: Array<Partial<Taggable>>;
+  mailboxes: Array<Partial<Taggable>>;
+  aiAssets: Array<Partial<Taggable>>;
+  secrets: Array<Partial<Taggable>>;
+  certs: Array<Partial<Taggable>>;
+}): TagIndexEntry[] {
+  const collections: Array<[AssetKind, Array<Partial<Taggable>>]> = [
+    ["server", snapshot.servers],
+    ["domain", snapshot.domains],
+    ["mail", snapshot.mailboxes],
+    ["ai", snapshot.aiAssets],
+    ["secret", snapshot.secrets],
+    ["cert", snapshot.certs],
+  ];
+
+  const index = new Map<string, Map<AssetKind, number>>();
+  for (const [kind, items] of collections) {
+    for (const item of items) {
+      for (const tag of tagsOf(item)) {
+        let perKind = index.get(tag);
+        if (!perKind) index.set(tag, (perKind = new Map()));
+        perKind.set(kind, (perKind.get(kind) ?? 0) + 1);
+      }
+    }
+  }
+
+  return [...index.entries()]
+    .map(([tag, perKind]) => {
+      const byKind = [...perKind.entries()].map(([kind, count]) => ({ kind, count }));
+      return { tag, total: byKind.reduce((a, x) => a + x.count, 0), byKind };
+    })
+    .sort((a, b) => b.total - a.total || a.tag.localeCompare(b.tag, "zh-CN"));
 }

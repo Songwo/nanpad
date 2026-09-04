@@ -14,7 +14,8 @@ import { useMemo, type ReactNode } from "react";
 import { TimeAgo } from "./ui/time-ago";
 import { isDesktop } from "@/lib/desktop";
 import { useLive } from "@/lib/live";
-import { chipClass, dotClass, STATUS_LABEL } from "@/lib/status";
+import { chipClass, dotClass, KIND_LABEL, STATUS_LABEL } from "@/lib/status";
+import { tagIndex } from "@/lib/tags";
 import { useAppStore } from "@/lib/store";
 import type { AssetKind, Status, ViewId } from "@/lib/types";
 import { cn, daysUntil } from "@/lib/utils";
@@ -162,6 +163,8 @@ export function RightRail({ className }: { className?: string }) {
           )}
         </Panel>
 
+        <TagPanel />
+
         <QuickTerminal />
 
         <Panel title="最近动态">
@@ -246,6 +249,53 @@ function AlertRow({ alert }: { alert: Alert }) {
         <span className={chipClass(alert.status)}>{STATUS_LABEL[alert.status]}</span>
       </button>
     </li>
+  );
+}
+
+/**
+ * Tags across the whole estate, not just the list you happen to be looking at.
+ *
+ * This is the answer to "what is in 生产" when the answer spans a host, a
+ * domain and a certificate — clicking one opens the cross-kind view.
+ */
+function TagPanel() {
+  const servers = useAppStore((s) => s.servers);
+  const domains = useAppStore((s) => s.domains);
+  const mailboxes = useAppStore((s) => s.mailboxes);
+  const aiAssets = useAppStore((s) => s.aiAssets);
+  const secrets = useAppStore((s) => s.secrets);
+  const certs = useAppStore((s) => s.certs);
+  const focusTag = useAppStore((s) => s.focusTag);
+  const setView = useAppStore((s) => s.setView);
+
+  const index = useMemo(
+    () => tagIndex({ servers, domains, mailboxes, aiAssets, secrets, certs }),
+    [servers, domains, mailboxes, aiAssets, secrets, certs],
+  );
+  if (index.length === 0) return null;
+
+  return (
+    <Panel title="分组">
+      <div className="flex flex-wrap gap-1.5 px-4 pb-4">
+        {index.slice(0, 12).map((entry) => (
+          <button
+            key={entry.tag}
+            type="button"
+            className="tag-chip"
+            title={entry.byKind.map((b) => `${KIND_LABEL[b.kind]} ${b.count}`).join(" · ")}
+            onClick={() => focusTag(entry.tag)}
+          >
+            {entry.tag}
+            <span className="tabular-nums opacity-55">{entry.total}</span>
+          </button>
+        ))}
+        {index.length > 12 && (
+          <button type="button" className="tag-chip tag-chip-clear" onClick={() => setView("tags")}>
+            还有 {index.length - 12} 个
+          </button>
+        )}
+      </div>
+    </Panel>
   );
 }
 

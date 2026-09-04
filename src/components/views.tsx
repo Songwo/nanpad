@@ -1,6 +1,6 @@
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useShallow } from "zustand/react/shallow";
-import { AlertTriangle, Check, Search, SquareTerminal } from "lucide-react";
+import { AlertTriangle, Check, Search, SquareTerminal, X } from "lucide-react";
 import { Area, AreaChart, ResponsiveContainer, Tooltip, XAxis } from "recharts";
 import {
   AiCard,
@@ -20,10 +20,10 @@ import { CountUp, TimeAgo } from "./ui/time-ago";
 import { isDesktop } from "@/lib/desktop";
 import { useLive } from "@/lib/live";
 import type { ProbeKind } from "@/lib/probes";
-import { attentionOf, chipClass, dotClass, healthScore, STATUS_LABEL } from "@/lib/status";
+import { attentionOf, chipClass, dotClass, healthScore, KIND_LABEL, STATUS_LABEL } from "@/lib/status";
 import { useAppStore } from "@/lib/store";
-import { groupByTag, matchesTags, tagsOf } from "@/lib/tags";
-import type { Status, Taggable, ViewId } from "@/lib/types";
+import { groupByTag, matchesTags, tagIndex, tagsOf } from "@/lib/tags";
+import type { AssetKind, Status, Taggable, ViewId } from "@/lib/types";
 import { cn, formatUsd } from "@/lib/utils";
 
 export function MainView() {
@@ -55,6 +55,8 @@ function ViewBody() {
       return <VaultView />;
     case "certs":
       return <CertsView />;
+    case "tags":
+      return <TagsView />;
     case "terminal":
       return <TerminalView />;
   }
@@ -176,6 +178,7 @@ const PROBE_KIND: Record<ViewId, ProbeKind | null> = {
   ai: null,
   vault: null,
   certs: "cert",
+  tags: null,
   terminal: "server",
 };
 
@@ -187,6 +190,7 @@ const BADGE_KEY: Record<ViewId, keyof ReturnType<typeof attentionOf>> = {
   ai: "ai",
   vault: "vault",
   certs: "certs",
+  tags: "total",
   terminal: "servers",
 };
 
@@ -198,6 +202,7 @@ const TITLE: Record<string, { all: string; attention: string }> = {
   ai: { all: "全部订阅", attention: "用量告警" },
   vault: { all: "全部密钥", attention: "待轮换" },
   certs: { all: "全部证书", attention: "即将到期" },
+  tags: { all: "全部分组", attention: "需处理" },
   terminal: { all: "会话", attention: "离线主机" },
 };
 
@@ -672,6 +677,148 @@ function CertsView() {
       empty="没有匹配的证书。"
       render={(s) => <CertCard key={s.id} data={s} />}
     />
+  );
+}
+
+/**
+ * The cross-kind lens on tags.
+ *
+ * Every other view is one collection; this one is one *label* across all six,
+ * which is the whole reason tags are shared rather than per-kind. With nothing
+ * selected it lists the tags themselves with a per-kind breakdown; pick one and
+ * it turns into that tag's assets, sectioned by kind.
+ */
+function TagsView() {
+  const servers = useAppStore((s) => s.servers);
+  const domains = useAppStore((s) => s.domains);
+  const mailboxes = useAppStore((s) => s.mailboxes);
+  const aiAssets = useAppStore((s) => s.aiAssets);
+  const secrets = useAppStore((s) => s.secrets);
+  const certs = useAppStore((s) => s.certs);
+  const selected = useAppStore((s) => s.tagFilter);
+  const query = useAppStore((s) => s.query);
+  const filter = useAppStore((s) => s.filter);
+  const toggleTag = useAppStore((s) => s.toggleTag);
+  const clearTags = useAppStore((s) => s.clearTags);
+
+  // On the 需处理 tab this becomes "which groups have something wrong in them",
+  // which is the question worth asking of a group.
+  const scope = useMemo(() => {
+    const only = <T extends { status: Status }>(items: T[]) =>
+      filter === "attention" ? items.filter((x) => x.status !== "online") : items;
+    return {
+      servers: only(servers),
+      domains: only(domains),
+      mailboxes: only(mailboxes),
+      aiAssets: only(aiAssets),
+      secrets: only(secrets),
+      certs: only(certs),
+    };
+  }, [filter, servers, domains, mailboxes, aiAssets, secrets, certs]);
+
+  // Derived in a memo, not in a selector: a selector runs on every store read
+  // and a fresh array never compares equal.
+  const index = useMemo(() => tagIndex(scope), [scope]);
+
+  if (index.length === 0) {
+    return (
+      <div className="mx-4 mt-4">
+        <Empty
+          text={
+            filter === "attention"
+              ? "没有哪个分组里有待处理的资产。"
+              : "还没有任何标签。在资产的「标签」字段里填几个，就能跨类别分组了。"
+          }
+        />
+      </div>
+    );
+  }
+
+  if (selected.length === 0) {
+    const visible = index.filter((entry) => match(query, entry.tag));
+    return visible.length === 0 ? (
+      <div className="mx-4 mt-4">
+        <Empty text="没有匹配的标签。" />
+      </div>
+    ) : (
+      <div className={cn("stagger-in mx-4 mt-4 pb-24", GRID)}>
+        {visible.map((entry) => (
+          <button
+            key={entry.tag}
+            type="button"
+            className="card-tap rounded-xl bg-card p-4 text-left shadow-card"
+            onClick={() => toggleTag(entry.tag)}
+          >
+            <div className="flex items-baseline gap-2">
+              <h3 className="truncate text-lg font-semibold tracking-tight">{entry.tag}</h3>
+              <span className="ml-auto text-2xl font-semibold tabular-nums">{entry.total}</span>
+            </div>
+            <div className="mt-3 flex flex-wrap gap-1.5">
+              {entry.byKind.map(({ kind, count }) => (
+                <span key={kind} className="chip chip-mute">
+                  {KIND_LABEL[kind]} {count}
+                </span>
+              ))}
+            </div>
+          </button>
+        ))}
+      </div>
+    );
+  }
+
+  const keep = <T extends { tags?: string[] }>(items: T[]) =>
+    items.filter((x) => matchesTags(x, selected));
+
+  const sections: Array<{ kind: AssetKind; items: ReactNode[] }> = (
+    [
+      { kind: "server", items: keep(scope.servers).map((s) => <ServerCard key={s.id} data={s} />) },
+      { kind: "domain", items: keep(scope.domains).map((s) => <DomainCard key={s.id} data={s} />) },
+      { kind: "mail", items: keep(scope.mailboxes).map((s) => <MailCard key={s.id} data={s} />) },
+      { kind: "ai", items: keep(scope.aiAssets).map((s) => <AiCard key={s.id} data={s} />) },
+      { kind: "secret", items: keep(scope.secrets).map((s) => <SecretCard key={s.id} data={s} />) },
+      { kind: "cert", items: keep(scope.certs).map((s) => <CertCard key={s.id} data={s} />) },
+    ] as Array<{ kind: AssetKind; items: ReactNode[] }>
+  ).filter((section) => section.items.length > 0);
+
+  if (sections.length === 0) {
+    return (
+      <div className="mx-4 mt-4">
+        <Empty text="没有同时带上这些标签的资产。" />
+      </div>
+    );
+  }
+
+  return (
+    <div className="mx-4 mt-4 space-y-6 pb-24">
+      {/* Which group you are inside, and the way back out. The shared tag
+          strip cannot do this job here: it counts one collection, and this
+          view spans all six. */}
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="text-2xs text-subtle">当前分组</span>
+        {selected.map((tag) => (
+          <button
+            key={tag}
+            type="button"
+            className="tag-chip tag-chip-on"
+            title="从筛选中移除"
+            onClick={() => toggleTag(tag)}
+          >
+            {tag}
+            <X className="size-3" />
+          </button>
+        ))}
+        <button type="button" className="tag-chip tag-chip-clear" onClick={clearTags}>
+          返回全部分组
+        </button>
+      </div>
+
+      {sections.map((section) => (
+        <section key={section.kind} className={cn("stagger-in", GRID)}>
+          <GroupHeading label={KIND_LABEL[section.kind]} count={section.items.length} />
+          {section.items}
+        </section>
+      ))}
+    </div>
   );
 }
 

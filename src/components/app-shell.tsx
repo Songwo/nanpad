@@ -10,6 +10,7 @@ import { NAV, Sidebar } from "./sidebar";
 import { SshTerminal } from "./ssh-terminal";
 import { Button } from "./ui/button";
 import { VaultGate } from "./vault-gate";
+import { WindowControls } from "./window-controls";
 import { MainView, TopTabs } from "./views";
 import { isDesktop } from "@/lib/desktop";
 import { useLive } from "@/lib/live";
@@ -161,6 +162,13 @@ export function AppShell() {
           );
         })}
       </nav>
+
+      {/* With the OS frame off, the band the controls sit in has to drag the
+          window itself. It only spans the rail, where nothing else lives. */}
+      {isDesktop() && (
+        <div className="drag-strip fixed right-0 top-0 z-30 hidden h-13 w-rail xl:block" />
+      )}
+      <WindowControls />
 
       <ExpandLayer />
       <SshTerminal />

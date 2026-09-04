@@ -113,6 +113,13 @@ export interface DesktopBridge {
     onData(handler: (e: { sessionId: string; chunk: string }) => void): () => void;
     onExit(handler: (e: { sessionId: string }) => void): () => void;
   };
+  win: {
+    state(): Promise<{ maximized: boolean; platform: NodeJS.Platform }>;
+    minimize(): void;
+    toggleMaximize(): void;
+    close(): void;
+    onMaximized(handler: (e: { maximized: boolean }) => void): () => void;
+  };
   domain: { probe(name: string): Promise<DomainProbe> };
   cert: { probe(host: string, port?: number, servername?: string): Promise<CertProbe> };
 }

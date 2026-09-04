@@ -7,6 +7,7 @@ import {
   Server,
   Shield,
   SquareTerminal,
+  Tags,
   type LucideIcon,
 } from "lucide-react";
 import { useEffect, useRef, useState, type HTMLAttributes } from "react";
@@ -35,6 +36,7 @@ export const NAV: {
   { id: "ai", label: "AI 订阅", icon: Bot, badge: "ai", kind: "ai" },
   { id: "vault", label: "密钥", icon: KeyRound, badge: "vault", kind: "secret" },
   { id: "certs", label: "证书", icon: Shield, badge: "certs", kind: "cert" },
+  { id: "tags", label: "分组", icon: Tags },
   { id: "terminal", label: "终端", icon: SquareTerminal },
 ];
 

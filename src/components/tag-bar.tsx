@@ -34,8 +34,10 @@ function useViewCollection(): Array<Partial<Taggable>> {
       return secrets;
     case "certs":
       return certs;
-    // The overview is a dashboard, not a list — nothing here to narrow.
+    // The overview is a dashboard and the tags view sources its own list;
+    // neither has a single collection for the strip to count.
     case "overview":
+    case "tags":
       return [];
   }
 }

@@ -34,11 +34,14 @@ async function createWindow() {
     minHeight: 680,
     show: false,
     backgroundColor: "#f4f5f5",
-    // The app paints its own chrome; the platform keeps its window buttons.
+    // The app paints its own chrome. macOS keeps its traffic lights — they are
+    // a platform convention people reach for by muscle memory — while Windows
+    // and Linux get in-app controls that share the rest of the UI's hover
+    // language instead of the OS's grey caption squares.
     titleBarStyle: "hidden",
-    ...(process.platform === "win32"
-      ? { titleBarOverlay: { color: "#f4f5f5", symbolColor: "#0f1419", height: 44 } }
-      : { trafficLightPosition: { x: 16, y: 15 } }),
+    ...(process.platform === "darwin"
+      ? { trafficLightPosition: { x: 16, y: 15 } }
+      : { frame: false }),
     webPreferences: {
       preload: join(here, "preload.cjs"),
       contextIsolation: true,
@@ -49,6 +52,14 @@ async function createWindow() {
   });
 
   win.once("ready-to-show", () => win?.show());
+
+  // The maximise button has two shapes; keep the renderer in step with reality
+  // rather than with what it last asked for.
+  const pushMaximized = () => emit("window:maximized", { maximized: Boolean(win?.isMaximized()) });
+  win.on("maximize", pushMaximized);
+  win.on("unmaximize", pushMaximized);
+  win.on("enter-full-screen", pushMaximized);
+  win.on("leave-full-screen", pushMaximized);
 
   // External links belong in the user's browser, never in the app frame.
   win.webContents.setWindowOpenHandler(({ url }) => {
@@ -132,6 +143,19 @@ function registerIpc() {
   // ---- network probes -----------------------------------------------------
   handle("domain:probe", (name) => probeDomain(name));
   handle("cert:probe", (host, port, servername) => probeCertificate(host, port, servername));
+
+  // ---- window controls ----------------------------------------------------
+  handle("window:state", async () => ({
+    maximized: Boolean(win?.isMaximized()),
+    platform: process.platform,
+  }));
+  ipcMain.on("window:minimize", () => win?.minimize());
+  ipcMain.on("window:close", () => win?.close());
+  ipcMain.on("window:toggle-maximize", () => {
+    if (!win) return;
+    if (win.isMaximized()) win.unmaximize();
+    else win.maximize();
+  });
 
   handle("shell:open-external", async (url) => {
     if (!/^https?:\/\//.test(url)) throw new Error("只允许打开 http(s) 链接");

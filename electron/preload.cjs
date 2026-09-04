@@ -55,6 +55,14 @@ contextBridge.exposeInMainWorld("sinan", {
     onExit: (handler) => on("ssh:exit", handler),
   },
 
+  win: {
+    state: () => unwrap(ipcRenderer.invoke("window:state")),
+    minimize: () => ipcRenderer.send("window:minimize"),
+    toggleMaximize: () => ipcRenderer.send("window:toggle-maximize"),
+    close: () => ipcRenderer.send("window:close"),
+    onMaximized: (handler) => on("window:maximized", handler),
+  },
+
   domain: {
     probe: (name) => unwrap(ipcRenderer.invoke("domain:probe", name)),
   },
