@@ -4,6 +4,7 @@ import {
   Copy,
   Globe,
   KeyRound,
+  Loader2,
   Mail,
   Server,
   Shield,
@@ -12,6 +13,7 @@ import {
 import { toast } from "sonner";
 import { TimeAgo } from "./ui/time-ago";
 import { useLive } from "@/lib/live";
+import { useProbeState } from "@/lib/probes";
 import { barTone, chipClass, dotClass, STATUS_LABEL } from "@/lib/status";
 import { useAppStore } from "@/lib/store";
 import type {
@@ -104,7 +106,7 @@ export function ServerCard({
         </span>
       </div>
 
-      <ProbeNote error={data.probeError} at={data.probedAt} />
+      <ProbeNote id={data.id} error={data.probeError} at={data.probedAt} />
 
       {!compact && (
         <div className="mt-5 space-y-4 border-t border-line pt-4">
@@ -152,7 +154,16 @@ export function ServerCard({
  * What the last live probe reported. Only the desktop build ever sets these, so
  * the strip simply does not render in the web preview.
  */
-function ProbeNote({ error, at }: { error?: string; at?: string }) {
+function ProbeNote({ id, error, at }: { id: string; error?: string; at?: string }) {
+  const busy = useProbeState((s) => Boolean(s.busy[id]));
+  if (busy) {
+    return (
+      <p className="mt-3 flex items-center gap-1.5 text-2xs text-muted">
+        <Loader2 className="size-3.5 animate-spin" />
+        正在采集…
+      </p>
+    );
+  }
   if (!error && !at) return null;
   if (error) {
     return (
@@ -224,7 +235,7 @@ export function DomainCard({
         到期 {formatDate(data.expiresAt)}
         {data.autoRenew ? " · 自动续费" : " · 未开自动续费"}
       </p>
-      <ProbeNote error={data.probeError} at={data.probedAt} />
+      <ProbeNote id={data.id} error={data.probeError} at={data.probedAt} />
 
       {!compact && (
         <div className="mt-4 space-y-2 border-t border-line pt-4 text-meta text-muted">
@@ -454,7 +465,7 @@ export function CertCard({
           证书链不受信任{data.untrustedReason ? `：${data.untrustedReason}` : ""}
         </p>
       )}
-      <ProbeNote error={data.probeError} at={data.probedAt} />
+      <ProbeNote id={data.id} error={data.probeError} at={data.probedAt} />
       {!compact && (
         <div className="mt-4 space-y-2 border-t border-line pt-4">
           <p className="text-2xs text-subtle">SAN</p>
