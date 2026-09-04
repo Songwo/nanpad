@@ -73,5 +73,6 @@ contextBridge.exposeInMainWorld("sinan", {
 
   cert: {
     probe: (host, port, servername) => unwrap(ipcRenderer.invoke("cert:probe", host, port, servername)),
+    parsePem: (pem) => unwrap(ipcRenderer.invoke("cert:parse-pem", pem)),
   },
 });

@@ -135,7 +135,17 @@ export interface DesktopBridge {
     onMaximized(handler: (e: { maximized: boolean }) => void): () => void;
   };
   domain: { probe(name: string): Promise<DomainProbe> };
-  cert: { probe(host: string, port?: number, servername?: string): Promise<CertProbe> };
+  cert: {
+    probe(host: string, port?: number, servername?: string): Promise<CertProbe>;
+    parsePem(pem: string): Promise<{
+      cn: string;
+      issuer: string;
+      validFrom: string;
+      expiresAt: string;
+      sans: string[];
+      serial: string;
+    }>;
+  };
 }
 
 declare global {

@@ -1,4 +1,5 @@
 import { app, BrowserWindow, ipcMain, shell, Menu, net } from "electron";
+import { X509Certificate } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { readFile, writeFile, rename, mkdir } from "node:fs/promises";
 import { dirname, join } from "node:path";
@@ -176,6 +177,25 @@ function registerIpc() {
   // ---- network probes -----------------------------------------------------
   handle("domain:probe", (name) => probeDomain(name));
   handle("cert:probe", (host, port, servername) => probeCertificate(host, port, servername));
+  handle("cert:parse-pem", async (pem) => {
+    const cert = new X509Certificate(pem);
+    // X509Certificate hands back an RFC 2253 string; pull the two fields the
+    // cards actually show rather than parsing the whole DN.
+    const field = (dn, key) => new RegExp(`${key}=([^,\\r\\n]+)`).exec(dn)?.[1]?.trim();
+    const cn = field(cert.subject, "CN");
+    const issuer = field(cert.issuer, "O") ?? field(cert.issuer, "CN");
+    return {
+      cn: cn ?? "",
+      issuer: issuer ?? "",
+      validFrom: new Date(cert.validFrom).toISOString(),
+      expiresAt: new Date(cert.validTo).toISOString(),
+      sans: (cert.subjectAltName ?? "")
+        .split(",")
+        .map((s) => s.trim().replace(/^DNS:/, ""))
+        .filter(Boolean),
+      serial: cert.serialNumber,
+    };
+  });
 
   // ---- window controls ----------------------------------------------------
   handle("window:state", async () => ({

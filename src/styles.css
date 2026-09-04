@@ -512,6 +512,51 @@
     padding-top: 4px;
   }
 
+  /* ----------------------------------------------------------- smart paste */
+
+  .paste-trigger {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    padding: 12px 14px;
+    border-radius: var(--radius-md);
+    background: var(--color-canvas);
+    color: var(--color-ink);
+    font-size: var(--text-meta);
+    text-align: left;
+    box-shadow: inset 0 0 0 1px var(--color-line);
+    transition:
+      box-shadow var(--dur-fast) var(--ease-out),
+      background-color var(--dur-fast) var(--ease-out);
+  }
+  .paste-trigger:hover {
+    box-shadow: inset 0 0 0 1px var(--color-line-strong);
+  }
+
+  .paste-match {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    padding: 8px 10px;
+    border-radius: var(--radius-sm);
+    background: var(--color-card);
+    box-shadow: inset 0 0 0 1px var(--color-line);
+    transition:
+      box-shadow var(--dur-fast) var(--ease-out),
+      transform var(--dur-fast) var(--ease-out);
+  }
+  .paste-match:hover {
+    box-shadow: inset 0 0 0 1px var(--color-ink);
+  }
+  .paste-match:active {
+    transform: scale(0.99);
+  }
+  .paste-match:disabled {
+    opacity: 0.5;
+  }
+
   /* -------------------------------------------------------------- settings */
 
   .settings-tab {

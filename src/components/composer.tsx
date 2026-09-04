@@ -3,6 +3,7 @@ import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "rea
 import { toast } from "sonner";
 import { AccountFields, accountFromForm } from "./account-fields";
 import { CredentialFields, credentialFromForm } from "./credential-fields";
+import { SmartPaste } from "./smart-paste";
 import { Button } from "./ui/button";
 import { Field, Input, Textarea } from "./ui/input";
 import { accountId, credentialId, desktop, isDesktop } from "@/lib/desktop";
@@ -169,6 +170,13 @@ function fields(
   editingId: string | null,
 ): ReactNode[] {
   return [
+    <SmartPaste
+      key="_paste"
+      kind={kind}
+      onApply={(fields) => {
+        for (const [k, v] of Object.entries(fields)) set(k, v);
+      }}
+    />,
     ...kindFields(kind, form, set, editingId),
     <AccountFields key="_account" assetId={editingId} kind={kind} form={form} set={set} />,
   ];
