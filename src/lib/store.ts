@@ -39,6 +39,7 @@ export interface AppState extends Snapshot {
   expanded: ExpandState | null;
   sshServerId: string | null;
   commandOpen: boolean;
+  settingsOpen: boolean;
   composerOpen: boolean;
   composerKind: AssetKind;
   editingId: string | null;
@@ -57,6 +58,7 @@ export interface AppState extends Snapshot {
   openSsh: (serverId: string) => void;
   closeSsh: () => void;
   setCommandOpen: (v: boolean) => void;
+  setSettingsOpen: (v: boolean) => void;
   openComposer: (kind: AssetKind, editingId?: string | null) => void;
   closeComposer: () => void;
   setMobileNav: (v: boolean) => void;
@@ -88,6 +90,7 @@ const emptyUi = {
   expanded: null,
   sshServerId: null,
   commandOpen: false,
+  settingsOpen: false,
   composerOpen: false,
   composerKind: "server" as AssetKind,
   editingId: null,
@@ -154,6 +157,7 @@ export const useAppStore = create<AppState>()(
       openSsh: (sshServerId) => set({ sshServerId, expanded: null }),
       closeSsh: () => set({ sshServerId: null }),
       setCommandOpen: (commandOpen) => set({ commandOpen }),
+      setSettingsOpen: (settingsOpen) => set({ settingsOpen, commandOpen: false }),
       openComposer: (composerKind, editingId = null) =>
         set({ composerOpen: true, composerKind, editingId, expanded: null }),
       closeComposer: () => set({ composerOpen: false, editingId: null }),

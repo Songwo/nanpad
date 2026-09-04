@@ -21,6 +21,7 @@
 - [功能](#功能)
 - [分组与标签](#分组与标签)
 - [账号与密码](#账号与密码)
+- [设置](#设置)
 - [安全模型](#安全模型)
 - [界面与动效](#界面与动效)
 - [键盘快捷键](#键盘快捷键)
@@ -74,6 +75,10 @@
 <tr>
 <td width="50%"><img src="screenshots/groups.png" alt="按标签分组"><br><em>按标签分组，一个资产可以同时属于多个分组</em></td>
 <td width="50%"><img src="screenshots/account.png" alt="账号面板"><br><em>详情页读取加密保存的账号密码，一键复制</em></td>
+</tr>
+<tr>
+<td width="50%"><img src="screenshots/settings-dark.png" alt="设置"><br><em>设置：外观 / 密钥库 / 数据 / 关于 / 更新日志</em></td>
+<td width="50%"><img src="screenshots/dark-overview.png" alt="深色主题"><br><em>深色主题：表面按层级抬升，不是简单反色</em></td>
 </tr>
 </table>
 
@@ -175,6 +180,22 @@ npm run dev     # http://localhost:8080
 
 ---
 
+## 设置
+
+侧栏头像旁的 `···` → 「设置…」，或按 `⌘,` / `Ctrl+,`。
+
+**外观** —— 跟随系统 / 浅色 / 深色。选「跟随系统」时会实时跟着系统切换，不用重启。深色不是把浅色反过来：表面按层级抬升（画布最暗，卡片浮在上面），阴影在这个亮度下不起作用，所以换成发丝描边；状态色、标签、滚动条都单独校过。
+
+**密钥库** —— 查看状态、立即锁定、**修改主密码**。换密码会用新盐派生新密钥，把每一条凭据解密再重新加密，全部成功后才写盘——中途崩溃不会留下一半读不出来的记录。
+
+**数据** —— 打开数据目录、导出 / 导入 JSON、清空全部资产（不动密钥库）。
+
+**关于** —— 当前版本、运行环境、**检查更新**（走 Electron 的 `net`，会跟随系统代理；私有仓库或限流时明确告诉你"查不了"，而不是谎称"已是最新"）、项目主页。
+
+**更新日志** —— 见 [CHANGELOG.md](CHANGELOG.md)。应用内和仓库里读的是同一份数据：`src/lib/changelog.ts` 是源，`node scripts/write-changelog.mjs` 生成 Markdown。
+
+---
+
 ## 安全模型
 
 **存在哪里**
@@ -185,7 +206,7 @@ npm run dev     # http://localhost:8080
 | SSH 密码 / 私钥 | 同目录 `vault.enc` | AES-256-GCM 密文 |
 | 各服务账号密码 | 同上，键名 `account:<资产 id>` | AES-256-GCM 密文 |
 | 密钥完整值 | 同上 | AES-256-GCM 密文 |
-| 主密码 | **哪儿都不存** | 只在内存里派生成密钥 |
+| 主密码 | **哪儿都不存** | 只在内存里派生成密钥；可在设置里更换，换后全部记录用新密钥重新封装 |
 
 **怎么加密**
 
@@ -205,7 +226,7 @@ npm run dev     # http://localhost:8080
 
 桌面端是 **三栏布局**：左侧导航、中间内容列、右侧常驻信息栏（全局搜索 / 需要留意 / 快捷终端 / 最近动态）。中间列的卡片列数用 CSS **容器查询**决定，跟随列宽而不是窗口宽度——右栏占掉 340px，视口断点看不到这件事。
 
-窗口是无边框的，**三个窗口按钮由应用自己画**——系统的标题栏按钮改不了样式，那一块灰色方块 hover 是整个界面里唯一不守设计系统的地方；现在它们和侧栏用同一套 hover（圆角 + `--color-line` 填充），关闭键 hover 转红。macOS 保留原生红绿灯，那是肌肉记忆。拖拽区在侧栏顶部和右栏顶部那条 52px 的留白上。
+窗口是无边框的，**标题栏由应用自己画**：整条 44px 都可拖拽（双击最大化），左边显示当前所在的视图，右边是自绘的最小化 / 最大化 / 关闭。系统的标题栏按钮改不了样式，那块灰色方块 hover 是整个界面里唯一不守设计系统的地方；现在它们和侧栏用同一套 hover（圆角 + `--color-line` 填充），关闭键 hover 转红。macOS 保留原生红绿灯，那是肌肉记忆。
 
 动效遵循一条原则：**交互状态用 transition，一次性入场用 keyframes**。前者能在动画中途反向、不会卡住；后者只在元素出现时跑一次。
 
@@ -229,6 +250,7 @@ npm run dev     # http://localhost:8080
 | `⌘K` / `Ctrl+K` | 全局搜索：跳转页面、定位资产、直接连 SSH |
 | `⌘N` / `Ctrl+N` | 在当前分类下新建资产 |
 | `/` | 打开命令面板 |
+| `⌘,` / `Ctrl+,` | 打开设置 |
 | `Esc` | 关闭当前弹层 / 详情（终端里 Esc 归远端 shell，用标题栏关闭） |
 
 ---
@@ -262,6 +284,8 @@ src/
 │  ├─ account-panel.tsx   详情页的账号读取与复制
 │  ├─ tag-bar.tsx         标签条、分组开关、卡片上的标签
 │  ├─ window-controls.tsx 应用自绘的最小化 / 最大化 / 关闭
+│  ├─ title-bar.tsx       可拖拽的标题栏（窗口标题 + 窗口按钮）
+│  ├─ settings.tsx        设置面板：外观 / 密钥库 / 数据 / 关于 / 更新日志
 │  ├─ vault-gate.tsx      主密码对话框（唯一输入口）
 │  ├─ composer.tsx        新增 / 编辑表单
 │  ├─ command-palette.tsx ⌘K 命令面板
@@ -272,6 +296,8 @@ src/
 │  ├─ vault-state.ts      密钥库状态与 require() 解锁流程
 │  ├─ vault-migrate.ts    把早期明文密钥值搬进加密库
 │  ├─ tags.ts             标签解析、计数、分组
+│  ├─ settings.ts         主题选择与 data-theme 同步
+│  ├─ changelog.ts        更新日志（CHANGELOG.md 由它生成）
 │  ├─ store.ts            zustand + persist（桌面写文件，网页写 localStorage）
 │  ├─ motion.ts           usePresence / useCountUp / FLIP 计算 / 减动效判定
 │  ├─ status.ts           状态语义、健康分、异常统计
@@ -342,7 +368,6 @@ npm run desktop:dist     # 出安装包：Windows NSIS / macOS dmg / Linux AppIm
 
 ## 路线图
 
-- [ ] 深色模式（token 已就位，只差一层 `prefers-color-scheme` 覆盖）
 - [ ] 托盘常驻 + 到期与离线的系统通知
 - [ ] 指标历史留存，画出真实的 CPU / 内存曲线
 - [ ] SFTP 文件浏览（`ssh2` 已经带了）

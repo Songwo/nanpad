@@ -67,6 +67,62 @@
   --dur-slow: 340ms;
 }
 
+/* ---------------------------------------------------------------- dark ---
+   One override block, not one per source of truth: `startThemeSync` always
+   resolves the choice to a concrete light/dark before stamping the attribute,
+   so "跟随系统" needs no separate media query here.
+
+   The dark surfaces are lifted, not just inverted — canvas is the darkest, and
+   cards sit *above* it, which is the same elevation story as the light theme
+   rather than a photographic negative of it. Shadows stop doing the work at
+   this luminance, so the tokens lean on a hairline ring instead. */
+:root[data-theme="dark"] {
+  --color-canvas: #0e1114;
+  --color-sidebar: #14181c;
+  --color-card: #171c21;
+  --color-ink: #e6ebef;
+  --color-muted: #9aa7b2;
+  --color-subtle: #6b7783;
+  --color-line: #222930;
+  --color-line-strong: #38424b;
+  --color-banner: #1d1b14;
+  --color-ok: #2ecf9b;
+  --color-warn: #ffbc4b;
+  --color-crit: #ff5a63;
+  --color-glass: rgba(8, 10, 12, 0.78);
+  --color-glass-border: rgba(255, 255, 255, 0.1);
+
+  --shadow-card:
+    0 0 0 1px rgba(255, 255, 255, 0.06), 0 1px 2px -1px rgba(0, 0, 0, 0.5);
+  --shadow-card-hover:
+    0 0 0 1px rgba(255, 255, 255, 0.12), 0 10px 28px -10px rgba(0, 0, 0, 0.7);
+  --shadow-float:
+    0 0 0 1px rgba(255, 255, 255, 0.1), 0 28px 70px -18px rgba(0, 0, 0, 0.8);
+}
+
+/* The status chips are mixed against white in the light theme; against a dark
+   card that reads as a bright block, so they mix against the card instead. */
+:root[data-theme="dark"] .chip-ok {
+  color: #5ee3b8;
+  background: color-mix(in oklab, var(--color-ok) 18%, var(--color-card));
+}
+:root[data-theme="dark"] .chip-warn {
+  color: #ffcf7a;
+  background: color-mix(in oklab, var(--color-warn) 20%, var(--color-card));
+}
+:root[data-theme="dark"] .chip-crit {
+  color: #ff8f96;
+  background: color-mix(in oklab, var(--color-crit) 20%, var(--color-card));
+}
+
+/* An ink-coloured scrollbar thumb is invisible on a dark canvas. */
+:root[data-theme="dark"] :hover::-webkit-scrollbar-thumb {
+  background-color: rgba(255, 255, 255, 0.16);
+}
+:root[data-theme="dark"] :hover::-webkit-scrollbar-thumb:hover {
+  background-color: rgba(255, 255, 255, 0.28);
+}
+
 @layer base {
   html {
     -webkit-font-smoothing: antialiased;
@@ -412,14 +468,9 @@
     z-index: 60;
   }
 
-  /* Window controls sit above even the gate — a title bar is always reachable,
-     modal or not — and hover the way every other control in the app hovers:
+  /* Window controls hover the way every other control in the app hovers:
      a rounded fill in --color-line, not the platform's grey square. */
   .win-controls {
-    position: fixed;
-    top: 6px;
-    right: 8px;
-    z-index: 70;
     display: flex;
     align-items: center;
     gap: 2px;
@@ -459,6 +510,63 @@
   }
   .cmd-group:first-child [cmdk-group-heading] {
     padding-top: 4px;
+  }
+
+  /* -------------------------------------------------------------- settings */
+
+  .settings-tab {
+    display: flex;
+    align-items: center;
+    height: 34px;
+    padding: 0 12px;
+    border-radius: var(--radius-sm);
+    color: var(--color-muted);
+    font-size: var(--text-meta);
+    font-weight: 500;
+    text-align: left;
+    transition:
+      background-color var(--dur-fast) var(--ease-out),
+      color var(--dur-fast) var(--ease-out);
+  }
+  .settings-tab:hover {
+    background: var(--color-line);
+    color: var(--color-ink);
+  }
+  .settings-tab-on,
+  .settings-tab-on:hover {
+    background: var(--color-line);
+    color: var(--color-ink);
+    font-weight: 600;
+  }
+
+  .theme-option {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 14px;
+    border-radius: var(--radius-md);
+    background: var(--color-canvas);
+    color: var(--color-muted);
+    box-shadow: inset 0 0 0 1px var(--color-line);
+    transition:
+      background-color var(--dur-fast) var(--ease-out),
+      box-shadow var(--dur-fast) var(--ease-out),
+      color var(--dur-fast) var(--ease-out),
+      transform var(--dur-fast) var(--ease-out);
+  }
+  .theme-option:hover {
+    color: var(--color-ink);
+    box-shadow: inset 0 0 0 1px var(--color-line-strong);
+  }
+  .theme-option:active {
+    transform: scale(0.98);
+  }
+  .theme-option-on,
+  .theme-option-on:hover {
+    color: var(--color-ink);
+    box-shadow: inset 0 0 0 2px var(--color-ink);
   }
 
   /* ------------------------------------------------------------------ tags */
@@ -754,11 +862,4 @@
   app-region: no-drag;
 }
 
-/* The platform paints minimise/maximise/close over the top-right corner, which
-   lands on the rail. Reserve that band so nothing scrolls underneath it. */
-.is-desktop .rail-inset {
-  padding-top: 52px;
-}
-.is-desktop .rail-sticky {
-  top: 52px;
-}
+/* The title bar owns the top band now, so the rail needs no inset of its own. */

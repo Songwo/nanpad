@@ -96,6 +96,37 @@ export class Vault {
     return { ok: true };
   }
 
+  /**
+   * Re-key the whole vault.
+   *
+   * A new password means a new salt and therefore a new key, so every record
+   * has to be decrypted with the old one and re-sealed with the new one. The
+   * document is only written once, at the end — a crash halfway through must
+   * not leave half the records unreadable by either password.
+   */
+  async changePassword(oldMaster, newMaster) {
+    if (!newMaster || newMaster.length < 6) throw new Error("新主密码至少 6 位");
+    await this.unlock(oldMaster);
+    const doc = await this.#read();
+    const oldKey = this.#require();
+
+    const salt = randomBytes(16);
+    const newKey = await derive(newMaster, salt, KEY_LEN, SCRYPT);
+    const records = {};
+    for (const [id, rec] of Object.entries(doc.records ?? {})) {
+      records[id] = seal(newKey, open(oldKey, rec));
+    }
+
+    await this.#write({
+      v: VERSION,
+      salt: salt.toString("base64"),
+      check: seal(newKey, Buffer.from("sinan-vault")),
+      records,
+    });
+    this.#key = newKey;
+    return { ok: true, count: Object.keys(records).length };
+  }
+
   #require() {
     if (!this.#key) throw new Error("密钥库已锁定");
     return this.#key;

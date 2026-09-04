@@ -193,6 +193,7 @@ function ProfileMenu() {
             };
             input.click();
           })}
+          {item("设置…", () => useAppStore.getState().setSettingsOpen(true))}
           {vaultUnlocked && item("锁定密钥库", () => void lockVault())}
           {item(isDesktop() ? "清空全部数据" : "重置演示数据", () => resetDemo(), "danger")}
         </div>

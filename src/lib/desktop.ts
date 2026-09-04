@@ -75,10 +75,21 @@ export interface CertProbe {
 
 export interface AppInfo {
   platform: NodeJS.Platform;
+  arch: string;
   version: string;
   electron: string;
+  chrome: string;
   node: string;
   userData: string;
+  packaged: boolean;
+}
+
+export interface UpdateCheck {
+  state: "current" | "outdated" | "unavailable";
+  current: string;
+  latest?: string;
+  page: string;
+  reason?: string;
 }
 
 export interface PersistedFile extends Snapshot {
@@ -88,6 +99,8 @@ export interface PersistedFile extends Snapshot {
 export interface DesktopBridge {
   isDesktop: true;
   info(): Promise<AppInfo>;
+  checkUpdate(): Promise<UpdateCheck>;
+  openDataDir(): Promise<boolean>;
   openExternal(url: string): Promise<boolean>;
   store: {
     load(): Promise<PersistedFile | null>;
@@ -98,6 +111,7 @@ export interface DesktopBridge {
     create(master: string): Promise<{ ok: true }>;
     unlock(master: string): Promise<{ ok: true }>;
     lock(): Promise<{ ok: true }>;
+    changePassword(oldMaster: string, newMaster: string): Promise<{ ok: true; count: number }>;
     set(id: string, secret: SshCredential | AccountCredential): Promise<{ ok: true }>;
     get(id: string): Promise<(SshCredential & AccountCredential) | null>;
     remove(id: string): Promise<{ ok: true }>;

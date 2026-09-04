@@ -7,10 +7,11 @@ import { ExpandLayer } from "./expand-layer";
 import { LogoMark } from "./logo";
 import { RightRail } from "./right-rail";
 import { NAV, Sidebar } from "./sidebar";
+import { Settings } from "./settings";
 import { SshTerminal } from "./ssh-terminal";
 import { Button } from "./ui/button";
+import { TitleBar } from "./title-bar";
 import { VaultGate } from "./vault-gate";
-import { WindowControls } from "./window-controls";
 import { MainView, TopTabs } from "./views";
 import { isDesktop } from "@/lib/desktop";
 import { useLive } from "@/lib/live";
@@ -20,6 +21,7 @@ import { migrateSecretValues } from "@/lib/vault-migrate";
 import { useAppStore } from "@/lib/store";
 import type { ViewId } from "@/lib/types";
 import { cn } from "@/lib/utils";
+import { startThemeSync } from "@/lib/settings";
 import { useVault } from "@/lib/vault-state";
 
 export function AppShell() {
@@ -53,6 +55,10 @@ export function AppShell() {
     const t = window.setInterval(tick, 2400);
     return () => window.clearInterval(t);
   }, []);
+
+  // Stamps `<html data-theme>` and keeps following the OS while the choice is
+  // "跟随系统". Returns its own teardown.
+  useEffect(() => startThemeSync(), []);
 
   useEffect(() => {
     void useVault.getState().refresh();
@@ -88,6 +94,10 @@ export function AppShell() {
         const kind = NAV.find((n) => n.id === useAppStore.getState().view)?.kind ?? "server";
         openComposer(kind);
       }
+      if ((e.metaKey || e.ctrlKey) && e.key === ",") {
+        e.preventDefault();
+        useAppStore.getState().setSettingsOpen(true);
+      }
       if (
         e.key === "/" &&
         !(e.target instanceof HTMLInputElement) &&
@@ -102,9 +112,11 @@ export function AppShell() {
   }, [openComposer, setCommandOpen]);
 
   return (
-    <div className="flex h-dvh min-h-0 bg-canvas text-ink">
-      <Sidebar className="hidden md:flex" />
-      <MobileDrawer />
+    <div className="flex h-dvh min-h-0 flex-col bg-canvas text-ink">
+      <TitleBar />
+      <div className="flex min-h-0 flex-1">
+        <Sidebar className="hidden md:flex" />
+        <MobileDrawer />
 
       <div className="flex min-w-0 flex-1 flex-col">
         <header className="flex h-12 items-center gap-3 border-b border-line bg-sidebar px-3 md:hidden">
@@ -131,6 +143,7 @@ export function AppShell() {
             <RightRail className="hidden xl:block" />
           </div>
         </div>
+      </div>
       </div>
 
       <nav className="fixed inset-x-0 bottom-0 z-30 flex h-14 items-center justify-around border-t border-line bg-sidebar/95 px-1 pb-[env(safe-area-inset-bottom)] backdrop-blur md:hidden">
@@ -163,15 +176,9 @@ export function AppShell() {
         })}
       </nav>
 
-      {/* With the OS frame off, the band the controls sit in has to drag the
-          window itself. It only spans the rail, where nothing else lives. */}
-      {isDesktop() && (
-        <div className="drag-strip fixed right-0 top-0 z-30 hidden h-13 w-rail xl:block" />
-      )}
-      <WindowControls />
-
       <ExpandLayer />
       <SshTerminal />
+      <Settings />
       <Composer />
       <CommandPalette />
       <VaultGate />

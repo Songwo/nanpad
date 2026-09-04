@@ -1,4 +1,5 @@
-import { app, BrowserWindow, ipcMain, shell, Menu } from "electron";
+import { app, BrowserWindow, ipcMain, shell, Menu, net } from "electron";
+import { readFileSync } from "node:fs";
 import { readFile, writeFile, rename, mkdir } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -12,6 +13,22 @@ const here = dirname(fileURLToPath(import.meta.url));
 // entry, so Electron would call itself "Electron" and put the user's assets in
 // a directory named after the runtime. Pin it before anything reads a path.
 app.setName("Nanpad");
+
+/**
+ * Our version, not Electron's.
+ *
+ * `app.getVersion()` reads the package.json next to the entry point; launched
+ * as `electron electron/main.mjs` there isn't one, and it happily reports the
+ * runtime's version instead. Read the real manifest — it ships inside the asar
+ * too, so the packaged build takes the same path.
+ */
+const APP_VERSION = (() => {
+  try {
+    return JSON.parse(readFileSync(join(here, "../package.json"), "utf8")).version;
+  } catch {
+    return app.getVersion();
+  }
+})();
 // Only `npm run desktop` sets this. Without it — packaged, or a bare
 // `electron .` — the window loads the built renderer, never a dev server that
 // may not be running.
@@ -95,11 +112,24 @@ function registerIpc() {
 
   handle("app:info", async () => ({
     platform: process.platform,
-    version: app.getVersion(),
+    arch: process.arch,
+    version: APP_VERSION,
     electron: process.versions.electron,
+    chrome: process.versions.chrome,
     node: process.versions.node,
     userData: app.getPath("userData"),
+    packaged: app.isPackaged,
   }));
+
+  handle("app:check-update", () => checkForUpdate(APP_VERSION));
+  handle("shell:open-path", async (target) => {
+    const allowed = app.getPath("userData");
+    // Only ever open our own data directory — never a path the page chose.
+    if (target !== "userData") throw new Error("不允许打开该路径");
+    const err = await shell.openPath(allowed);
+    if (err) throw new Error(err);
+    return true;
+  });
 
   // ---- assets on disk -----------------------------------------------------
   handle("store:load", async () => {
@@ -123,6 +153,9 @@ function registerIpc() {
   handle("vault:create", (master) => vault.create(master));
   handle("vault:unlock", (master) => vault.unlock(master));
   handle("vault:lock", () => vault.lock());
+  handle("vault:change-password", (oldMaster, newMaster) =>
+    vault.changePassword(oldMaster, newMaster),
+  );
   handle("vault:set", (id, secret) => vault.set(id, secret));
   handle("vault:get", (id) => vault.get(id));
   handle("vault:remove", (id) => vault.remove(id));
@@ -165,6 +198,66 @@ function registerIpc() {
 }
 
 export const credentialId = (serverId) => `ssh:${serverId}`;
+
+const RELEASES_API = "https://api.github.com/repos/Songwo/nanpad/releases/latest";
+const RELEASES_PAGE = "https://github.com/Songwo/nanpad/releases";
+
+/**
+ * Ask GitHub what the newest release is.
+ *
+ * Uses Electron's `net` rather than `fetch` so it follows the system proxy —
+ * on a machine behind a corporate or local proxy, a bare fetch would just time
+ * out. A private repository answers 404 to an unauthenticated request, which is
+ * reported as "cannot check", not as "up to date".
+ */
+async function checkForUpdate(current) {
+  const body = await new Promise((resolve, reject) => {
+    const request = net.request({ url: RELEASES_API, method: "GET" });
+    request.setHeader("accept", "application/vnd.github+json");
+    request.setHeader("user-agent", `Nanpad/${current}`);
+    let text = "";
+    request.on("response", (response) => {
+      response.on("data", (chunk) => (text += chunk.toString("utf8")));
+      response.on("end", () => resolve({ status: response.statusCode, text }));
+      response.on("error", reject);
+    });
+    request.on("error", reject);
+    request.end();
+    setTimeout(() => reject(new Error("检查更新超时，请确认网络可达 GitHub")), 8_000);
+  });
+
+  if (body.status === 404) {
+    return { state: "unavailable", current, page: RELEASES_PAGE, reason: "仓库为私有或尚无发布" };
+  }
+  if (body.status === 403) {
+    return { state: "unavailable", current, page: RELEASES_PAGE, reason: "GitHub 接口限流，请稍后再试" };
+  }
+  if (body.status !== 200) {
+    return { state: "unavailable", current, page: RELEASES_PAGE, reason: `GitHub 返回 ${body.status}` };
+  }
+
+  const tag = String(JSON.parse(body.text)?.tag_name ?? "").replace(/^v/, "");
+  if (!tag) {
+    return { state: "unavailable", current, page: RELEASES_PAGE, reason: "最新发布没有版本号" };
+  }
+  return {
+    state: compareVersions(tag, current) > 0 ? "outdated" : "current",
+    current,
+    latest: tag,
+    page: RELEASES_PAGE,
+  };
+}
+
+/** Numeric-segment compare; enough for the `major.minor.patch` tags we cut. */
+function compareVersions(a, b) {
+  const pa = String(a).split(".").map((n) => Number.parseInt(n, 10) || 0);
+  const pb = String(b).split(".").map((n) => Number.parseInt(n, 10) || 0);
+  for (let i = 0; i < Math.max(pa.length, pb.length); i += 1) {
+    const diff = (pa[i] ?? 0) - (pb[i] ?? 0);
+    if (diff !== 0) return diff;
+  }
+  return 0;
+}
 
 // One window per launch; a second instance just focuses the first.
 if (!app.requestSingleInstanceLock()) {

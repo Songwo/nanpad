@@ -26,6 +26,8 @@ contextBridge.exposeInMainWorld("sinan", {
   isDesktop: true,
 
   info: () => unwrap(ipcRenderer.invoke("app:info")),
+  checkUpdate: () => unwrap(ipcRenderer.invoke("app:check-update")),
+  openDataDir: () => unwrap(ipcRenderer.invoke("shell:open-path", "userData")),
   openExternal: (url) => unwrap(ipcRenderer.invoke("shell:open-external", url)),
 
   store: {
@@ -38,6 +40,8 @@ contextBridge.exposeInMainWorld("sinan", {
     create: (master) => unwrap(ipcRenderer.invoke("vault:create", master)),
     unlock: (master) => unwrap(ipcRenderer.invoke("vault:unlock", master)),
     lock: () => unwrap(ipcRenderer.invoke("vault:lock")),
+    changePassword: (oldMaster, newMaster) =>
+      unwrap(ipcRenderer.invoke("vault:change-password", oldMaster, newMaster)),
     set: (id, secret) => unwrap(ipcRenderer.invoke("vault:set", id, secret)),
     get: (id) => unwrap(ipcRenderer.invoke("vault:get", id)),
     remove: (id) => unwrap(ipcRenderer.invoke("vault:remove", id)),
