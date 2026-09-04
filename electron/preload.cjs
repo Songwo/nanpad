@@ -67,6 +67,12 @@ contextBridge.exposeInMainWorld("sinan", {
     onMaximized: (handler) => on("window:maximized", handler),
   },
 
+  mail: {
+    providers: () => unwrap(ipcRenderer.invoke("mail:providers")),
+    guess: (address) => unwrap(ipcRenderer.invoke("mail:guess", address)),
+    test: (options) => unwrap(ipcRenderer.invoke("mail:test", options)),
+  },
+
   domain: {
     probe: (name) => unwrap(ipcRenderer.invoke("domain:probe", name)),
   },

@@ -73,6 +73,28 @@ export interface CertProbe {
   at: string;
 }
 
+export interface MailProvider {
+  label: string;
+  imap: { host: string; port: number };
+  smtp: { host: string; port: number };
+  domains: string[];
+  authNote: string;
+}
+
+export interface MailLogin {
+  ok: true;
+  address: string;
+  provider: string | null;
+  providerLabel: string;
+  imap: { host: string; port: number };
+  smtp: { host: string; port: number } | null;
+  messages: number;
+  unseen: number;
+  usedMb?: number;
+  quotaMb?: number;
+  at: string;
+}
+
 export interface AppInfo {
   platform: NodeJS.Platform;
   arch: string;
@@ -133,6 +155,16 @@ export interface DesktopBridge {
     toggleMaximize(): void;
     close(): void;
     onMaximized(handler: (e: { maximized: boolean }) => void): () => void;
+  };
+  mail: {
+    providers(): Promise<Record<string, MailProvider>>;
+    guess(address: string): Promise<(MailProvider & { id: string }) | null>;
+    test(options: {
+      address: string;
+      password: string;
+      host?: string;
+      port?: number;
+    }): Promise<MailLogin>;
   };
   domain: { probe(name: string): Promise<DomainProbe> };
   cert: {

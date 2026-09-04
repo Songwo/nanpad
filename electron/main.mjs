@@ -6,6 +6,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { SshManager } from "./services/ssh.mjs";
 import { probeCertificate, probeDomain } from "./services/net-probe.mjs";
+import { MAIL_PROVIDERS, providerForAddress, testMailbox } from "./services/mail.mjs";
 import { Vault, vaultPath } from "./services/vault.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -173,6 +174,11 @@ function registerIpc() {
   });
   ipcMain.on("ssh:write", (_e, sessionId, data) => ssh.write(sessionId, data));
   ipcMain.on("ssh:resize", (_e, sessionId, cols, rows) => ssh.resize(sessionId, cols, rows));
+
+  // ---- mailboxes ----------------------------------------------------------
+  handle("mail:providers", async () => MAIL_PROVIDERS);
+  handle("mail:guess", async (address) => providerForAddress(address));
+  handle("mail:test", (options) => testMailbox(options));
 
   // ---- network probes -----------------------------------------------------
   handle("domain:probe", (name) => probeDomain(name));

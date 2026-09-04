@@ -3,6 +3,7 @@ import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "rea
 import { toast } from "sonner";
 import { AccountFields, accountFromForm } from "./account-fields";
 import { CredentialFields, credentialFromForm } from "./credential-fields";
+import { MailLogin } from "./mail-login";
 import { SmartPaste } from "./smart-paste";
 import { Button } from "./ui/button";
 import { Field, Input, Textarea } from "./ui/input";
@@ -235,6 +236,7 @@ function kindFields(
       ];
     case "mail":
       return [
+        <MailLogin key="_mail-login" form={form} set={set} />,
         F("address", "地址", { span: true }),
         F("domain", "所属域名"),
         F("kind", "类型 mailbox/alias/forward"),
@@ -418,8 +420,10 @@ function persist(
         address: form.address,
         domain: form.domain,
         kind: (form.kind as Mailbox["kind"]) || "mailbox",
-        usedMb: 0,
-        quotaMb: form.kind === "mailbox" ? 5120 : 0,
+        // Quick login fills these from what the IMAP server reported; the
+        // fallback is only for a hand-typed mailbox.
+        usedMb: Number(form.usedMb) || 0,
+        quotaMb: Number(form.quotaMb) || (form.kind === "mailbox" ? 5120 : 0),
         forwardTo: form.forwardTo || undefined,
         tags: parseTags(form.tags ?? ""),
         status: "online",
