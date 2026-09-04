@@ -1,6 +1,6 @@
-import type { AssetKind, Status, ViewId } from "./types";
-import { daysUntil } from "./utils";
-import type { AppState } from "./store";
+import type { AssetKind, Status, ViewId } from "./types.ts";
+import { daysUntil } from "./utils.ts";
+import type { AppState } from "./store.ts";
 
 export const STATUS_LABEL: Record<Status, string> = {
   online: "正常",

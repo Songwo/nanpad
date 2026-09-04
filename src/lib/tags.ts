@@ -1,4 +1,4 @@
-import type { AssetKind, Taggable } from "./types";
+import type { AssetKind, Taggable } from "./types.ts";
 
 /** Tolerates records written before tags existed. */
 export function tagsOf(asset: Partial<Taggable> | null | undefined): string[] {

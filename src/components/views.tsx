@@ -10,6 +10,7 @@ import {
   SecretCard,
   ServerCard,
 } from "./asset-card";
+import { AgentView } from "./agent-view";
 import { LogoMark } from "./logo";
 import { GroupHeading, TagBar } from "./tag-bar";
 import { RefreshAllButton } from "./refresh-button";
@@ -32,7 +33,7 @@ export function MainView() {
   // Re-keying replays the entrance, so switching views reads as a change of
   // place rather than a silent content swap.
   return (
-    <div key={`${view}:${filter}`} className="view-in">
+    <div key={`${view}:${filter}`} className={cn("view-in", view === "agent" && "flex min-h-[calc(100dvh-13rem)] flex-col")}>
       <ViewBody />
     </div>
   );
@@ -57,12 +58,21 @@ function ViewBody() {
       return <CertsView />;
     case "tags":
       return <TagsView />;
+    case "agent":
+      return <AgentView />;
     case "terminal":
       return <TerminalView />;
   }
 }
 
 export function TopTabs() {
+  const view = useAppStore((s) => s.view);
+  // Everything in this header narrows a list; the agent has no list.
+  if (view === "agent") return null;
+  return <ListHeader />;
+}
+
+function ListHeader() {
   const view = useAppStore((s) => s.view);
   const filter = useAppStore((s) => s.filter);
   const setFilter = useAppStore((s) => s.setFilter);
@@ -179,6 +189,7 @@ const PROBE_KIND: Record<ViewId, ProbeKind | null> = {
   vault: null,
   certs: "cert",
   tags: null,
+  agent: null,
   terminal: "server",
 };
 
@@ -191,6 +202,7 @@ const BADGE_KEY: Record<ViewId, keyof ReturnType<typeof attentionOf>> = {
   vault: "vault",
   certs: "certs",
   tags: "total",
+  agent: "total",
   terminal: "servers",
 };
 
@@ -203,6 +215,7 @@ const TITLE: Record<string, { all: string; attention: string }> = {
   vault: { all: "全部密钥", attention: "待轮换" },
   certs: { all: "全部证书", attention: "即将到期" },
   tags: { all: "全部分组", attention: "需处理" },
+  agent: { all: "问答", attention: "需处理" },
   terminal: { all: "会话", attention: "离线主机" },
 };
 

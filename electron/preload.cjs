@@ -34,6 +34,8 @@ contextBridge.exposeInMainWorld("sinan", {
   store: {
     load: () => unwrap(ipcRenderer.invoke("store:load")),
     save: (snapshot) => unwrap(ipcRenderer.invoke("store:save", snapshot)),
+    loadConversations: () => unwrap(ipcRenderer.invoke("store:load-conversations")),
+    saveConversations: (value) => unwrap(ipcRenderer.invoke("store:save-conversations", value)),
   },
 
   vault: {

@@ -5,6 +5,7 @@ import {
   KeyRound,
   Mail,
   Server,
+  MessagesSquare,
   Shield,
   SquareTerminal,
   Tags,
@@ -37,6 +38,7 @@ export const NAV: {
   { id: "vault", label: "密钥", icon: KeyRound, badge: "vault", kind: "secret" },
   { id: "certs", label: "证书", icon: Shield, badge: "certs", kind: "cert" },
   { id: "tags", label: "分组", icon: Tags },
+  { id: "agent", label: "问答", icon: MessagesSquare },
   { id: "terminal", label: "终端", icon: SquareTerminal },
 ];
 

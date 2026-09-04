@@ -155,6 +155,8 @@ export interface DesktopBridge {
   store: {
     load(): Promise<PersistedFile | null>;
     save(snapshot: PersistedFile): Promise<boolean>;
+    loadConversations(): Promise<unknown | null>;
+    saveConversations(value: unknown): Promise<boolean>;
   };
   vault: {
     status(): Promise<{ exists: boolean; unlocked: boolean }>;

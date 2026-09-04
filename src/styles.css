@@ -512,6 +512,33 @@
     padding-top: 4px;
   }
 
+  /* ----------------------------------------------------------------- agent */
+
+  .agent-input {
+    width: 100%;
+    min-height: 52px;
+    max-height: 180px;
+    padding: 14px 46px 14px 16px;
+    border-radius: var(--radius-lg);
+    background: var(--color-card);
+    color: var(--color-ink);
+    font-size: var(--text-body);
+    line-height: 1.5;
+    resize: none;
+    outline: none;
+    box-shadow: var(--shadow-card);
+    transition: box-shadow var(--dur-fast) var(--ease-out);
+    field-sizing: content;
+  }
+  .agent-input::placeholder {
+    color: var(--color-subtle);
+  }
+  .agent-input:focus {
+    box-shadow:
+      var(--shadow-card),
+      inset 0 0 0 2px var(--color-ink);
+  }
+
   /* ----------------------------------------------------------- smart paste */
 
   .paste-trigger {

@@ -9,6 +9,7 @@ export type ViewId =
   | "vault"
   | "certs"
   | "tags"
+  | "agent"
   | "terminal";
 
 export type AssetKind =

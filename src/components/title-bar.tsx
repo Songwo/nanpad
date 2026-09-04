@@ -13,6 +13,7 @@ const VIEW_NAME: Record<ViewId, string> = {
   vault: "密钥",
   certs: "证书",
   tags: "分组",
+  agent: "问答",
   terminal: "终端",
 };
 

@@ -46,6 +46,19 @@ function dataFile() {
   return join(app.getPath("userData"), "assets.json");
 }
 
+function conversationsFile() {
+  return join(app.getPath("userData"), "conversations.json");
+}
+
+/** Write JSON without ever leaving a half-written file behind. */
+async function writeJson(file, value) {
+  await mkdir(dirname(file), { recursive: true });
+  const tmp = `${file}.tmp`;
+  await writeFile(tmp, JSON.stringify(value, null, 2), "utf8");
+  await rename(tmp, file);
+  return true;
+}
+
 async function createWindow() {
   win = new BrowserWindow({
     width: 1480,
@@ -54,6 +67,9 @@ async function createWindow() {
     minHeight: 680,
     show: false,
     backgroundColor: "#f4f5f5",
+    // electron-builder stamps the icon into the packaged exe, but a dev window
+    // would otherwise sit in the taskbar wearing Electron's own atom.
+    icon: join(here, "../build/icon.png"),
     // The app paints its own chrome. macOS keeps its traffic lights — they are
     // a platform convention people reach for by muscle memory — while Windows
     // and Linux get in-app controls that share the rest of the UI's hover
@@ -142,14 +158,15 @@ function registerIpc() {
       return null;
     }
   });
-  handle("store:save", async (snapshot) => {
-    const file = dataFile();
-    await mkdir(dirname(file), { recursive: true });
-    const tmp = `${file}.tmp`;
-    await writeFile(tmp, JSON.stringify(snapshot, null, 2), "utf8");
-    await rename(tmp, file);
-    return true;
+  handle("store:save", (snapshot) => writeJson(dataFile(), snapshot));
+  handle("store:load-conversations", async () => {
+    try {
+      return JSON.parse(await readFile(conversationsFile(), "utf8"));
+    } catch {
+      return null;
+    }
   });
+  handle("store:save-conversations", (value) => writeJson(conversationsFile(), value));
 
   // ---- vault --------------------------------------------------------------
   handle("vault:status", () => vault.status());

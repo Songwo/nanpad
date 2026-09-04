@@ -38,6 +38,7 @@ function useViewCollection(): Array<Partial<Taggable>> {
     // neither has a single collection for the strip to count.
     case "overview":
     case "tags":
+    case "agent":
       return [];
   }
 }
