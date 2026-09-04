@@ -8,8 +8,10 @@ import {
   SecretCard,
   ServerCard,
 } from "./asset-card";
+import { RefreshOneButton } from "./refresh-button";
 import { Button } from "./ui/button";
 import { cardRect, flipTransform, reduceMotion } from "@/lib/motion";
+import { PROBEABLE, type ProbeKind } from "@/lib/probes";
 import { useAppStore, type ExpandState } from "@/lib/store";
 import type { AssetKind } from "@/lib/types";
 
@@ -115,6 +117,9 @@ export function ExpandLayer() {
         <div className="flex items-center justify-between border-b border-line px-4 py-3">
           <span className="text-meta font-medium text-muted">资产详情</span>
           <div className="flex items-center gap-1">
+            {isProbeKind(visible.kind) && (
+              <RefreshOneButton kind={visible.kind} id={visible.id} />
+            )}
             <Button
               variant="ghost"
               size="icon-sm"
@@ -178,6 +183,11 @@ function ExpandedBody({ kind, id }: { kind: AssetKind; id: string }) {
       return d ? <CertCard data={d} compact={false} /> : <Missing />;
     }
   }
+}
+
+/** Narrow the asset kind down to the three the app can actually go and check. */
+function isProbeKind(kind: AssetKind): kind is ProbeKind {
+  return (PROBEABLE as readonly string[]).includes(kind);
 }
 
 function Missing() {

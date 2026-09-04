@@ -18,7 +18,16 @@ export type AssetKind =
   | "secret"
   | "cert";
 
-export interface Server {
+/** How the desktop app authenticates to a host. The secret itself is in the vault. */
+export type AuthKind = "password" | "key" | "agent";
+
+/** What a live probe filled in, and whether the last one worked. */
+export interface ProbeMeta {
+  probedAt?: string;
+  probeError?: string;
+}
+
+export interface Server extends ProbeMeta {
   id: string;
   name: string;
   label: string;
@@ -35,9 +44,14 @@ export interface Server {
   uptime: string;
   lastSeen: string;
   notes: string;
+  authKind?: AuthKind;
+  kernel?: string;
+  loadavg?: string;
+  memTotalKb?: number;
+  diskTotalKb?: number;
 }
 
-export interface Domain {
+export interface Domain extends ProbeMeta {
   id: string;
   name: string;
   registrar: string;
@@ -47,6 +61,8 @@ export interface Domain {
   autoRenew: boolean;
   status: Status;
   notes: string;
+  statuses?: string[];
+  createdAt?: string;
 }
 
 export interface Mailbox {
@@ -85,7 +101,7 @@ export interface Secret {
   notes: string;
 }
 
-export interface Certificate {
+export interface Certificate extends ProbeMeta {
   id: string;
   cn: string;
   issuer: string;
@@ -93,6 +109,12 @@ export interface Certificate {
   sans: string[];
   status: Status;
   notes: string;
+  /** What to open a TLS connection to. Defaults to `cn` with any wildcard stripped. */
+  host?: string;
+  port?: number;
+  trusted?: boolean;
+  untrustedReason?: string;
+  protocol?: string;
 }
 
 export interface ActivityItem {

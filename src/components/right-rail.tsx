@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import { useMemo, type ReactNode } from "react";
 import { TimeAgo } from "./ui/time-ago";
+import { isDesktop } from "@/lib/desktop";
 import { useLive } from "@/lib/live";
 import { chipClass, dotClass, STATUS_LABEL } from "@/lib/status";
 import { useAppStore } from "@/lib/store";
@@ -183,7 +184,7 @@ export function RightRail({ className }: { className?: string }) {
         <p className="px-1 text-2xs leading-relaxed text-subtle">
           ⌘K 全局搜索 · ⌘N 新建资产 · / 打开命令面板
           <br />
-          数据保存在此浏览器中，可随时导出为 JSON。
+          {isDesktop() ? "资产存放在本机数据文件中，凭据单独加密保存。" : "数据保存在此浏览器中，可随时导出为 JSON。"}
         </p>
       </div>
     </aside>

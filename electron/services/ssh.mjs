@@ -238,6 +238,10 @@ function friendly(err) {
   if (/ETIMEDOUT|Timed out while waiting/i.test(msg)) return "连接超时：主机不可达或被防火墙拦截";
   if (/ENOTFOUND|EAI_AGAIN/i.test(msg)) return "无法解析主机名";
   if (/ECONNRESET/i.test(msg)) return "连接被重置";
+  // What a DNS wildcard or a captive proxy looks like: the socket opens, then
+  // dies before SSH says hello.
+  if (/Connection lost before handshake/i.test(msg)) return "对端未完成 SSH 握手：地址或端口可能不对";
+  if (/Handshake failed/i.test(msg)) return "SSH 握手失败：双方没有共同的加密算法";
   if (/Cannot parse privateKey|no matching key format/i.test(msg)) return "私钥格式无法解析（若有口令请一并填写）";
   if (/Encrypted private key detected|passphrase/i.test(msg)) return "私钥已加密，需要填写口令";
   return msg;

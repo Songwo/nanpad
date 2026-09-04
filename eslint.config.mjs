@@ -10,6 +10,8 @@ export default tseslint.config(
   {
     ignores: [
       "dist/**",
+      "dist-desktop/**",
+      "release/**",
       ".output/**",
       ".vercel/**",
       ".nitro/**",
@@ -41,6 +43,12 @@ export default tseslint.config(
       ],
       "@typescript-eslint/no-explicit-any": "off",
     },
+  },
+  // Electron preload scripts must be CommonJS: `contextBridge` runs before the
+  // renderer's module graph exists, and an ESM preload needs the sandbox off.
+  {
+    files: ["electron/**/*.cjs"],
+    rules: { "@typescript-eslint/no-require-imports": "off" },
   },
   // Disable rules that conflict with Prettier formatting.
   prettier,

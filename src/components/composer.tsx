@@ -1,10 +1,13 @@
 import { X } from "lucide-react";
-import { useEffect, useRef, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { toast } from "sonner";
+import { CredentialFields, credentialFromForm } from "./credential-fields";
 import { Button } from "./ui/button";
 import { Field, Input, Textarea } from "./ui/input";
+import { credentialId, desktop, isDesktop } from "@/lib/desktop";
 import { usePresence } from "@/lib/motion";
 import { KIND_LABEL } from "@/lib/status";
+import { useVault } from "@/lib/vault-state";
 import { useAppStore } from "@/lib/store";
 import type {
   AiAsset,
@@ -84,9 +87,30 @@ function ComposerBody({
     setForm((f) => ({ ...f, [k]: v }));
   }
 
-  function submit(e: FormEvent) {
+  async function submit(e: FormEvent) {
     e.preventDefault();
     const id = editingId ?? uid(kind.slice(0, 3));
+
+    // Credentials go to the encrypted vault before the asset is written, so a
+    // half-saved host never ends up pointing at a secret that is not there.
+    if (kind === "server" && isDesktop()) {
+      const credential = credentialFromForm(form);
+      if (credential) {
+        const unlocked = await useVault
+          .getState()
+          .require("保存 SSH 凭据需要先解锁密钥库。");
+        if (!unlocked) {
+          toast("密钥库未解锁，凭据未保存");
+        } else {
+          try {
+            await desktop()!.vault.set(credentialId(id), credential);
+          } catch (err) {
+            toast(err instanceof Error ? err.message : "凭据保存失败");
+          }
+        }
+      }
+    }
+
     persist(kind, id, form, existing);
     useAppStore.getState().log(
       `${editingId ? "已更新" : "已添加"} ${KIND_LABEL[kind]} ${form.name || form.address || form.cn || ""}`,
@@ -119,7 +143,7 @@ function ComposerBody({
             <X className="size-4" />
           </Button>
         </div>
-        <div className="grid gap-3 sm:grid-cols-2">{fields(kind, form, set)}</div>
+        <div className="grid gap-3 sm:grid-cols-2">{fields(kind, form, set, editingId)}</div>
         <div className="mt-5 flex justify-end gap-2">
           <Button type="button" variant="ghost" onClick={onClose}>
             取消
@@ -135,7 +159,8 @@ function fields(
   kind: AssetKind,
   form: Record<string, string>,
   set: (k: string, v: string) => void,
-) {
+  editingId: string | null,
+): ReactNode[] {
   const F = (key: string, label: string, extra?: { span?: boolean; area?: boolean }) => (
     <div key={key} className={extra?.span ? "sm:col-span-2" : ""}>
       <Field label={label}>
@@ -160,6 +185,17 @@ function fields(
         F("region", "区域", { span: true }),
         F("tags", "标签（逗号分隔）", { span: true }),
         F("notes", "说明", { span: true, area: true }),
+        <CredentialFields
+          key="_credentials"
+          serverId={editingId}
+          target={{
+            host: form.host ?? "",
+            port: form.port ?? "22",
+            username: form.username ?? "root",
+          }}
+          form={form}
+          set={set}
+        />,
       ];
     case "domain":
       return [
@@ -199,6 +235,10 @@ function fields(
     case "cert":
       return [
         F("cn", "CN", { span: true }),
+        // The probe needs somewhere to open a TLS connection; a wildcard CN
+        // is not a host, so it can be overridden here.
+        F("host", "探测地址（留空则用 CN）"),
+        F("port", "端口"),
         F("issuer", "签发者"),
         F("expiresAt", "到期日"),
         F("sans", "SAN（逗号分隔）", { span: true }),
@@ -304,8 +344,15 @@ function persist(
         memory: prev?.memory ?? 12,
         disk: prev?.disk ?? 10,
         uptime: prev?.uptime ?? "刚刚",
-        lastSeen: new Date().toISOString(),
+        lastSeen: prev?.lastSeen ?? new Date().toISOString(),
         notes: form.notes,
+        authKind: (form._authKind as Server["authKind"]) ?? prev?.authKind ?? "password",
+        kernel: prev?.kernel,
+        loadavg: prev?.loadavg,
+        memTotalKb: prev?.memTotalKb,
+        diskTotalKb: prev?.diskTotalKb,
+        probedAt: prev?.probedAt,
+        probeError: prev?.probeError,
       };
       s.upsertServer(item);
       break;
@@ -372,6 +419,7 @@ function persist(
       break;
     }
     case "cert": {
+      const prev = (existing as Certificate | null) ?? null;
       const item: Certificate = {
         id,
         cn: form.cn,
@@ -380,6 +428,13 @@ function persist(
         sans: split(form.sans),
         status: statusOf(form.expiresAt),
         notes: form.notes,
+        host: form.host || undefined,
+        port: Number(form.port) || undefined,
+        trusted: prev?.trusted,
+        untrustedReason: prev?.untrustedReason,
+        protocol: prev?.protocol,
+        probedAt: prev?.probedAt,
+        probeError: prev?.probeError,
       };
       s.upsertCert(item);
       break;

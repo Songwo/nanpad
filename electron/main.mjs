@@ -7,6 +7,11 @@ import { probeCertificate, probeDomain } from "./services/net-probe.mjs";
 import { Vault, vaultPath } from "./services/vault.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
+
+// Launched as `electron electron/main.mjs` there is no package.json beside the
+// entry, so Electron would call itself "Electron" and put the user's assets in
+// a directory named after the runtime. Pin it before anything reads a path.
+app.setName("Nanpad");
 // Only `npm run desktop` sets this. Without it — packaged, or a bare
 // `electron .` — the window loads the built renderer, never a dev server that
 // may not be running.

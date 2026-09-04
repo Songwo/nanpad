@@ -1,7 +1,7 @@
 import { create } from "zustand";
 import { createJSONStorage, persist, type StateStorage } from "zustand/middleware";
 import { desktop, isDesktop } from "./desktop";
-import { SEED_ACTIVITY, SEED_SNAPSHOT } from "./seed";
+import { EMPTY_SNAPSHOT, SEED_ACTIVITY, SEED_SNAPSHOT } from "./seed";
 import type {
   ActivityItem,
   AiAsset,
@@ -66,6 +66,10 @@ export interface AppState extends Snapshot {
   importSnapshot: (snap: Snapshot) => void;
 }
 
+/** Sample data is a web-preview thing; the desktop app starts with your assets only. */
+const initialSnapshot = () => (isDesktop() ? EMPTY_SNAPSHOT : SEED_SNAPSHOT);
+const initialActivity = () => (isDesktop() ? [] : SEED_ACTIVITY);
+
 const emptyUi = {
   view: "overview" as ViewId,
   filter: "all" as const,
@@ -114,9 +118,9 @@ function pickStorage(): StateStorage {
 export const useAppStore = create<AppState>()(
   persist(
     (set, get) => ({
-      ...SEED_SNAPSHOT,
+      ...initialSnapshot(),
       ...emptyUi,
-      activity: SEED_ACTIVITY,
+      activity: initialActivity(),
       hydrated: false,
 
       setView: (view) => set({ view, mobileNav: false, query: "" }),
@@ -171,8 +175,8 @@ export const useAppStore = create<AppState>()(
 
       resetDemo: () =>
         set({
-          ...SEED_SNAPSHOT,
-          activity: SEED_ACTIVITY,
+          ...initialSnapshot(),
+          activity: initialActivity(),
           ...emptyUi,
         }),
 

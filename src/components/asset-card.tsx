@@ -1,5 +1,6 @@
 import type { MouseEvent } from "react";
 import {
+  CircleAlert,
   Copy,
   Globe,
   KeyRound,
@@ -103,8 +104,26 @@ export function ServerCard({
         </span>
       </div>
 
+      <ProbeNote error={data.probeError} at={data.probedAt} />
+
       {!compact && (
         <div className="mt-5 space-y-4 border-t border-line pt-4">
+          {(data.kernel || data.loadavg) && (
+            <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-2xs">
+              {data.kernel && (
+                <div>
+                  <dt className="text-subtle">内核</dt>
+                  <dd className="font-mono text-ink">{data.kernel}</dd>
+                </div>
+              )}
+              {data.loadavg && (
+                <div>
+                  <dt className="text-subtle">负载</dt>
+                  <dd className="font-mono text-ink">{data.loadavg}</dd>
+                </div>
+              )}
+            </dl>
+          )}
           <p className="text-meta leading-relaxed text-muted">{data.notes}</p>
           <div className="flex flex-wrap gap-2">
             <CopyBtn text={`${data.username}@${data.host} -p ${data.port}`} label="复制 SSH" />
@@ -126,6 +145,27 @@ export function ServerCard({
         </div>
       )}
     </article>
+  );
+}
+
+/**
+ * What the last live probe reported. Only the desktop build ever sets these, so
+ * the strip simply does not render in the web preview.
+ */
+function ProbeNote({ error, at }: { error?: string; at?: string }) {
+  if (!error && !at) return null;
+  if (error) {
+    return (
+      <p className="mt-3 flex items-start gap-1.5 text-2xs leading-relaxed text-crit">
+        <CircleAlert className="mt-0.5 size-3.5 shrink-0" />
+        <span className="min-w-0">{error}</span>
+      </p>
+    );
+  }
+  return (
+    <p className="mt-3 text-2xs text-subtle">
+      实时采集于 <TimeAgo iso={at!} />
+    </p>
   );
 }
 
@@ -184,6 +224,8 @@ export function DomainCard({
         到期 {formatDate(data.expiresAt)}
         {data.autoRenew ? " · 自动续费" : " · 未开自动续费"}
       </p>
+      <ProbeNote error={data.probeError} at={data.probedAt} />
+
       {!compact && (
         <div className="mt-4 space-y-2 border-t border-line pt-4 text-meta text-muted">
           <p>Nameservers</p>
@@ -403,7 +445,16 @@ export function CertCard({
           {d <= 0 ? "已过期" : `${d} 天`}
         </span>
       </header>
-      <p className="mt-3 text-meta text-muted">到期 {formatDate(data.expiresAt)}</p>
+      <p className="mt-3 text-meta text-muted">
+        到期 {formatDate(data.expiresAt)}
+        {data.protocol ? ` · ${data.protocol}` : ""}
+      </p>
+      {data.trusted === false && (
+        <p className="mt-1 text-2xs text-crit">
+          证书链不受信任{data.untrustedReason ? `：${data.untrustedReason}` : ""}
+        </p>
+      )}
+      <ProbeNote error={data.probeError} at={data.probedAt} />
       {!compact && (
         <div className="mt-4 space-y-2 border-t border-line pt-4">
           <p className="text-2xs text-subtle">SAN</p>

@@ -9,12 +9,16 @@ import { RightRail } from "./right-rail";
 import { NAV, Sidebar } from "./sidebar";
 import { SshTerminal } from "./ssh-terminal";
 import { Button } from "./ui/button";
+import { VaultGate } from "./vault-gate";
 import { MainView, TopTabs } from "./views";
+import { isDesktop } from "@/lib/desktop";
 import { useLive } from "@/lib/live";
 import { usePresence } from "@/lib/motion";
+import { refreshAll } from "@/lib/probes";
 import { useAppStore } from "@/lib/store";
 import type { ViewId } from "@/lib/types";
 import { cn } from "@/lib/utils";
+import { useVault } from "@/lib/vault-state";
 
 export function AppShell() {
   const view = useAppStore((s) => s.view);
@@ -22,12 +26,16 @@ export function AppShell() {
   const setHydrated = useAppStore((s) => s.setHydrated);
   const setCommandOpen = useAppStore((s) => s.setCommandOpen);
   const openComposer = useAppStore((s) => s.openComposer);
+  const vaultUnlocked = useVault((s) => s.unlocked);
 
   useEffect(() => {
     void Promise.resolve(useAppStore.persist.rehydrate()).then(() => setHydrated(true));
   }, [setHydrated]);
 
+  // Web preview only: the numbers have nothing behind them, so they drift
+  // instead of sitting frozen. The desktop build reads the real thing below.
   useEffect(() => {
+    if (isDesktop()) return;
     const tick = () => {
       const servers = useAppStore.getState().servers;
       for (const s of servers) {
@@ -43,6 +51,26 @@ export function AppShell() {
     const t = window.setInterval(tick, 2400);
     return () => window.clearInterval(t);
   }, []);
+
+  useEffect(() => {
+    void useVault.getState().refresh();
+  }, []);
+
+  // Real metric sweeps, but never before the vault is open: probing needs the
+  // stored credentials, and a password prompt on launch would be rude.
+  useEffect(() => {
+    if (!isDesktop() || !vaultUnlocked) return;
+    let cancelled = false;
+    const sweep = () => {
+      if (!cancelled) void refreshAll("server");
+    };
+    sweep();
+    const t = window.setInterval(sweep, 90_000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(t);
+    };
+  }, [vaultUnlocked]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -128,6 +156,7 @@ export function AppShell() {
 
       <ExpandLayer />
       <SshTerminal />
+      <VaultGate />
       <Composer />
       <CommandPalette />
       <Toaster

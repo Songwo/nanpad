@@ -1,5 +1,7 @@
-import { Minus, Square, X } from "lucide-react";
+import { X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { LiveShell, type ShellStatus } from "./live-shell";
+import { isDesktop } from "@/lib/desktop";
 import { usePresence } from "@/lib/motion";
 import { useAppStore } from "@/lib/store";
 import type { Server } from "@/lib/types";
@@ -19,6 +21,21 @@ export function SshTerminal() {
   return <TerminalWindow server={last.current} shown={shown} onClose={close} />;
 }
 
+const STATUS_TEXT: Record<ShellStatus | "sim", { label: string; dot: string }> = {
+  connecting: { label: "连接中", dot: "status-dot status-dot-warn" },
+  open: { label: "已连接", dot: "status-dot status-dot-ok" },
+  closed: { label: "已断开", dot: "status-dot status-dot-crit" },
+  error: { label: "连接失败", dot: "status-dot status-dot-crit" },
+  sim: { label: "模拟会话", dot: "status-dot status-dot-ok" },
+};
+
+/**
+ * The window is the same either way; only what runs inside it differs.
+ *
+ * On the desktop that is a real PTY over SSH. In the web preview there is no
+ * main process to dial out with, so the built-in simulator stands in — same
+ * chrome, same keys, clearly labelled as a simulation.
+ */
 function TerminalWindow({
   server,
   shown,
@@ -28,6 +45,72 @@ function TerminalWindow({
   shown: boolean;
   onClose: () => void;
 }) {
+  const live = isDesktop();
+  const [status, setStatus] = useState<ShellStatus>("connecting");
+  const badge = STATUS_TEXT[live ? status : "sim"];
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      // Esc belongs to the remote shell once it is live; the title bar closes it.
+      if (e.key === "Escape" && !live) onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose, live]);
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-8">
+      <button
+        type="button"
+        aria-label="关闭终端"
+        className="anim-scrim absolute inset-0 bg-ink/45 backdrop-blur-sm"
+        data-shown={shown}
+        onClick={onClose}
+      />
+      <div
+        className="glass-terminal anim-panel relative z-10 flex h-[min(72vh,640px)] w-full max-w-4xl flex-col overflow-hidden rounded-2xl shadow-float"
+        data-shown={shown}
+      >
+        <header className="drag-strip flex h-11 shrink-0 items-center gap-3 border-b border-white/10 px-4">
+          <div className="flex items-center gap-1.5">
+            <button
+              type="button"
+              className="size-3 rounded-full bg-crit"
+              onClick={onClose}
+              aria-label="关闭"
+            />
+            <span className="size-3 rounded-full bg-warn/90" />
+            <span className="size-3 rounded-full bg-ok/90" />
+          </div>
+          <div className="flex flex-1 items-center justify-center gap-2">
+            <span className={badge.dot} />
+            <span className="font-mono text-meta text-term">
+              ssh {server.username}@{server.host} · {server.label}
+            </span>
+            <span className="text-2xs text-term/55">{badge.label}</span>
+          </div>
+          <button
+            type="button"
+            className="grid size-7 place-items-center rounded-full text-term/70 transition-colors duration-150 ease-out hover:bg-white/10 hover:text-term"
+            onClick={onClose}
+            aria-label="关闭终端"
+          >
+            <X className="size-3.5" />
+          </button>
+        </header>
+
+        {live ? (
+          <LiveShell server={server} onStatus={setStatus} />
+        ) : (
+          <SimShell server={server} onClose={onClose} />
+        )}
+      </div>
+    </div>
+  );
+}
+
+/** Browser fallback: a scripted shell so the preview still demonstrates the flow. */
+function SimShell({ server, onClose }: { server: Server; onClose: () => void }) {
   const [lines, setLines] = useState<Line[]>([]);
   const [input, setInput] = useState("");
   const [ready, setReady] = useState(false);
@@ -55,12 +138,8 @@ function TerminalWindow({
       [380, `解析 ${server.name} (${server.host}) 完成`, "dim"],
       [640, `ECDSA 指纹 SHA256:${fakeFp(server.id)}`, "dim"],
       [880, `认证公钥 … 成功`, "ok"],
-      [
-        1100,
-        `Welcome to ${server.os}  ·  ${server.region}`,
-        "ok",
-      ],
-      [1280, `Last login: 本机模拟会话，不会真实连出网络。`, "warn"],
+      [1100, `Welcome to ${server.os}  ·  ${server.region}`, "ok"],
+      [1280, `这是浏览器内的模拟会话，桌面版才会真正连出网络。`, "warn"],
     ];
     const timers = steps.map(([ms, text, tone]) =>
       window.setTimeout(() => {
@@ -75,6 +154,7 @@ function TerminalWindow({
       timers.forEach(clearTimeout);
       clearTimeout(readyT);
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [server.id]);
 
   useEffect(() => {
@@ -83,12 +163,7 @@ function TerminalWindow({
 
   useEffect(() => {
     field.current?.focus();
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
+  }, []);
 
   function run(raw: string) {
     const cmd = raw.trim();
@@ -112,111 +187,67 @@ function TerminalWindow({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-8">
-      <button
-        type="button"
-        aria-label="关闭终端"
-        className="anim-scrim absolute inset-0 bg-ink/45 backdrop-blur-sm"
-        data-shown={shown}
-        onClick={onClose}
-      />
-      <div
-        className="glass-terminal anim-panel relative z-10 flex h-[min(72vh,640px)] w-full max-w-4xl flex-col overflow-hidden rounded-2xl shadow-float"
-        data-shown={shown}
-        onClick={() => field.current?.focus()}
-      >
-        <header className="flex h-11 shrink-0 items-center gap-3 border-b border-white/10 px-4">
-          <div className="flex items-center gap-1.5">
-            <button
-              type="button"
-              className="size-3 rounded-full bg-crit"
-              onClick={onClose}
-              aria-label="关闭"
-            />
-            <span className="size-3 rounded-full bg-warn/90">
-              <Minus className="hidden" />
-            </span>
-            <span className="size-3 rounded-full bg-ok/90">
-              <Square className="hidden" />
-            </span>
-          </div>
-          <div className="flex flex-1 items-center justify-center gap-2">
-            <span className="status-dot status-dot-ok" />
-            <span className="font-mono text-meta text-term">
-              ssh {server.username}@{server.host} · {server.label}
-            </span>
-          </div>
-          <button
-            type="button"
-            className="grid size-7 place-items-center rounded-full text-term/70 hover:bg-white/10 hover:text-term"
-            onClick={onClose}
-          >
-            <X className="size-3.5" />
-          </button>
-        </header>
-
-        <div
-          ref={scroller}
-          className="min-h-0 flex-1 overflow-y-auto px-4 py-3 font-mono text-meta leading-relaxed text-term"
-        >
-          {lines.map((ln) => (
-            <pre
-              key={ln.id}
-              className={cn(
-                "term-line whitespace-pre-wrap",
-                ln.tone === "dim" && "text-white/45",
-                ln.tone === "ok" && "text-ok",
-                ln.tone === "warn" && "text-warn",
-                ln.tone === "err" && "text-crit",
-              )}
-            >
-              {ln.text}
-            </pre>
-          ))}
-
-          {ready && (
-            <form
-              className="flex items-center gap-2"
-              onSubmit={(e) => {
-                e.preventDefault();
-                run(input);
-                setInput("");
-              }}
-            >
-              <span className="shrink-0 text-ok">{prompt}</span>
-              <input
-                ref={field}
-                value={input}
-                onChange={(e) => setInput(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "ArrowUp") {
-                    e.preventDefault();
-                    const next = hist.current[histIdx.current + 1];
-                    if (next !== undefined) {
-                      histIdx.current += 1;
-                      setInput(next);
-                    }
-                  } else if (e.key === "ArrowDown") {
-                    e.preventDefault();
-                    if (histIdx.current <= 0) {
-                      histIdx.current = -1;
-                      setInput("");
-                    } else {
-                      histIdx.current -= 1;
-                      setInput(hist.current[histIdx.current] ?? "");
-                    }
-                  }
-                }}
-                className="min-w-0 flex-1 bg-transparent text-term outline-none"
-                autoComplete="off"
-                spellCheck={false}
-                aria-label="命令"
-              />
-              {!input && <span className="term-cursor" />}
-            </form>
+    <div
+      ref={scroller}
+      className="min-h-0 flex-1 overflow-y-auto px-4 py-3 font-mono text-meta leading-relaxed text-term"
+      onClick={() => field.current?.focus()}
+    >
+      {lines.map((ln) => (
+        <pre
+          key={ln.id}
+          className={cn(
+            "term-line whitespace-pre-wrap",
+            ln.tone === "dim" && "text-white/45",
+            ln.tone === "ok" && "text-ok",
+            ln.tone === "warn" && "text-warn",
+            ln.tone === "err" && "text-crit",
           )}
-        </div>
-      </div>
+        >
+          {ln.text}
+        </pre>
+      ))}
+
+      {ready && (
+        <form
+          className="flex items-center gap-2"
+          onSubmit={(e) => {
+            e.preventDefault();
+            run(input);
+            setInput("");
+          }}
+        >
+          <span className="shrink-0 text-ok">{prompt}</span>
+          <input
+            ref={field}
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "ArrowUp") {
+                e.preventDefault();
+                const next = hist.current[histIdx.current + 1];
+                if (next !== undefined) {
+                  histIdx.current += 1;
+                  setInput(next);
+                }
+              } else if (e.key === "ArrowDown") {
+                e.preventDefault();
+                if (histIdx.current <= 0) {
+                  histIdx.current = -1;
+                  setInput("");
+                } else {
+                  histIdx.current -= 1;
+                  setInput(hist.current[histIdx.current] ?? "");
+                }
+              }
+            }}
+            className="min-w-0 flex-1 bg-transparent text-term outline-none"
+            autoComplete="off"
+            spellCheck={false}
+            aria-label="命令"
+          />
+          {!input && <span className="term-cursor" />}
+        </form>
+      )}
     </div>
   );
 }

@@ -13,11 +13,13 @@ import { useEffect, useRef, useState, type HTMLAttributes } from "react";
 import { useShallow } from "zustand/react/shallow";
 import { LogoWord } from "./logo";
 import { Button } from "./ui/button";
+import { isDesktop } from "@/lib/desktop";
 import { usePresence } from "@/lib/motion";
 import { useAppStore } from "@/lib/store";
 import { attentionOf } from "@/lib/status";
 import type { AssetKind, ViewId } from "@/lib/types";
 import { cn, downloadJson } from "@/lib/utils";
+import { useVault } from "@/lib/vault-state";
 
 export const NAV: {
   id: ViewId;
@@ -99,6 +101,8 @@ function ProfileMenu() {
   const resetDemo = useAppStore((s) => s.resetDemo);
   const log = useAppStore((s) => s.log);
   const importSnapshot = useAppStore((s) => s.importSnapshot);
+  const vaultUnlocked = useVault((s) => s.unlocked);
+  const lockVault = useVault((s) => s.lock);
   const [open, setOpen] = useState(false);
   const { mounted, shown } = usePresence(open, 150);
   const root = useRef<HTMLDivElement>(null);
@@ -187,7 +191,8 @@ function ProfileMenu() {
             };
             input.click();
           })}
-          {item("重置演示数据", () => resetDemo(), "danger")}
+          {vaultUnlocked && item("锁定密钥库", () => void lockVault())}
+          {item(isDesktop() ? "清空全部数据" : "重置演示数据", () => resetDemo(), "danger")}
         </div>
       )}
     </div>

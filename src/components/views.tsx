@@ -10,11 +10,15 @@ import {
   SecretCard,
   ServerCard,
 } from "./asset-card";
+import { LogoMark } from "./logo";
+import { RefreshAllButton } from "./refresh-button";
 import { useAlerts } from "./right-rail";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { CountUp, TimeAgo } from "./ui/time-ago";
+import { isDesktop } from "@/lib/desktop";
 import { useLive } from "@/lib/live";
+import type { ProbeKind } from "@/lib/probes";
 import { attentionOf, chipClass, dotClass, healthScore, STATUS_LABEL } from "@/lib/status";
 import { useAppStore } from "@/lib/store";
 import type { Status, ViewId } from "@/lib/types";
@@ -120,6 +124,7 @@ export function TopTabs() {
             className="h-9 bg-card pl-9"
           />
         </div>
+        <RefreshAllButton kind={PROBE_KIND[view]} />
         <Button
           variant="outline"
           size="sm"
@@ -159,6 +164,18 @@ function Tab({
   );
 }
 
+/** Which live probe the refresh button in this view should run. */
+const PROBE_KIND: Record<ViewId, ProbeKind | null> = {
+  overview: "server",
+  servers: "server",
+  domains: "domain",
+  mail: null,
+  ai: null,
+  vault: null,
+  certs: "cert",
+  terminal: "server",
+};
+
 const BADGE_KEY: Record<ViewId, keyof ReturnType<typeof attentionOf>> = {
   overview: "total",
   servers: "servers",
@@ -192,9 +209,54 @@ function TipBanner() {
         </li>
         <li className="flex items-start gap-2">
           <Check className="mt-0.5 size-3.5 shrink-0 text-ok" strokeWidth={2.4} />
-          点开白色卡片放大详情；服务器可开玻璃 SSH 终端（本机模拟）。
+          点开白色卡片放大详情；服务器可开玻璃 SSH 终端
+          {isDesktop() ? "（真实连接）" : "（浏览器内模拟）"}。
         </li>
       </ul>
+    </div>
+  );
+}
+
+/** Nothing recorded yet — say what this thing is and what to do first. */
+function FirstRun() {
+  const openComposer = useAppStore((s) => s.openComposer);
+  return (
+    <div className="stagger-in mx-4 mb-24 mt-6 space-y-4">
+      <section className="rounded-2xl bg-card p-6 shadow-card">
+        <LogoMark className="size-10" />
+        <h2 className="mt-4 text-xl font-semibold tracking-tight">开始记录你的资产</h2>
+        <p className="mt-2 max-w-prose text-meta leading-relaxed text-muted">
+          司南把服务器、域名、邮箱、AI 订阅、密钥和证书收在一块盘面上，替你盯住到期和异常。
+          录入之后，主机指标通过 SSH 实时采集，域名走 WHOIS，证书直接握手读取——都是真实数据。
+        </p>
+        <div className="mt-5 flex flex-wrap gap-2">
+          <Button onClick={() => openComposer("server")}>添加第一台主机</Button>
+          <Button variant="outline" onClick={() => openComposer("domain")}>
+            添加域名
+          </Button>
+          <Button variant="outline" onClick={() => openComposer("cert")}>
+            添加证书
+          </Button>
+        </div>
+      </section>
+
+      <section className="rounded-xl bg-banner px-5 py-4 text-meta leading-relaxed text-muted">
+        <p className="mb-2 text-2xs font-semibold tracking-wide text-muted">几件值得先知道的事</p>
+        <ul className="space-y-1.5">
+          <li className="flex items-start gap-2">
+            <Check className="mt-0.5 size-3.5 shrink-0 text-ok" strokeWidth={2.4} />
+            SSH 密码和私钥存在本机加密的密钥库里，第一次保存时会让你设一个主密码。
+          </li>
+          <li className="flex items-start gap-2">
+            <Check className="mt-0.5 size-3.5 shrink-0 text-ok" strokeWidth={2.4} />
+            资产写在本机的数据文件中，随时可以导出成 JSON；凭据不会跟着导出。
+          </li>
+          <li className="flex items-start gap-2">
+            <Check className="mt-0.5 size-3.5 shrink-0 text-ok" strokeWidth={2.4} />
+            ⌘K 全局搜索，⌘N 新建，点开卡片看详情，主机可以直接开真实 SSH 会话。
+          </li>
+        </ul>
+      </section>
     </div>
   );
 }
@@ -204,6 +266,16 @@ function Overview() {
   const aiAssets = useAppStore((s) => s.aiAssets);
   const activity = useAppStore((s) => s.activity);
   const filter = useAppStore((s) => s.filter);
+  const empty = useAppStore(
+    (s) =>
+      s.servers.length +
+        s.domains.length +
+        s.mailboxes.length +
+        s.aiAssets.length +
+        s.secrets.length +
+        s.certs.length ===
+      0,
+  );
   const score = useAppStore(healthScore);
   const att = useAppStore(useShallow(attentionOf));
   const alerts = useAlerts();
@@ -218,6 +290,8 @@ function Overview() {
     { m: "8月", v: Math.round(spend * 0.96) },
     { m: "9月", v: spend },
   ];
+
+  if (empty) return <FirstRun />;
 
   if (filter === "attention") {
     return (

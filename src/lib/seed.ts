@@ -382,6 +382,22 @@ export const SEED_SNAPSHOT: Snapshot = {
   certs: SEED_CERTS,
 };
 
+/**
+ * The desktop app starts here.
+ *
+ * Sample hosts would be actively misleading once the buttons really dial out:
+ * every card would be a connection failure to somebody else's IP address. The
+ * web preview keeps the seed, because there it is a demo and nothing else.
+ */
+export const EMPTY_SNAPSHOT: Snapshot = {
+  servers: [],
+  domains: [],
+  mailboxes: [],
+  aiAssets: [],
+  secrets: [],
+  certs: [],
+};
+
 function isoInDays(days: number): string {
   const d = new Date();
   d.setDate(d.getDate() + days);
