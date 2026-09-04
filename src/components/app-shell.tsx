@@ -15,6 +15,7 @@ import { isDesktop } from "@/lib/desktop";
 import { useLive } from "@/lib/live";
 import { usePresence } from "@/lib/motion";
 import { refreshAll } from "@/lib/probes";
+import { migrateSecretValues } from "@/lib/vault-migrate";
 import { useAppStore } from "@/lib/store";
 import type { ViewId } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -55,6 +56,13 @@ export function AppShell() {
   useEffect(() => {
     void useVault.getState().refresh();
   }, []);
+
+  // Anything still holding a plaintext secret body moves into the vault the
+  // first time it is open.
+  useEffect(() => {
+    if (!isDesktop() || !vaultUnlocked) return;
+    void migrateSecretValues();
+  }, [vaultUnlocked]);
 
   // Real metric sweeps, but never before the vault is open: probing needs the
   // stored credentials, and a password prompt on launch would be rude.
@@ -156,9 +164,9 @@ export function AppShell() {
 
       <ExpandLayer />
       <SshTerminal />
-      <VaultGate />
       <Composer />
       <CommandPalette />
+      <VaultGate />
       <Toaster
         position="bottom-right"
         toastOptions={{

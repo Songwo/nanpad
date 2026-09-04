@@ -11,9 +11,12 @@ import {
   SquareTerminal,
 } from "lucide-react";
 import { toast } from "sonner";
+import { CardTag } from "./tag-bar";
 import { TimeAgo } from "./ui/time-ago";
+import { isDesktop } from "@/lib/desktop";
 import { useLive } from "@/lib/live";
 import { useProbeState } from "@/lib/probes";
+import { tagsOf } from "@/lib/tags";
 import { barTone, chipClass, dotClass, STATUS_LABEL } from "@/lib/status";
 import { useAppStore } from "@/lib/store";
 import type {
@@ -97,9 +100,7 @@ export function ServerCard({
 
       <div className="mt-3 flex flex-wrap gap-1.5">
         {data.tags.map((t) => (
-          <span key={t} className="chip chip-mute">
-            {t}
-          </span>
+          <CardTag key={t} tag={t} />
         ))}
         <span className="ml-auto text-2xs tabular-nums text-subtle">
           运行 {data.uptime} · <TimeAgo iso={data.lastSeen} />
@@ -180,6 +181,18 @@ function ProbeNote({ id, error, at }: { id: string; error?: string; at?: string 
   );
 }
 
+/** Clickable tags. Selecting one narrows the list to it. */
+function TagRow({ tags }: { tags: string[] }) {
+  if (tags.length === 0) return null;
+  return (
+    <div className="mt-3 flex flex-wrap gap-1.5">
+      {tags.map((t) => (
+        <CardTag key={t} tag={t} />
+      ))}
+    </div>
+  );
+}
+
 function Metric({ label, value }: { label: string; value: number }) {
   const tone = barTone(value);
   return (
@@ -235,6 +248,7 @@ export function DomainCard({
         到期 {formatDate(data.expiresAt)}
         {data.autoRenew ? " · 自动续费" : " · 未开自动续费"}
       </p>
+      <TagRow tags={tagsOf(data)} />
       <ProbeNote id={data.id} error={data.probeError} at={data.probedAt} />
 
       {!compact && (
@@ -300,6 +314,7 @@ export function MailCard({
           </p>
         </div>
       )}
+      <TagRow tags={tagsOf(data)} />
       {!compact && <p className="mt-4 text-meta text-muted">{data.notes}</p>}
     </article>
   );
@@ -350,6 +365,7 @@ export function AiCard({
           {daysUntil(data.renewsAt)} 天后续费
         </span>
       </div>
+      <TagRow tags={tagsOf(data)} />
       {!compact && <p className="mt-4 text-meta text-muted">{data.notes}</p>}
     </article>
   );
@@ -396,10 +412,13 @@ export function SecretCard({
       <p className="mt-3 text-2xs text-subtle">
         上次轮换 {formatDate(data.lastRotated)}
       </p>
+      <TagRow tags={tagsOf(data)} />
       {!compact && (
         <div className="mt-4 space-y-3 border-t border-line pt-4">
           <p className="text-meta text-muted">{data.notes}</p>
-          <SecretReveal value={data.value} />
+          {/* Desktop keeps the value in the vault; the detail sheet's account
+              panel reveals it there. This is the web preview's stand-in. */}
+          {!isDesktop() && data.value ? <SecretReveal value={data.value} /> : null}
         </div>
       )}
     </article>
@@ -465,6 +484,7 @@ export function CertCard({
           证书链不受信任{data.untrustedReason ? `：${data.untrustedReason}` : ""}
         </p>
       )}
+      <TagRow tags={tagsOf(data)} />
       <ProbeNote id={data.id} error={data.probeError} at={data.probedAt} />
       {!compact && (
         <div className="mt-4 space-y-2 border-t border-line pt-4">

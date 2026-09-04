@@ -21,13 +21,19 @@ export type AssetKind =
 /** How the desktop app authenticates to a host. The secret itself is in the vault. */
 export type AuthKind = "password" | "key" | "agent";
 
+/** Free-form grouping labels. Every asset kind carries them, so one tag can
+ *  span a project's host, its domain and its certificate. */
+export interface Taggable {
+  tags: string[];
+}
+
 /** What a live probe filled in, and whether the last one worked. */
 export interface ProbeMeta {
   probedAt?: string;
   probeError?: string;
 }
 
-export interface Server extends ProbeMeta {
+export interface Server extends ProbeMeta, Taggable {
   id: string;
   name: string;
   label: string;
@@ -51,7 +57,7 @@ export interface Server extends ProbeMeta {
   diskTotalKb?: number;
 }
 
-export interface Domain extends ProbeMeta {
+export interface Domain extends ProbeMeta, Taggable {
   id: string;
   name: string;
   registrar: string;
@@ -65,7 +71,7 @@ export interface Domain extends ProbeMeta {
   createdAt?: string;
 }
 
-export interface Mailbox {
+export interface Mailbox extends Taggable {
   id: string;
   address: string;
   domain: string;
@@ -77,7 +83,7 @@ export interface Mailbox {
   notes: string;
 }
 
-export interface AiAsset {
+export interface AiAsset extends Taggable {
   id: string;
   name: string;
   provider: string;
@@ -90,7 +96,7 @@ export interface AiAsset {
   notes: string;
 }
 
-export interface Secret {
+export interface Secret extends Taggable {
   id: string;
   name: string;
   kind: "api" | "ssh" | "password" | "token";
@@ -101,7 +107,7 @@ export interface Secret {
   notes: string;
 }
 
-export interface Certificate extends ProbeMeta {
+export interface Certificate extends ProbeMeta, Taggable {
   id: string;
   cn: string;
   issuer: string;

@@ -11,6 +11,7 @@ import {
   ServerCard,
 } from "./asset-card";
 import { LogoMark } from "./logo";
+import { GroupHeading, TagBar } from "./tag-bar";
 import { RefreshAllButton } from "./refresh-button";
 import { useAlerts } from "./right-rail";
 import { Button } from "./ui/button";
@@ -21,7 +22,8 @@ import { useLive } from "@/lib/live";
 import type { ProbeKind } from "@/lib/probes";
 import { attentionOf, chipClass, dotClass, healthScore, STATUS_LABEL } from "@/lib/status";
 import { useAppStore } from "@/lib/store";
-import type { Status, ViewId } from "@/lib/types";
+import { groupByTag, matchesTags, tagsOf } from "@/lib/tags";
+import type { Status, Taggable, ViewId } from "@/lib/types";
 import { cn, formatUsd } from "@/lib/utils";
 
 export function MainView() {
@@ -114,7 +116,7 @@ export function TopTabs() {
           }}
         />
       </div>
-      <div className="flex items-center gap-2 px-4 py-2">
+      <div className="flex items-center gap-2 px-4 pb-2 pt-2">
         <div className="relative flex-1">
           <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-subtle" />
           <Input
@@ -134,6 +136,7 @@ export function TopTabs() {
           ⌘K
         </Button>
       </div>
+      <TagBar />
     </div>
   );
 }
@@ -503,86 +506,129 @@ function Empty({ text }: { text: string }) {
   );
 }
 
-function Grid({ children }: { children: ReactNode }) {
+const GRID = "grid gap-3 @lg:grid-cols-2 @4xl:grid-cols-3";
+
+/**
+ * One list, two layouts.
+ *
+ * Flat is a plain grid. Grouped splits into one section per tag — an asset with
+ * three tags shows up in all three, because tags are labels rather than
+ * folders, and anything untagged collects in a trailing section.
+ */
+function AssetList<T extends { id: string } & Partial<Taggable>>({
+  items,
+  empty,
+  render,
+}: {
+  items: T[];
+  empty: string;
+  render: (item: T) => ReactNode;
+}) {
+  const grouped = useAppStore((s) => s.groupByTag);
+
+  if (items.length === 0) {
+    return (
+      <div className="mx-4 mt-4">
+        <Empty text={empty} />
+      </div>
+    );
+  }
+
+  if (!grouped) {
+    return (
+      <div className={cn("stagger-in mx-4 mt-4 pb-24", GRID)}>{items.map(render)}</div>
+    );
+  }
+
   return (
-    <div className="stagger-in mx-4 mt-4 grid gap-3 pb-24 @lg:grid-cols-2 @4xl:grid-cols-3">
-      {children}
+    <div className="mx-4 mt-4 space-y-6 pb-24">
+      {groupByTag(items).map((group) => (
+        <section key={group.tag} className={cn("stagger-in", GRID)}>
+          <GroupHeading label={group.label} count={group.items.length} />
+          {group.items.map(render)}
+        </section>
+      ))}
     </div>
   );
 }
 
-function ServersView() {
-  const list = useAppStore((s) => s.servers);
+/** Shared narrowing: attention tab, tag selection, then the text filter. */
+function useListFilter<T extends { status: Status } & Partial<Taggable>>(
+  list: T[],
+  text: (item: T) => Array<string | number | undefined>,
+): T[] {
   const filter = useAppStore((s) => s.filter);
   const query = useAppStore((s) => s.query);
-  const items = list.filter((s) => {
-    if (filter === "attention" && s.status === "online") return false;
-    return match(query, s.name, s.label, s.host, s.os, s.region, s.tags.join(" "));
+  const tagFilter = useAppStore((s) => s.tagFilter);
+  return list.filter((item) => {
+    if (filter === "attention" && item.status === "online") return false;
+    if (!matchesTags(item, tagFilter)) return false;
+    return match(query, ...text(item));
   });
-  return items.length === 0 ? (
-    <div className="mx-4 mt-4">
-      <Empty text="没有匹配的服务器。点左下角「添加资产」录入一台。" />
-    </div>
-  ) : (
-    <Grid>
-      {items.map((s) => (
-        <ServerCard key={s.id} data={s} />
-      ))}
-    </Grid>
+}
+
+function ServersView() {
+  const list = useAppStore((s) => s.servers);
+  const items = useListFilter(list, (s) => [
+    s.name,
+    s.label,
+    s.host,
+    s.os,
+    s.region,
+    tagsOf(s).join(" "),
+  ]);
+  return (
+    <AssetList
+      items={items}
+      empty="没有匹配的服务器。点左下角「添加资产」录入一台。"
+      render={(s) => <ServerCard key={s.id} data={s} />}
+    />
   );
 }
 
 function DomainsView() {
   const list = useAppStore((s) => s.domains);
-  const filter = useAppStore((s) => s.filter);
-  const query = useAppStore((s) => s.query);
-  const items = list.filter((s) => {
-    if (filter === "attention" && s.status === "online") return false;
-    return match(query, s.name, s.registrar, s.dns);
-  });
-  return items.length === 0 ? (
-    <div className="mx-4 mt-4">
-      <Empty text="没有匹配的域名。" />
-    </div>
-  ) : (
-    <Grid>
-      {items.map((s) => (
-        <DomainCard key={s.id} data={s} />
-      ))}
-    </Grid>
+  const items = useListFilter(list, (s) => [
+    s.name,
+    s.registrar,
+    s.dns,
+    tagsOf(s).join(" "),
+  ]);
+  return (
+    <AssetList
+      items={items}
+      empty="没有匹配的域名。"
+      render={(s) => <DomainCard key={s.id} data={s} />}
+    />
   );
 }
 
 function MailView() {
   const list = useAppStore((s) => s.mailboxes);
-  const filter = useAppStore((s) => s.filter);
-  const query = useAppStore((s) => s.query);
-  const items = list.filter((s) => {
-    if (filter === "attention" && s.status === "online") return false;
-    return match(query, s.address, s.domain, s.forwardTo);
-  });
-  return items.length === 0 ? (
-    <div className="mx-4 mt-4">
-      <Empty text="没有匹配的邮箱。" />
-    </div>
-  ) : (
-    <Grid>
-      {items.map((s) => (
-        <MailCard key={s.id} data={s} />
-      ))}
-    </Grid>
+  const items = useListFilter(list, (s) => [
+    s.address,
+    s.domain,
+    s.forwardTo,
+    tagsOf(s).join(" "),
+  ]);
+  return (
+    <AssetList
+      items={items}
+      empty="没有匹配的邮箱。"
+      render={(s) => <MailCard key={s.id} data={s} />}
+    />
   );
 }
 
 function AiView() {
   const list = useAppStore((s) => s.aiAssets);
-  const filter = useAppStore((s) => s.filter);
-  const query = useAppStore((s) => s.query);
   const spend = list.reduce((a, x) => a + x.monthlyUsd, 0);
-  const items = list.filter((s) => {
-    if (filter === "attention" && s.status === "online") return false;
-    return match(query, s.name, s.provider, s.plan);
-  });
+  const items = useListFilter(list, (s) => [
+    s.name,
+    s.provider,
+    s.plan,
+    tagsOf(s).join(" "),
+  ]);
   return (
     <div>
       <div className="mx-4 mt-3 rounded-xl bg-card px-4 py-3 shadow-card">
@@ -591,102 +637,92 @@ function AiView() {
           <CountUp value={spend} format={formatUsd} />
         </p>
       </div>
-      {items.length === 0 ? (
-        <div className="mx-4 mt-4">
-          <Empty text="没有匹配的 AI 订阅。" />
-        </div>
-      ) : (
-        <Grid>
-          {items.map((s) => (
-            <AiCard key={s.id} data={s} />
-          ))}
-        </Grid>
-      )}
+      <AssetList
+        items={items}
+        empty="没有匹配的 AI 订阅。"
+        render={(s) => <AiCard key={s.id} data={s} />}
+      />
     </div>
   );
 }
 
 function VaultView() {
   const list = useAppStore((s) => s.secrets);
-  const filter = useAppStore((s) => s.filter);
-  const query = useAppStore((s) => s.query);
-  const items = list.filter((s) => {
-    if (filter === "attention" && s.status === "online") return false;
-    return match(query, s.name, s.kind, s.hint);
-  });
-  return items.length === 0 ? (
-    <div className="mx-4 mt-4">
-      <Empty text="没有匹配的密钥。" />
-    </div>
-  ) : (
-    <Grid>
-      {items.map((s) => (
-        <SecretCard key={s.id} data={s} />
-      ))}
-    </Grid>
+  const items = useListFilter(list, (s) => [s.name, s.kind, s.hint, tagsOf(s).join(" ")]);
+  return (
+    <AssetList
+      items={items}
+      empty="没有匹配的密钥。"
+      render={(s) => <SecretCard key={s.id} data={s} />}
+    />
   );
 }
 
 function CertsView() {
   const list = useAppStore((s) => s.certs);
-  const filter = useAppStore((s) => s.filter);
-  const query = useAppStore((s) => s.query);
-  const items = list.filter((s) => {
-    if (filter === "attention" && s.status === "online") return false;
-    return match(query, s.cn, s.issuer, s.sans.join(" "));
-  });
-  return items.length === 0 ? (
-    <div className="mx-4 mt-4">
-      <Empty text="没有匹配的证书。" />
-    </div>
-  ) : (
-    <Grid>
-      {items.map((s) => (
-        <CertCard key={s.id} data={s} />
-      ))}
-    </Grid>
+  const items = useListFilter(list, (s) => [
+    s.cn,
+    s.issuer,
+    s.sans.join(" "),
+    tagsOf(s).join(" "),
+  ]);
+  return (
+    <AssetList
+      items={items}
+      empty="没有匹配的证书。"
+      render={(s) => <CertCard key={s.id} data={s} />}
+    />
   );
 }
 
 function TerminalView() {
-  const servers = useAppStore((s) => s.servers);
-  const filter = useAppStore((s) => s.filter);
-  const query = useAppStore((s) => s.query);
+  const list = useAppStore((s) => s.servers);
   const openSsh = useAppStore((s) => s.openSsh);
   const cpuMap = useLive((s) => s.cpu);
-  const items = servers.filter((s) => {
-    if (filter === "attention" && s.status === "online") return false;
-    return match(query, s.name, s.host);
-  });
+  const items = useListFilter(list, (s) => [s.name, s.host, tagsOf(s).join(" ")]);
+
   return (
     <div className="mx-4 mt-4 pb-24">
       <p className="mb-3 px-1 text-meta text-muted">
-        选择一台在线主机，打开玻璃效果 SSH 会话。会话在浏览器内模拟，便于演练操作。
+        {isDesktop()
+          ? "选择一台主机，打开真实 SSH 会话。需要先在密钥库中保存该主机的凭据。"
+          : "选择一台在线主机，打开玻璃效果 SSH 会话。浏览器里的会话是模拟的，桌面版才会真正连出网络。"}
       </p>
-      <div className="stagger-in grid gap-2">
-        {items.map((s) => {
-          const cpu = cpuMap[s.id] ?? s.cpu;
-          return (
-            <button
-              key={s.id}
-              type="button"
-              disabled={s.status === "offline"}
-              onClick={() => openSsh(s.id)}
-              className="row-tap flex items-center gap-3 rounded-xl bg-card px-4 py-3 text-left shadow-card disabled:opacity-40 disabled:shadow-card"
-            >
-              <span className={dotClass(s.status)} />
-              <div className="min-w-0 flex-1">
-                <p className="font-semibold tracking-tight">{s.name}</p>
-                <p className="font-mono text-2xs text-muted">
-                  {s.username}@{s.host}:{s.port}
-                </p>
-              </div>
-              <span className="text-2xs tabular-nums text-subtle">CPU {cpu}%</span>
-              <SquareTerminal className="size-4 text-muted" />
-            </button>
-          );
-        })}
-      </div>
+      {items.length === 0 ? (
+        <Empty text="没有匹配的主机。" />
+      ) : (
+        <div className="stagger-in grid gap-2">
+          {items.map((s) => {
+            const cpu = cpuMap[s.id] ?? s.cpu;
+            return (
+              <button
+                key={s.id}
+                type="button"
+                disabled={s.status === "offline"}
+                onClick={() => openSsh(s.id)}
+                className="row-tap flex items-center gap-3 rounded-xl bg-card px-4 py-3 text-left shadow-card disabled:opacity-40 disabled:shadow-card"
+              >
+                <span className={dotClass(s.status)} />
+                <div className="min-w-0 flex-1">
+                  <p className="font-semibold tracking-tight">{s.name}</p>
+                  <p className="font-mono text-2xs text-muted">
+                    {s.username}@{s.host}:{s.port}
+                  </p>
+                </div>
+                {tagsOf(s)
+                  .slice(0, 2)
+                  .map((t) => (
+                    <span key={t} className="chip chip-mute">
+                      {t}
+                    </span>
+                  ))}
+                <span className="text-2xs tabular-nums text-subtle">CPU {cpu}%</span>
+                <SquareTerminal className="size-4 text-muted" />
+              </button>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }

@@ -1,12 +1,14 @@
 import { X } from "lucide-react";
 import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { toast } from "sonner";
+import { AccountFields, accountFromForm } from "./account-fields";
 import { CredentialFields, credentialFromForm } from "./credential-fields";
 import { Button } from "./ui/button";
 import { Field, Input, Textarea } from "./ui/input";
-import { credentialId, desktop, isDesktop } from "@/lib/desktop";
+import { accountId, credentialId, desktop, isDesktop } from "@/lib/desktop";
 import { usePresence } from "@/lib/motion";
 import { KIND_LABEL } from "@/lib/status";
+import { parseTags } from "@/lib/tags";
 import { useVault } from "@/lib/vault-state";
 import { useAppStore } from "@/lib/store";
 import type {
@@ -71,9 +73,11 @@ function ComposerBody({
   });
   const [form, setForm] = useState<Record<string, string>>(() => defaults(kind, existing));
 
+  // Reset only when the form changes *subject*. Keying on `existing` would
+  // wipe half-typed input every time a background probe rewrote the record.
   useEffect(() => {
-    setForm(defaults(kind, existing));
-  }, [kind, existing]);
+    setForm(defaults(kind, findAsset(kind, editingId, useAppStore.getState())));
+  }, [kind, editingId]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -91,19 +95,22 @@ function ComposerBody({
     e.preventDefault();
     const id = editingId ?? uid(kind.slice(0, 3));
 
-    // Credentials go to the encrypted vault before the asset is written, so a
-    // half-saved host never ends up pointing at a secret that is not there.
-    if (kind === "server" && isDesktop()) {
-      const credential = credentialFromForm(form);
-      if (credential) {
+    // Secrets go to the encrypted vault before the asset is written, so a
+    // half-saved record never ends up pointing at a credential that is not there.
+    if (isDesktop()) {
+      const sshCredential = kind === "server" ? credentialFromForm(form) : null;
+      const account = accountFromForm(form);
+      if (sshCredential || account) {
         const unlocked = await useVault
           .getState()
-          .require("保存 SSH 凭据需要先解锁密钥库。");
+          .require("保存账号与凭据需要先解锁密钥库。");
         if (!unlocked) {
           toast("密钥库未解锁，凭据未保存");
         } else {
           try {
-            await desktop()!.vault.set(credentialId(id), credential);
+            const vault = desktop()!.vault;
+            if (sshCredential) await vault.set(credentialId(id), sshCredential);
+            if (account) await vault.set(accountId(id), account);
           } catch (err) {
             toast(err instanceof Error ? err.message : "凭据保存失败");
           }
@@ -161,6 +168,18 @@ function fields(
   set: (k: string, v: string) => void,
   editingId: string | null,
 ): ReactNode[] {
+  return [
+    ...kindFields(kind, form, set, editingId),
+    <AccountFields key="_account" assetId={editingId} kind={kind} form={form} set={set} />,
+  ];
+}
+
+function kindFields(
+  kind: AssetKind,
+  form: Record<string, string>,
+  set: (k: string, v: string) => void,
+  editingId: string | null,
+): ReactNode[] {
   const F = (key: string, label: string, extra?: { span?: boolean; area?: boolean }) => (
     <div key={key} className={extra?.span ? "sm:col-span-2" : ""}>
       <Field label={label}>
@@ -203,6 +222,7 @@ function fields(
         F("registrar", "注册商"),
         F("dns", "DNS"),
         F("expiresAt", "到期日 YYYY-MM-DD", { span: true }),
+        F("tags", "标签（逗号分隔）", { span: true }),
         F("notes", "说明", { span: true, area: true }),
       ];
     case "mail":
@@ -211,6 +231,7 @@ function fields(
         F("domain", "所属域名"),
         F("kind", "类型 mailbox/alias/forward"),
         F("forwardTo", "转发至", { span: true }),
+        F("tags", "标签（逗号分隔）", { span: true }),
         F("notes", "说明", { span: true, area: true }),
       ];
     case "ai":
@@ -222,6 +243,7 @@ function fields(
         F("keyHint", "密钥末位"),
         F("usagePct", "用量 %"),
         F("renewsAt", "续费日", { span: true }),
+        F("tags", "标签（逗号分隔）", { span: true }),
         F("notes", "说明", { span: true, area: true }),
       ];
     case "secret":
@@ -229,7 +251,7 @@ function fields(
         F("name", "名称"),
         F("kind", "类型 api/ssh/password/token"),
         F("hint", "提示"),
-        F("value", "完整值", { span: true }),
+        F("tags", "标签（逗号分隔）", { span: true }),
         F("notes", "说明", { span: true, area: true }),
       ];
     case "cert":
@@ -242,6 +264,7 @@ function fields(
         F("issuer", "签发者"),
         F("expiresAt", "到期日"),
         F("sans", "SAN（逗号分隔）", { span: true }),
+        F("tags", "标签（逗号分隔）", { span: true }),
         F("notes", "说明", { span: true, area: true }),
       ];
   }
@@ -286,13 +309,20 @@ function defaults(kind: AssetKind, existing: unknown): Record<string, string> {
         username: "root",
         os: "Ubuntu 24.04 LTS",
         region: "",
-        tags: "prod",
+        tags: "",
         notes: "",
       };
     case "domain":
-      return { name: "", registrar: "Cloudflare", dns: "Cloudflare", expiresAt: today, notes: "" };
+      return {
+        name: "",
+        registrar: "Cloudflare",
+        dns: "Cloudflare",
+        expiresAt: today,
+        tags: "",
+        notes: "",
+      };
     case "mail":
-      return { address: "", domain: "", kind: "mailbox", forwardTo: "", notes: "" };
+      return { address: "", domain: "", kind: "mailbox", forwardTo: "", tags: "", notes: "" };
     case "ai":
       return {
         name: "",
@@ -302,12 +332,13 @@ function defaults(kind: AssetKind, existing: unknown): Record<string, string> {
         keyHint: "",
         usagePct: "0",
         renewsAt: today,
+        tags: "",
         notes: "",
       };
     case "secret":
-      return { name: "", kind: "api", hint: "", value: "", notes: "" };
+      return { name: "", kind: "api", hint: "", tags: "", notes: "" };
     case "cert":
-      return { cn: "", issuer: "Let's Encrypt", expiresAt: today, sans: "", notes: "" };
+      return { cn: "", issuer: "Let's Encrypt", expiresAt: today, sans: "", tags: "", notes: "" };
   }
 }
 
@@ -338,7 +369,7 @@ function persist(
         username: form.username || "root",
         os: form.os,
         region: form.region,
-        tags: split(form.tags),
+        tags: parseTags(form.tags ?? ""),
         status: prev?.status ?? "online",
         cpu: prev?.cpu ?? 4,
         memory: prev?.memory ?? 12,
@@ -366,6 +397,7 @@ function persist(
         dns: form.dns,
         nameservers: ["ada.ns.cloudflare.com", "bob.ns.cloudflare.com"],
         autoRenew: false,
+        tags: parseTags(form.tags ?? ""),
         status: statusOf(form.expiresAt),
         notes: form.notes,
       };
@@ -381,6 +413,7 @@ function persist(
         usedMb: 0,
         quotaMb: form.kind === "mailbox" ? 5120 : 0,
         forwardTo: form.forwardTo || undefined,
+        tags: parseTags(form.tags ?? ""),
         status: "online",
         notes: form.notes,
       };
@@ -398,6 +431,7 @@ function persist(
         monthlyUsd: Number(form.monthlyUsd) || 0,
         usagePct: usage,
         renewsAt: form.renewsAt,
+        tags: parseTags(form.tags ?? ""),
         status: usage >= 90 ? "warning" : "online",
         notes: form.notes,
       };
@@ -410,8 +444,10 @@ function persist(
         name: form.name,
         kind: (form.kind as Secret["kind"]) || "api",
         hint: form.hint,
-        value: form.value,
+        // Kept empty on purpose: the real value is in the vault.
+        value: "",
         lastRotated: new Date().toISOString(),
+        tags: parseTags(form.tags ?? ""),
         status: "online",
         notes: form.notes,
       };
@@ -426,6 +462,7 @@ function persist(
         issuer: form.issuer,
         expiresAt: form.expiresAt,
         sans: split(form.sans),
+        tags: parseTags(form.tags ?? ""),
         status: statusOf(form.expiresAt),
         notes: form.notes,
         host: form.host || undefined,

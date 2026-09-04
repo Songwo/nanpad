@@ -68,7 +68,7 @@ export function VaultGate() {
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center px-4">
+    <div className="z-gate fixed inset-0 flex items-center justify-center px-4">
       <button
         type="button"
         aria-label="取消"

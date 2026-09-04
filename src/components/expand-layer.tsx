@@ -8,6 +8,7 @@ import {
   SecretCard,
   ServerCard,
 } from "./asset-card";
+import { AccountPanel } from "./account-panel";
 import { RefreshOneButton } from "./refresh-button";
 import { Button } from "./ui/button";
 import { cardRect, flipTransform, reduceMotion } from "@/lib/motion";
@@ -143,6 +144,7 @@ export function ExpandLayer() {
         </div>
         <div className="max-h-[min(70vh,640px)] overflow-y-auto">
           <ExpandedBody kind={visible.kind} id={visible.id} />
+          <AccountPanel assetId={visible.id} kind={visible.kind} />
         </div>
       </div>
     </div>

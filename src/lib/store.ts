@@ -31,6 +31,10 @@ export interface AppState extends Snapshot {
   view: ViewId;
   filter: "all" | "attention";
   query: string;
+  /** Tags the current list is narrowed to. Every selected tag must match. */
+  tagFilter: string[];
+  /** Break the list into one section per tag instead of one flat grid. */
+  groupByTag: boolean;
   activity: ActivityItem[];
   expanded: ExpandState | null;
   sshServerId: string | null;
@@ -44,6 +48,9 @@ export interface AppState extends Snapshot {
   setView: (v: ViewId) => void;
   setFilter: (f: "all" | "attention") => void;
   setQuery: (q: string) => void;
+  toggleTag: (tag: string) => void;
+  clearTags: () => void;
+  setGroupByTag: (v: boolean) => void;
   setExpanded: (e: ExpandState | null) => void;
   openSsh: (serverId: string) => void;
   closeSsh: () => void;
@@ -74,6 +81,8 @@ const emptyUi = {
   view: "overview" as ViewId,
   filter: "all" as const,
   query: "",
+  tagFilter: [] as string[],
+  groupByTag: false,
   expanded: null,
   sshServerId: null,
   commandOpen: false,
@@ -123,9 +132,18 @@ export const useAppStore = create<AppState>()(
       activity: initialActivity(),
       hydrated: false,
 
-      setView: (view) => set({ view, mobileNav: false, query: "" }),
+      // A tag selection belongs to the list you picked it in.
+      setView: (view) => set({ view, mobileNav: false, query: "", tagFilter: [] }),
       setFilter: (filter) => set({ filter }),
       setQuery: (query) => set({ query }),
+      toggleTag: (tag) =>
+        set({
+          tagFilter: get().tagFilter.includes(tag)
+            ? get().tagFilter.filter((t) => t !== tag)
+            : [...get().tagFilter, tag],
+        }),
+      clearTags: () => set({ tagFilter: [] }),
+      setGroupByTag: (groupByTag) => set({ groupByTag }),
       setExpanded: (expanded) => set({ expanded }),
       openSsh: (sshServerId) => set({ sshServerId, expanded: null }),
       closeSsh: () => set({ sshServerId: null }),
@@ -194,6 +212,21 @@ export const useAppStore = create<AppState>()(
       name: "sinan-assets-v1",
       skipHydration: true,
       storage: createJSONStorage(pickStorage),
+      // Records written before tags existed have no `tags` array, and every
+      // reader treats it as required. Normalise once, on the way in.
+      merge: (persisted, current) => {
+        const saved = (persisted ?? {}) as Partial<AppState>;
+        return {
+          ...current,
+          ...saved,
+          servers: withTags(saved.servers),
+          domains: withTags(saved.domains),
+          mailboxes: withTags(saved.mailboxes),
+          aiAssets: withTags(saved.aiAssets),
+          secrets: withTags(saved.secrets),
+          certs: withTags(saved.certs),
+        };
+      },
       partialize: (s) => ({
         servers: s.servers,
         domains: s.domains,
@@ -206,6 +239,10 @@ export const useAppStore = create<AppState>()(
     },
   ),
 );
+
+function withTags<T extends { tags?: string[] }>(list: T[] | undefined): T[] {
+  return (list ?? []).map((x) => (Array.isArray(x.tags) ? x : { ...x, tags: [] }));
+}
 
 function upsert<T extends { id: string }>(list: T[], item: T): T[] {
   const i = list.findIndex((x) => x.id === item.id);

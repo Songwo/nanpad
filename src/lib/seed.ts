@@ -105,6 +105,7 @@ export const SEED_SERVERS: Server[] = [
 export const SEED_DOMAINS: Domain[] = [
   {
     id: "dom_studio",
+    tags: ["主站", "生产"],
     name: "studio.nexus.app",
     registrar: "Cloudflare",
     expiresAt: "2027-04-12",
@@ -116,6 +117,7 @@ export const SEED_DOMAINS: Domain[] = [
   },
   {
     id: "dom_mail",
+    tags: ["邮件"],
     name: "suu.dev",
     registrar: "Namecheap",
     expiresAt: isoInDays(18),
@@ -127,6 +129,7 @@ export const SEED_DOMAINS: Domain[] = [
   },
   {
     id: "dom_api",
+    tags: ["API", "生产"],
     name: "harbor.io",
     registrar: "Porkbun",
     expiresAt: "2026-12-02",
@@ -138,6 +141,7 @@ export const SEED_DOMAINS: Domain[] = [
   },
   {
     id: "dom_vault",
+    tags: ["个人"],
     name: "vault.me",
     registrar: "Cloudflare",
     expiresAt: isoInDays(4),
@@ -152,6 +156,7 @@ export const SEED_DOMAINS: Domain[] = [
 export const SEED_MAIL: Mailbox[] = [
   {
     id: "mail_hello",
+    tags: ["主站", "对外"],
     address: "hello@studio.nexus.app",
     domain: "studio.nexus.app",
     kind: "mailbox",
@@ -162,6 +167,7 @@ export const SEED_MAIL: Mailbox[] = [
   },
   {
     id: "mail_bill",
+    tags: ["主站", "财务"],
     address: "billing@studio.nexus.app",
     domain: "studio.nexus.app",
     kind: "mailbox",
@@ -172,6 +178,7 @@ export const SEED_MAIL: Mailbox[] = [
   },
   {
     id: "mail_alias",
+    tags: ["邮件", "对外"],
     address: "hi@suu.dev",
     domain: "suu.dev",
     kind: "alias",
@@ -183,6 +190,7 @@ export const SEED_MAIL: Mailbox[] = [
   },
   {
     id: "mail_post",
+    tags: ["邮件"],
     address: "postmaster@suu.dev",
     domain: "suu.dev",
     kind: "forward",
@@ -197,6 +205,7 @@ export const SEED_MAIL: Mailbox[] = [
 export const SEED_AI: AiAsset[] = [
   {
     id: "ai_gpt_plus",
+    tags: ["订阅", "个人"],
     name: "ChatGPT Plus",
     provider: "OpenAI",
     plan: "Plus / 月付",
@@ -209,6 +218,7 @@ export const SEED_AI: AiAsset[] = [
   },
   {
     id: "ai_claude",
+    tags: ["订阅", "个人"],
     name: "Claude Pro",
     provider: "Anthropic",
     plan: "Pro / 月付",
@@ -221,6 +231,7 @@ export const SEED_AI: AiAsset[] = [
   },
   {
     id: "ai_grok",
+    tags: ["订阅", "个人"],
     name: "Grok Super",
     provider: "xAI",
     plan: "SuperGrok",
@@ -233,6 +244,7 @@ export const SEED_AI: AiAsset[] = [
   },
   {
     id: "ai_oai_api",
+    tags: ["API", "按量"],
     name: "OpenAI API",
     provider: "OpenAI",
     plan: "Pay as you go",
@@ -245,6 +257,7 @@ export const SEED_AI: AiAsset[] = [
   },
   {
     id: "ai_anth_api",
+    tags: ["API", "按量"],
     name: "Anthropic API",
     provider: "Anthropic",
     plan: "Pay as you go",
@@ -260,6 +273,7 @@ export const SEED_AI: AiAsset[] = [
 export const SEED_SECRETS: Secret[] = [
   {
     id: "sec_gh",
+    tags: ["开发"],
     name: "GitHub PAT",
     kind: "token",
     hint: "ghp_…8c21",
@@ -270,6 +284,7 @@ export const SEED_SECRETS: Secret[] = [
   },
   {
     id: "sec_cf",
+    tags: ["基础设施"],
     name: "Cloudflare API",
     kind: "api",
     hint: "cf-…b3e0",
@@ -280,6 +295,7 @@ export const SEED_SECRETS: Secret[] = [
   },
   {
     id: "sec_aws",
+    tags: ["基础设施"],
     name: "AWS Access Key",
     kind: "api",
     hint: "AKIA…9K2P",
@@ -290,6 +306,7 @@ export const SEED_SECRETS: Secret[] = [
   },
   {
     id: "sec_ssh",
+    tags: ["基础设施", "生产"],
     name: "tokyo-prod-01 私钥",
     kind: "ssh",
     hint: "ed25519 · 指纹 a8:f3",
@@ -300,6 +317,7 @@ export const SEED_SECRETS: Secret[] = [
   },
   {
     id: "sec_stripe",
+    tags: ["财务"],
     name: "Stripe Live",
     kind: "api",
     hint: "sk_live_…d44",
@@ -313,6 +331,7 @@ export const SEED_SECRETS: Secret[] = [
 export const SEED_CERTS: Certificate[] = [
   {
     id: "crt_studio",
+    tags: ["主站", "生产"],
     cn: "studio.nexus.app",
     issuer: "Let's Encrypt R12",
     expiresAt: isoInDays(62),
@@ -322,6 +341,7 @@ export const SEED_CERTS: Certificate[] = [
   },
   {
     id: "crt_mail",
+    tags: ["邮件"],
     cn: "mail.suu.dev",
     issuer: "Let's Encrypt R12",
     expiresAt: isoInDays(12),
@@ -331,6 +351,7 @@ export const SEED_CERTS: Certificate[] = [
   },
   {
     id: "crt_wild",
+    tags: ["API", "生产"],
     cn: "*.harbor.io",
     issuer: "Google Trust Services",
     expiresAt: isoInDays(3),

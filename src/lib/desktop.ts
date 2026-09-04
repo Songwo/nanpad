@@ -10,6 +10,20 @@ export interface SshCredential {
   passphrase?: string;
 }
 
+/**
+ * A login kept in the vault: mailbox password, registrar account, AI provider
+ * sign-in, or the body of a secret. One shape for every asset kind, because the
+ * thing you actually want at 2am is always "账号是什么、密码是什么".
+ */
+export interface AccountCredential {
+  url?: string;
+  username?: string;
+  password?: string;
+  /** Recovery codes, API keys, 2FA backup — anything that needs more than a line. */
+  note?: string;
+  updatedAt: string;
+}
+
 export interface SshTarget {
   id: string;
   host: string;
@@ -84,8 +98,8 @@ export interface DesktopBridge {
     create(master: string): Promise<{ ok: true }>;
     unlock(master: string): Promise<{ ok: true }>;
     lock(): Promise<{ ok: true }>;
-    set(id: string, secret: SshCredential): Promise<{ ok: true }>;
-    get(id: string): Promise<SshCredential | null>;
+    set(id: string, secret: SshCredential | AccountCredential): Promise<{ ok: true }>;
+    get(id: string): Promise<(SshCredential & AccountCredential) | null>;
     remove(id: string): Promise<{ ok: true }>;
     list(): Promise<string[]>;
   };
@@ -124,6 +138,9 @@ export const isDesktop = () => desktop() !== null;
 
 /** Vault key for a server's SSH credential — must match the main process. */
 export const credentialId = (serverId: string) => `ssh:${serverId}`;
+
+/** Vault key for an asset's account login. Namespaced apart from SSH keys. */
+export const accountId = (assetId: string) => `account:${assetId}`;
 
 /** "47 天" / "3 小时" — the shape the cards already print. */
 export function formatUptime(seconds?: number): string | undefined {
