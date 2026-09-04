@@ -207,7 +207,11 @@ npm run dev     # http://localhost:8080
 
 内置 QQ / 163 / 126 / Gmail / Outlook / iCloud 的服务器地址，输入地址即自动识别；其它邮箱手填 IMAP 地址即可。
 
-> 这里用的是 IMAP 而不是 OAuth，因为 **OAuth 永远不会把密码交给第三方应用**——它给的是 token。对一个凭据库来说，"验证这条授权码确实能用，然后存下来"才是要的东西。国内邮箱也只有这条路：QQ / 163 都不对第三方开放 OAuth，用的是设置里生成的**客户端授权码**，不是登录密码。
+同一块面板下面还有 **Google / Microsoft 授权登录**：在你自己的浏览器里完成 OAuth（PKCE + 本地回环回调），拿回**已验证的地址**和刷新令牌。
+
+> 两条路解决的是不同问题。**OAuth 永远不会把密码交给第三方应用**——它给的是 token，所以它能证明"这个地址确实是你的"，但换不来一条可以存进密钥库的凭据。IMAP 反过来：它验证你手上那条授权码确实能用，并顺带读回真实的容量和信件数。国内邮箱也只有 IMAP 这条路，QQ / 163 都不对第三方开放 OAuth。
+>
+> OAuth 客户端需要你自己在服务商控制台注册一个（免费）。Google 选「桌面应用」类型，下载的 `client_secret_*.json` 可以直接在面板里选文件读入，客户端 ID 与密钥存进加密库。**记得把应用发布到生产**——停在「测试」状态时 Google 发的刷新令牌只有 7 天有效期；我们只用 `openid / email / profile` 这三个非敏感范围，发布不需要 Google 审核。
 
 ---
 
@@ -299,6 +303,7 @@ electron/
    ├─ ssh.mjs             ssh2 连接管理、PTY 会话、指标采集脚本、错误翻译
    ├─ net-probe.mjs       WHOIS 两跳查询 + DNS NS + TLS 证书握手
    ├─ mail.mjs            邮箱服务商表 + 真实 IMAP 登录校验
+   ├─ oauth.mjs           桌面 OAuth：PKCE + 本地回环回调
    └─ vault.mjs           scrypt + AES-256-GCM 凭据库
 
 src/
@@ -314,6 +319,7 @@ src/
 │  ├─ credential-fields.tsx  SSH 凭据录入与测试
 │  ├─ smart-paste.tsx     智能粘贴：认出粘贴内容并填表
 │  ├─ mail-login.tsx      邮箱快捷登录（真实 IMAP 校验）
+│  ├─ oauth-login.tsx     Google / Microsoft 授权登录
 │  ├─ account-fields.tsx  账号密码录入（写入加密库）
 │  ├─ account-panel.tsx   详情页的账号读取与复制
 │  ├─ tag-bar.tsx         标签条、分组开关、卡片上的标签

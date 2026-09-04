@@ -29,6 +29,7 @@ contextBridge.exposeInMainWorld("sinan", {
   checkUpdate: () => unwrap(ipcRenderer.invoke("app:check-update")),
   openDataDir: () => unwrap(ipcRenderer.invoke("shell:open-path", "userData")),
   openExternal: (url) => unwrap(ipcRenderer.invoke("shell:open-external", url)),
+  pickJson: () => unwrap(ipcRenderer.invoke("dialog:pick-json")),
 
   store: {
     load: () => unwrap(ipcRenderer.invoke("store:load")),
@@ -71,6 +72,8 @@ contextBridge.exposeInMainWorld("sinan", {
     providers: () => unwrap(ipcRenderer.invoke("mail:providers")),
     guess: (address) => unwrap(ipcRenderer.invoke("mail:guess", address)),
     test: (options) => unwrap(ipcRenderer.invoke("mail:test", options)),
+    oauthProviders: () => unwrap(ipcRenderer.invoke("mail:oauth-providers")),
+    oauthSignIn: (options) => unwrap(ipcRenderer.invoke("mail:oauth-sign-in", options)),
   },
 
   domain: {

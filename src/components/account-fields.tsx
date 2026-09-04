@@ -10,6 +10,9 @@ import { useVault } from "@/lib/vault-state";
 /** Form keys that belong to the vault, never to the asset record. */
 export const ACCOUNT_KEYS = ["_url", "_username", "_password", "_note"] as const;
 
+/** Written by the OAuth flow, read back on save. */
+export const OAUTH_KEYS = ["_oauthProvider", "_oauthRefresh", "_oauthExpires", "_oauthScope"] as const;
+
 /** The wording changes per kind, but the fields do not. */
 export const ACCOUNT_COPY: Record<AssetKind, { title: string; password: string; hint: string }> = {
   server: { title: "面板 / 控制台账号", password: "密码", hint: "云厂商控制台或管理面板的登录信息，与上面的 SSH 凭据分开保存。" },
@@ -25,12 +28,23 @@ export function accountFromForm(form: Record<string, string>): AccountCredential
   const username = form._username?.trim();
   const password = form._password ?? "";
   const note = form._note?.trim();
-  if (!url && !username && !password && !note) return null;
+  const oauthProvider = form._oauthProvider?.trim();
+  if (!url && !username && !password && !note && !oauthProvider) return null;
   return {
     url: url || undefined,
     username: username || undefined,
     password: password || undefined,
     note: note || undefined,
+    ...(oauthProvider
+      ? {
+          oauth: {
+            provider: oauthProvider,
+            refreshToken: form._oauthRefresh || null,
+            expiresAt: form._oauthExpires || null,
+            scope: form._oauthScope ?? "",
+          },
+        }
+      : {}),
     updatedAt: new Date().toISOString(),
   };
 }

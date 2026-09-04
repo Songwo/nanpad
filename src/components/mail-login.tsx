@@ -1,6 +1,7 @@
 import { CheckCircle2, Loader2, LogIn, Mail, XCircle } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
+import { OAuthLogin } from "./oauth-login";
 import { Button } from "./ui/button";
 import { Field, Input, Select } from "./ui/input";
 import { desktop, type MailLogin, type MailProvider } from "@/lib/desktop";
@@ -187,6 +188,8 @@ export function MailLogin({
           <p className="mt-3 text-2xs leading-relaxed text-subtle">
             登录直接连服务商的 IMAP，凭据校验通过后才会存进加密库；不经过任何中间服务。
           </p>
+
+          <OAuthLogin set={set} />
         </div>
       )}
     </div>

@@ -21,6 +21,13 @@ export interface AccountCredential {
   password?: string;
   /** Recovery codes, API keys, 2FA backup — anything that needs more than a line. */
   note?: string;
+  /** Present when the account was linked with OAuth rather than a password. */
+  oauth?: {
+    provider: string;
+    refreshToken: string | null;
+    expiresAt: string | null;
+    scope: string;
+  };
   updatedAt: string;
 }
 
@@ -81,6 +88,26 @@ export interface MailProvider {
   authNote: string;
 }
 
+export interface OAuthProvider {
+  label: string;
+  usesSecret: boolean;
+  scopes: string[];
+  consoleUrl: string;
+  setupNote: string;
+}
+
+export interface OAuthResult {
+  ok: true;
+  provider: string;
+  providerLabel: string;
+  address: string;
+  name: string | null;
+  refreshToken: string | null;
+  expiresAt: string | null;
+  scope: string;
+  at: string;
+}
+
 export interface MailLogin {
   ok: true;
   address: string;
@@ -124,6 +151,7 @@ export interface DesktopBridge {
   checkUpdate(): Promise<UpdateCheck>;
   openDataDir(): Promise<boolean>;
   openExternal(url: string): Promise<boolean>;
+  pickJson(): Promise<unknown | null>;
   store: {
     load(): Promise<PersistedFile | null>;
     save(snapshot: PersistedFile): Promise<boolean>;
@@ -165,6 +193,12 @@ export interface DesktopBridge {
       host?: string;
       port?: number;
     }): Promise<MailLogin>;
+    oauthProviders(): Promise<Record<string, OAuthProvider>>;
+    oauthSignIn(options: {
+      provider: string;
+      clientId: string;
+      clientSecret?: string;
+    }): Promise<OAuthResult>;
   };
   domain: { probe(name: string): Promise<DomainProbe> };
   cert: {
@@ -201,6 +235,9 @@ export const isDesktop = () => desktop() !== null;
 
 /** Vault key for a server's SSH credential — must match the main process. */
 export const credentialId = (serverId: string) => `ssh:${serverId}`;
+
+/** Vault key for an OAuth client registration. One per provider. */
+export const oauthClientId = (provider: string) => `oauth-client:${provider}`;
 
 /** Vault key for an asset's account login. Namespaced apart from SSH keys. */
 export const accountId = (assetId: string) => `account:${assetId}`;

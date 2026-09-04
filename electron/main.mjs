@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, shell, Menu, net } from "electron";
+import { app, BrowserWindow, dialog, ipcMain, shell, Menu, net } from "electron";
 import { X509Certificate } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { readFile, writeFile, rename, mkdir } from "node:fs/promises";
@@ -7,6 +7,7 @@ import { fileURLToPath } from "node:url";
 import { SshManager } from "./services/ssh.mjs";
 import { probeCertificate, probeDomain } from "./services/net-probe.mjs";
 import { MAIL_PROVIDERS, providerForAddress, testMailbox } from "./services/mail.mjs";
+import { OAUTH_PROVIDERS, signIn as oauthSignIn } from "./services/oauth.mjs";
 import { Vault, vaultPath } from "./services/vault.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -179,6 +180,32 @@ function registerIpc() {
   handle("mail:providers", async () => MAIL_PROVIDERS);
   handle("mail:guess", async (address) => providerForAddress(address));
   handle("mail:test", (options) => testMailbox(options));
+  handle("mail:oauth-providers", async () =>
+    Object.fromEntries(
+      Object.entries(OAUTH_PROVIDERS).map(([id, p]) => [
+        id,
+        {
+          label: p.label,
+          usesSecret: p.usesSecret,
+          scopes: p.scopes,
+          consoleUrl: p.consoleUrl,
+          setupNote: p.setupNote,
+        },
+      ]),
+    ),
+  );
+  handle("mail:oauth-sign-in", (options) => oauthSignIn(options));
+  // Google hands you a client_secret_*.json; reading it beats retyping two
+  // opaque strings, and the values never touch the renderer's disk.
+  handle("dialog:pick-json", async () => {
+    const result = await dialog.showOpenDialog(win, {
+      title: "选择 OAuth 客户端 JSON",
+      filters: [{ name: "JSON", extensions: ["json"] }],
+      properties: ["openFile"],
+    });
+    if (result.canceled || !result.filePaths[0]) return null;
+    return JSON.parse(await readFile(result.filePaths[0], "utf8"));
+  });
 
   // ---- network probes -----------------------------------------------------
   handle("domain:probe", (name) => probeDomain(name));
