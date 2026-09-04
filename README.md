@@ -200,7 +200,9 @@ npm run dev     # http://localhost:8080
 electron/
 ├─ main.mjs               主进程：窗口、菜单、IPC 路由、单实例
 ├─ preload.cjs            contextBridge → window.sinan（唯一对外接口）
-├─ renderer/index.html    渲染进程入口（CSP 在这里）
+├─ renderer/
+│  ├─ index.html          渲染进程入口（CSP 在这里）
+│  └─ main.tsx            React 挂载点
 └─ services/
    ├─ ssh.mjs             ssh2 连接管理、PTY 会话、指标采集脚本、错误翻译
    ├─ net-probe.mjs       WHOIS 两跳查询 + DNS NS + TLS 证书握手
@@ -229,7 +231,6 @@ src/
 │  ├─ motion.ts           usePresence / useCountUp / FLIP 计算 / 减动效判定
 │  ├─ status.ts           状态语义、健康分、异常统计
 │  └─ types.ts            资产类型定义
-├─ desktop/main.tsx       Electron 渲染进程挂载点
 └─ styles.css             设计 token + 组件类 + 动效 keyframes
 ```
 
