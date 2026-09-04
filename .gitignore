@@ -1,0 +1,23 @@
+# dependencies
+node_modules/
+.node_modules.lock
+
+# build output
+dist/
+.output/
+.nitro/
+.vercel/
+.tanstack/
+
+# local env — the platform injects these on deploy, never commit them
+.env
+.env.*
+!.env.example
+
+# editor / OS
+.DS_Store
+Thumbs.db
+*.log
+
+# local dev-server launcher (machine specific)
+.claude/

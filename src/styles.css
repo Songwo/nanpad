@@ -1,0 +1,562 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "IBM Plex Sans", "Source Han Sans SC", "Noto Sans SC",
+    ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, Consolas,
+    monospace;
+
+  --color-canvas: #f4f5f5;
+  --color-sidebar: #ffffff;
+  --color-card: #ffffff;
+  --color-ink: #0f1419;
+  --color-muted: #536471;
+  --color-subtle: #8b98a5;
+  --color-line: #eff3f4;
+  --color-line-strong: #cfd9de;
+  --color-banner: #faf6ea;
+  --color-ok: #00ba7c;
+  --color-warn: #ffad1f;
+  --color-crit: #f4212e;
+  --color-glass: rgba(12, 12, 14, 0.72);
+  --color-glass-border: rgba(255, 255, 255, 0.14);
+  --color-term: #d7dbdf;
+
+  --radius-xs: 4px;
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+  --radius-xl: 22px;
+  --radius-2xl: 28px;
+
+  --shadow-card:
+    0 0 0 1px rgba(15, 20, 25, 0.06), 0 1px 2px -1px rgba(15, 20, 25, 0.05),
+    0 2px 8px -2px rgba(15, 20, 25, 0.04);
+  --shadow-card-hover:
+    0 0 0 1px rgba(15, 20, 25, 0.1), 0 8px 24px -8px rgba(15, 20, 25, 0.12);
+  --shadow-float:
+    0 0 0 1px rgba(15, 20, 25, 0.08), 0 24px 64px -16px rgba(15, 20, 25, 0.28);
+
+  --text-2xs: 0.6875rem;
+  --text-2xs--line-height: 1.3;
+  --text-meta: 0.8125rem;
+  --text-meta--line-height: 1.4;
+  --text-body: 0.9375rem;
+  --text-body--line-height: 1.5;
+
+  --tracking-wordmark: 0.14em;
+
+  /* Named widths for the three-column shell. */
+  --container-rail: 340px;
+  --container-sidebar: 288px;
+
+  --z-index-overlay: 50;
+  --ease-out-soft: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+
+  /* One motion scale: enter is generous, exit is roughly half of it. */
+  --dur-fast: 150ms;
+  --dur-base: 240ms;
+  --dur-slow: 340ms;
+}
+
+@layer base {
+  html {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  html,
+  body,
+  #root {
+    min-height: 100%;
+    background: var(--color-canvas);
+    color: var(--color-ink);
+  }
+
+  body {
+    font-family: var(--font-sans);
+    font-size: var(--text-body);
+    line-height: 1.5;
+  }
+
+  button:not(:disabled),
+  [role="button"]:not(:disabled) {
+    cursor: pointer;
+  }
+
+  h1,
+  h2,
+  h3 {
+    text-wrap: balance;
+  }
+
+  p {
+    text-wrap: pretty;
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--color-ink);
+    outline-offset: 2px;
+  }
+
+  ::selection {
+    background: var(--color-ink);
+    color: var(--color-card);
+  }
+
+  /* Scrollbars belong to the chrome, not to the OS. */
+  ::-webkit-scrollbar {
+    width: 12px;
+    height: 12px;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: var(--color-line-strong);
+    border: 4px solid transparent;
+    background-clip: padding-box;
+    border-radius: 999px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: var(--color-subtle);
+    background-clip: padding-box;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+}
+
+@layer components {
+  .shadow-card {
+    box-shadow: var(--shadow-card);
+  }
+  .shadow-card-hover {
+    box-shadow: var(--shadow-card-hover);
+  }
+  .shadow-float {
+    box-shadow: var(--shadow-float);
+  }
+
+  /* --------------------------------------------------------------- status */
+
+  .status-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 999px;
+    flex-shrink: 0;
+    position: relative;
+  }
+  .status-dot::after {
+    content: "";
+    position: absolute;
+    inset: -3px;
+    border-radius: 999px;
+    background: inherit;
+    opacity: 0.35;
+    animation: status-pulse 2.2s ease-in-out infinite;
+  }
+  .status-dot-ok {
+    background: var(--color-ok);
+  }
+  .status-dot-warn {
+    background: var(--color-warn);
+    animation: status-blink 1.35s ease-in-out infinite;
+  }
+  .status-dot-warn::after {
+    animation-duration: 1.35s;
+  }
+  .status-dot-crit {
+    background: var(--color-crit);
+    animation: status-blink 0.9s ease-in-out infinite;
+  }
+  .status-dot-crit::after {
+    animation-duration: 0.9s;
+  }
+
+  .chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    height: 22px;
+    padding: 0 8px;
+    border-radius: 999px;
+    font-size: var(--text-2xs);
+    font-weight: 500;
+    letter-spacing: 0.01em;
+    white-space: nowrap;
+  }
+  .chip-ok {
+    color: #067647;
+    background: color-mix(in oklab, var(--color-ok) 14%, white);
+  }
+  .chip-warn {
+    color: #854d0e;
+    background: color-mix(in oklab, var(--color-warn) 22%, white);
+  }
+  .chip-crit {
+    color: #b42318;
+    background: color-mix(in oklab, var(--color-crit) 14%, white);
+  }
+  .chip-mute {
+    color: var(--color-muted);
+    background: var(--color-line);
+  }
+
+  /* ------------------------------------------------------------- surfaces */
+
+  /* Interactive state stays on transitions so a reversal retargets midway. */
+  .card-tap {
+    transition:
+      box-shadow var(--dur-base) var(--ease-out),
+      transform var(--dur-base) var(--ease-out);
+  }
+  .card-tap:hover {
+    box-shadow: var(--shadow-card-hover);
+    transform: translateY(-2px);
+  }
+  .card-tap:active {
+    transform: translateY(0) scale(0.995);
+    transition-duration: var(--dur-fast);
+  }
+
+  .row-tap {
+    transition:
+      background-color var(--dur-fast) var(--ease-out),
+      box-shadow var(--dur-fast) var(--ease-out),
+      transform var(--dur-fast) var(--ease-out);
+  }
+  .row-tap:hover {
+    box-shadow: var(--shadow-card-hover);
+  }
+  .row-tap:active {
+    transform: scale(0.99);
+  }
+
+  .glass-terminal {
+    background: var(--color-glass);
+    border: 1px solid var(--color-glass-border);
+    backdrop-filter: blur(28px) saturate(1.35);
+    -webkit-backdrop-filter: blur(28px) saturate(1.35);
+  }
+
+  .metric-bar {
+    height: 4px;
+    border-radius: 999px;
+    background: var(--color-line);
+    overflow: hidden;
+  }
+  .metric-bar > span {
+    display: block;
+    height: 100%;
+    border-radius: inherit;
+    background: var(--color-ink);
+    transition:
+      width 700ms var(--ease-out-soft),
+      background-color var(--dur-base) var(--ease-out);
+  }
+  .metric-bar.warn > span {
+    background: var(--color-warn);
+  }
+  .metric-bar.crit > span {
+    background: var(--color-crit);
+  }
+
+  /* ----------------------------------------------------------- navigation */
+
+  .nav-item {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    width: 100%;
+    height: 52px;
+    padding: 0 16px;
+    border-radius: 999px;
+    color: var(--color-ink);
+    font-size: 1.125rem;
+    font-weight: 500;
+    letter-spacing: -0.02em;
+    transition:
+      background-color var(--dur-fast) var(--ease-out),
+      transform var(--dur-fast) var(--ease-out);
+  }
+  .nav-item:hover {
+    background: var(--color-line);
+  }
+  .nav-item:active {
+    transform: scale(0.97);
+  }
+  .nav-item[data-active="true"] {
+    font-weight: 700;
+  }
+  /* The icon leans in on the active item. Cheap, and it reads at a glance. */
+  .nav-item svg {
+    transition: transform var(--dur-base) var(--ease-out-soft);
+  }
+  .nav-item[data-active="true"] svg {
+    transform: scale(1.09);
+  }
+
+  .tab-indicator {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    height: 4px;
+    border-radius: 999px;
+    background: var(--color-ink);
+    transition:
+      transform var(--dur-slow) var(--ease-out-soft),
+      width var(--dur-slow) var(--ease-out-soft);
+    will-change: transform, width;
+  }
+
+  /* ------------------------------------------------------------- overlays */
+
+  .anim-scrim {
+    opacity: 0;
+    transition: opacity var(--dur-base) var(--ease-out);
+  }
+  .anim-scrim[data-shown="true"] {
+    opacity: 1;
+  }
+
+  .anim-panel {
+    opacity: 0;
+    transform: translateY(10px) scale(0.97);
+    filter: blur(6px);
+    transition:
+      opacity var(--dur-base) var(--ease-out-soft),
+      transform var(--dur-base) var(--ease-out-soft),
+      filter var(--dur-base) var(--ease-out-soft);
+  }
+  .anim-panel[data-shown="true"] {
+    opacity: 1;
+    transform: none;
+    filter: blur(0);
+  }
+
+  /* A sheet travels from the edge it is anchored to. */
+  .anim-sheet {
+    opacity: 0;
+    transform: translateY(28px);
+    transition:
+      opacity var(--dur-base) var(--ease-out-soft),
+      transform var(--dur-base) var(--ease-out-soft);
+  }
+  .anim-sheet[data-shown="true"] {
+    opacity: 1;
+    transform: none;
+  }
+  /* Past the bottom-sheet breakpoint the same element is a centred dialog. */
+  @media (min-width: 40rem) {
+    .anim-sheet {
+      transform: translateY(10px) scale(0.97);
+      filter: blur(6px);
+      transition:
+        opacity var(--dur-base) var(--ease-out-soft),
+        transform var(--dur-base) var(--ease-out-soft),
+        filter var(--dur-base) var(--ease-out-soft);
+    }
+    .anim-sheet[data-shown="true"] {
+      transform: none;
+      filter: blur(0);
+    }
+  }
+
+  .anim-drawer {
+    transform: translateX(-100%);
+    transition: transform var(--dur-base) var(--ease-out-soft);
+  }
+  .anim-drawer[data-shown="true"] {
+    transform: none;
+  }
+
+  /* The expanding card drives its own transform (FLIP) from JS. */
+  .anim-flip {
+    will-change: transform, opacity;
+  }
+
+  /* ----------------------------------------------------------- rail chrome */
+
+  .rail-search {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    height: 44px;
+    padding: 0 16px;
+    border-radius: 999px;
+    background: var(--color-line);
+    color: var(--color-subtle);
+    font-size: var(--text-meta);
+    transition:
+      background-color var(--dur-fast) var(--ease-out),
+      box-shadow var(--dur-fast) var(--ease-out),
+      color var(--dur-fast) var(--ease-out);
+  }
+  .rail-search:hover {
+    background: var(--color-card);
+    color: var(--color-ink);
+    box-shadow: var(--shadow-card);
+  }
+}
+
+/* -------------------------------------------------------------- keyframes */
+
+@keyframes status-pulse {
+  0%,
+  100% {
+    transform: scale(1);
+    opacity: 0.35;
+  }
+  50% {
+    transform: scale(1.9);
+    opacity: 0;
+  }
+}
+
+@keyframes status-blink {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.45;
+  }
+}
+
+@keyframes rise-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+    filter: blur(3px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+    filter: blur(0);
+  }
+}
+
+@keyframes view-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+    filter: blur(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+    filter: blur(0);
+  }
+}
+
+@keyframes line-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes cursor-blink {
+  0%,
+  45% {
+    opacity: 1;
+  }
+  50%,
+  100% {
+    opacity: 0;
+  }
+}
+
+/* Keyframes are for one-shot entrances only, never interactive state. */
+.stagger-in > * {
+  animation: rise-in 420ms var(--ease-out-soft) both;
+}
+.stagger-in > *:nth-child(1) {
+  animation-delay: 0ms;
+}
+.stagger-in > *:nth-child(2) {
+  animation-delay: 40ms;
+}
+.stagger-in > *:nth-child(3) {
+  animation-delay: 80ms;
+}
+.stagger-in > *:nth-child(4) {
+  animation-delay: 120ms;
+}
+.stagger-in > *:nth-child(5) {
+  animation-delay: 160ms;
+}
+.stagger-in > *:nth-child(6) {
+  animation-delay: 200ms;
+}
+.stagger-in > *:nth-child(7) {
+  animation-delay: 240ms;
+}
+.stagger-in > *:nth-child(8) {
+  animation-delay: 280ms;
+}
+.stagger-in > *:nth-child(n + 9) {
+  animation-delay: 320ms;
+}
+
+.view-in {
+  animation: view-in 320ms var(--ease-out-soft) both;
+}
+
+.term-line {
+  animation: line-in 220ms var(--ease-out-soft) both;
+}
+
+.term-cursor {
+  display: inline-block;
+  width: 8px;
+  height: 14px;
+  margin-left: 2px;
+  background: #c8e64a;
+  vertical-align: -2px;
+  animation: cursor-blink 1.1s steps(1) infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .stagger-in > *,
+  .view-in,
+  .term-line,
+  .status-dot::after,
+  .status-dot-warn,
+  .status-dot-crit,
+  .term-cursor {
+    animation: none !important;
+  }
+  .metric-bar > span,
+  .anim-scrim,
+  .anim-panel,
+  .anim-sheet,
+  .anim-drawer,
+  .tab-indicator,
+  .card-tap,
+  .row-tap,
+  .nav-item,
+  .nav-item svg {
+    transition: none !important;
+  }
+  .card-tap:hover,
+  .card-tap:active,
+  .nav-item:active,
+  .nav-item[data-active="true"] svg,
+  .row-tap:active {
+    transform: none;
+  }
+  .anim-panel,
+  .anim-sheet {
+    opacity: 1;
+    transform: none;
+    filter: none;
+  }
+  .anim-drawer {
+    transform: none;
+  }
+}

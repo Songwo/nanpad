@@ -1,0 +1,120 @@
+export type Status = "online" | "warning" | "offline";
+
+export type ViewId =
+  | "overview"
+  | "servers"
+  | "domains"
+  | "mail"
+  | "ai"
+  | "vault"
+  | "certs"
+  | "terminal";
+
+export type AssetKind =
+  | "server"
+  | "domain"
+  | "mail"
+  | "ai"
+  | "secret"
+  | "cert";
+
+export interface Server {
+  id: string;
+  name: string;
+  label: string;
+  host: string;
+  port: number;
+  username: string;
+  os: string;
+  region: string;
+  tags: string[];
+  status: Status;
+  cpu: number;
+  memory: number;
+  disk: number;
+  uptime: string;
+  lastSeen: string;
+  notes: string;
+}
+
+export interface Domain {
+  id: string;
+  name: string;
+  registrar: string;
+  expiresAt: string;
+  dns: string;
+  nameservers: string[];
+  autoRenew: boolean;
+  status: Status;
+  notes: string;
+}
+
+export interface Mailbox {
+  id: string;
+  address: string;
+  domain: string;
+  kind: "mailbox" | "alias" | "forward";
+  usedMb: number;
+  quotaMb: number;
+  forwardTo?: string;
+  status: Status;
+  notes: string;
+}
+
+export interface AiAsset {
+  id: string;
+  name: string;
+  provider: string;
+  plan: string;
+  keyHint: string;
+  monthlyUsd: number;
+  usagePct: number;
+  renewsAt: string;
+  status: Status;
+  notes: string;
+}
+
+export interface Secret {
+  id: string;
+  name: string;
+  kind: "api" | "ssh" | "password" | "token";
+  hint: string;
+  value: string;
+  lastRotated: string;
+  status: Status;
+  notes: string;
+}
+
+export interface Certificate {
+  id: string;
+  cn: string;
+  issuer: string;
+  expiresAt: string;
+  sans: string[];
+  status: Status;
+  notes: string;
+}
+
+export interface ActivityItem {
+  id: string;
+  at: string;
+  text: string;
+  kind: AssetKind | "system";
+}
+
+export type AnyAsset =
+  | { kind: "server"; data: Server }
+  | { kind: "domain"; data: Domain }
+  | { kind: "mail"; data: Mailbox }
+  | { kind: "ai"; data: AiAsset }
+  | { kind: "secret"; data: Secret }
+  | { kind: "cert"; data: Certificate };
+
+export interface Snapshot {
+  servers: Server[];
+  domains: Domain[];
+  mailboxes: Mailbox[];
+  aiAssets: AiAsset[];
+  secrets: Secret[];
+  certs: Certificate[];
+}
