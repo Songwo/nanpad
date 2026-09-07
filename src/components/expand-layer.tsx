@@ -1,20 +1,15 @@
 import { Pencil, Trash2, X } from "lucide-react";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
-import {
-  AiCard,
-  CertCard,
-  DomainCard,
-  MailCard,
-  SecretCard,
-  ServerCard,
-} from "./asset-card";
+import { AiCard, CertCard, DomainCard, MailCard, SecretCard, ServerCard } from "./asset-card";
 import { AccountPanel } from "./account-panel";
+import { AssetRelations, MetricHistory, SftpBrowser } from "./operations-panel";
 import { RefreshOneButton } from "./refresh-button";
 import { Button } from "./ui/button";
 import { cardRect, flipTransform, reduceMotion } from "@/lib/motion";
 import { PROBEABLE, type ProbeKind } from "@/lib/probes";
 import { useAppStore, type ExpandState } from "@/lib/store";
 import type { AssetKind } from "@/lib/types";
+import { t } from "@/lib/i18n";
 
 const ENTER_MS = 340;
 const EXIT_MS = 220;
@@ -56,10 +51,7 @@ export function ExpandLayer() {
       el.style.transform = flipTransform(from, el.getBoundingClientRect());
       el.style.opacity = "0";
     }
-    exitTimer.current = window.setTimeout(
-      () => setVisible(null),
-      reduceMotion() ? 0 : EXIT_MS,
-    );
+    exitTimer.current = window.setTimeout(() => setVisible(null), reduceMotion() ? 0 : EXIT_MS);
   }, [expanded, visible]);
 
   // Enter: paint at the card's rectangle, then release to the laid-out one.
@@ -102,11 +94,11 @@ export function ExpandLayer() {
       className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto px-4 py-8 sm:py-12"
       role="dialog"
       aria-modal="true"
-      aria-label="资产详情"
+      aria-label={t("资产详情")}
     >
       <button
         type="button"
-        aria-label="关闭"
+        aria-label={t("关闭")}
         className="anim-scrim absolute inset-0 bg-ink/35"
         data-shown={shown}
         onClick={close}
@@ -116,16 +108,14 @@ export function ExpandLayer() {
         className="anim-flip relative z-10 w-full max-w-2xl overflow-hidden rounded-2xl bg-card shadow-float"
       >
         <div className="flex items-center justify-between border-b border-line px-4 py-3">
-          <span className="text-meta font-medium text-muted">资产详情</span>
+          <span className="text-meta font-medium text-muted">{t("资产详情")}</span>
           <div className="flex items-center gap-1">
-            {isProbeKind(visible.kind) && (
-              <RefreshOneButton kind={visible.kind} id={visible.id} />
-            )}
+            {isProbeKind(visible.kind) && <RefreshOneButton kind={visible.kind} id={visible.id} />}
             <Button
               variant="ghost"
               size="icon-sm"
               onClick={() => openComposer(visible.kind, visible.id)}
-              aria-label="编辑"
+              aria-label={t("编辑")}
             >
               <Pencil className="size-4" />
             </Button>
@@ -133,17 +123,24 @@ export function ExpandLayer() {
               variant="ghost"
               size="icon-sm"
               onClick={() => remove(visible.kind, visible.id)}
-              aria-label="删除"
+              aria-label={t("删除")}
             >
               <Trash2 className="size-4" />
             </Button>
-            <Button variant="ghost" size="icon-sm" onClick={close} aria-label="关闭">
+            <Button variant="ghost" size="icon-sm" onClick={close} aria-label={t("关闭")}>
               <X className="size-4" />
             </Button>
           </div>
         </div>
         <div className="max-h-[min(70vh,640px)] overflow-y-auto">
           <ExpandedBody kind={visible.kind} id={visible.id} />
+          {visible.kind === "server" && (
+            <MetricHistory key={`metrics:${visible.id}`} serverId={visible.id} />
+          )}
+          {visible.kind === "server" && (
+            <SftpBrowser key={`files:${visible.id}`} serverId={visible.id} />
+          )}
+          <AssetRelations key={`links:${visible.kind}:${visible.id}`} asset={visible} />
           <AccountPanel assetId={visible.id} kind={visible.kind} />
         </div>
       </div>
@@ -193,5 +190,5 @@ function isProbeKind(kind: AssetKind): kind is ProbeKind {
 }
 
 function Missing() {
-  return <p className="p-6 text-meta text-muted">资产不存在或已删除。</p>;
+  return <p className="p-6 text-meta text-muted">{t("资产不存在或已删除。")}</p>;
 }

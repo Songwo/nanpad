@@ -1,4 +1,5 @@
-/**
+
+import { t } from "@/lib/i18n";/**
  * 司南 — the compass rose.
  *
  * Drawn rather than rasterised: it stays crisp at every size, the background is
@@ -46,8 +47,8 @@ export function LogoWord() {
     <div className="flex items-center gap-3">
       <LogoMark />
       <div className="leading-tight">
-        <div className="text-lg font-bold tracking-wordmark">司南</div>
-        <div className="text-2xs text-muted">个人数字资产指挥台</div>
+        <div className="text-lg font-bold tracking-wordmark">{t("司南")}</div>
+        <div className="text-2xs text-muted">{t("个人数字资产指挥台")}</div>
       </div>
     </div>
   );

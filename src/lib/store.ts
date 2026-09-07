@@ -15,6 +15,8 @@ import type {
   ViewId,
 } from "./types";
 import { uid } from "./utils";
+import { t } from "./i18n.ts";
+import { normalizeLinks, refKey, type AssetRef, type AssetLink } from "./operations";
 
 export interface ExpandState {
   kind: AssetKind;
@@ -28,6 +30,9 @@ export interface ExpandState {
 }
 
 export interface AppState extends Snapshot {
+  links: AssetLink[];
+  linkAssets: (from: AssetRef, to: AssetRef) => void;
+  unlinkAssets: (from: AssetRef, to: AssetRef) => void;
   view: ViewId;
   filter: "all" | "attention";
   query: string;
@@ -71,7 +76,10 @@ export interface AppState extends Snapshot {
   upsertSecret: (s: Secret) => void;
   upsertCert: (s: Certificate) => void;
   remove: (kind: AssetKind, id: string) => void;
-  patchServerMetrics: (id: string, patch: Partial<Pick<Server, "cpu" | "memory" | "status" | "lastSeen">>) => void;
+  patchServerMetrics: (
+    id: string,
+    patch: Partial<Pick<Server, "cpu" | "memory" | "status" | "lastSeen">>,
+  ) => void;
   log: (text: string, kind?: ActivityItem["kind"]) => void;
   resetDemo: () => void;
   importSnapshot: (snap: Snapshot) => void;
@@ -134,6 +142,19 @@ export const useAppStore = create<AppState>()(
     (set, get) => ({
       ...initialSnapshot(),
       ...emptyUi,
+      links: [],
+      linkAssets: (from, to) =>
+        set({ links: normalizeLinks([...get().links, { from, to }], get()) }),
+      unlinkAssets: (from, to) =>
+        set({
+          links: get().links.filter(
+            (link) =>
+              !(
+                (refKey(link.from) === refKey(from) && refKey(link.to) === refKey(to)) ||
+                (refKey(link.from) === refKey(to) && refKey(link.to) === refKey(from))
+              ),
+          ),
+        }),
       activity: initialActivity(),
       hydrated: false,
 
@@ -178,9 +199,14 @@ export const useAppStore = create<AppState>()(
         const key = collectionKey(kind);
         set({
           [key]: (get()[key] as { id: string }[]).filter((x) => x.id !== id),
+          links: get().links.filter(
+            (link) =>
+              refKey(link.from) !== refKey({ kind, id }) &&
+              refKey(link.to) !== refKey({ kind, id }),
+          ),
           expanded: null,
         } as Partial<AppState>);
-        get().log(`已移除 ${id}`, kind);
+        get().log(t("已移除 {0}", id), kind);
       },
 
       patchServerMetrics: (id, patch) =>
@@ -204,12 +230,14 @@ export const useAppStore = create<AppState>()(
       resetDemo: () =>
         set({
           ...initialSnapshot(),
+          links: [],
           activity: initialActivity(),
           ...emptyUi,
         }),
 
       importSnapshot: (snap) =>
         set({
+          links: normalizeLinks(snap.links, snap),
           servers: snap.servers ?? [],
           domains: snap.domains ?? [],
           mailboxes: snap.mailboxes ?? [],
@@ -235,9 +263,18 @@ export const useAppStore = create<AppState>()(
           aiAssets: withTags(saved.aiAssets),
           secrets: withTags(saved.secrets),
           certs: withTags(saved.certs),
+          links: normalizeLinks(saved.links, {
+            servers: saved.servers ?? [],
+            domains: saved.domains ?? [],
+            mailboxes: saved.mailboxes ?? [],
+            aiAssets: saved.aiAssets ?? [],
+            secrets: saved.secrets ?? [],
+            certs: saved.certs ?? [],
+          }),
         };
       },
       partialize: (s) => ({
+        links: s.links,
         servers: s.servers,
         domains: s.domains,
         mailboxes: s.mailboxes,
@@ -262,9 +299,7 @@ function upsert<T extends { id: string }>(list: T[], item: T): T[] {
   return next;
 }
 
-function collectionKey(
-  kind: AssetKind,
-): keyof Snapshot {
+function collectionKey(kind: AssetKind): Exclude<keyof Snapshot, "links"> {
   switch (kind) {
     case "server":
       return "servers";
@@ -283,6 +318,7 @@ function collectionKey(
 
 export function snapshotOf(s: Snapshot): Snapshot {
   return {
+    links: s.links ?? [],
     servers: s.servers,
     domains: s.domains,
     mailboxes: s.mailboxes,

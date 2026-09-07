@@ -2,8 +2,22 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { ask, type Block } from "./agent.ts";
 import type { Snapshot } from "./types.ts";
+import { setLocale } from "./i18n.ts";
 
 const iso = (days: number) => new Date(Date.now() + days * 86_400_000).toISOString();
+
+test("英文示例可识别密码、用量、支出和到期意图", () => {
+  setLocale("en");
+  try {
+    const password = ask("What is the password for my 163 mailbox", SNAPSHOT);
+    assert.ok(password.needsVault);
+    assert.ok(password.blocks.some((b) => b.type === "secret" && b.assetId === "mail1"));
+    assert.ok(ask("What expires this month", SNAPSHOT).blocks.some((b) => b.type === "rows" && b.rows.length === 2));
+    assert.ok(ask("Which subscription has the highest usage", SNAPSHOT).blocks.some((b) => b.type === "rows"));
+    assert.match(firstText(ask("How much does AI cost per month", SNAPSHOT).blocks), /20/);
+    assert.ok(!/[\u4e00-\u9fff]/.test(firstText(ask("What needs attention", SNAPSHOT).blocks)));
+  } finally { setLocale("zh"); }
+});
 
 const SNAPSHOT: Snapshot = {
   servers: [

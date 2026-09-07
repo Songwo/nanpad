@@ -1,4 +1,5 @@
 import type { Snapshot } from "./types";
+import { t } from "./i18n.ts";
 
 export type CredentialKind = "password" | "key" | "agent";
 
@@ -146,6 +147,32 @@ export interface PersistedFile extends Snapshot {
 }
 
 export interface DesktopBridge {
+  aiAccounts: import("./ai-accounts").AiAccountBridge;
+  profile: {
+    get(): Promise<import("./profile").Profile>;
+    save(value: { name: string; password?: string }): Promise<import("./profile").Profile>;
+  };
+  agent: import("./agent-client").AgentBridge;
+  preferences: {
+    get(): Promise<DesktopPreferences>;
+    set(patch: Partial<DesktopPreferences>): Promise<DesktopPreferences>;
+  };
+  onAttention(
+    handler: (event: { kind: import("./types").AssetKind; id: string }) => void,
+  ): () => void;
+  onVaultChanged(handler: () => void): () => void;
+  metrics: {
+    list(id: string, since: number): Promise<MetricSample[]>;
+    onUpdated(handler: (event: { id: string }) => void): () => void;
+    onError(handler: (event: { id: string; error: string }) => void): () => void;
+  };
+  sftp: {
+    list(
+      id: string,
+      path: string,
+    ): Promise<{ path: string; entries: SftpEntry[]; truncated: boolean }>;
+    download(id: string, path: string): Promise<boolean>;
+  };
   isDesktop: true;
   info(): Promise<AppInfo>;
   checkUpdate(): Promise<UpdateCheck>;
@@ -153,6 +180,7 @@ export interface DesktopBridge {
   openExternal(url: string): Promise<boolean>;
   pickJson(): Promise<unknown | null>;
   store: {
+    addDemo(): Promise<Snapshot>;
     load(): Promise<PersistedFile | null>;
     save(snapshot: PersistedFile): Promise<boolean>;
     loadConversations(): Promise<unknown | null>;
@@ -216,6 +244,27 @@ export interface DesktopBridge {
   };
 }
 
+export interface DesktopPreferences {
+  closeToTray: boolean;
+  notifications: boolean;
+  locale: "zh" | "en";
+  notificationSupported?: boolean;
+  trayAvailable?: boolean;
+}
+export interface MetricSample {
+  at: string;
+  cpu?: number;
+  memory?: number;
+  disk?: number;
+}
+export interface SftpEntry {
+  name: string;
+  size: number;
+  modified: number;
+  directory: boolean;
+  symlink: boolean;
+}
+
 declare global {
   interface Window {
     sinan?: DesktopBridge;
@@ -248,8 +297,8 @@ export const accountId = (assetId: string) => `account:${assetId}`;
 export function formatUptime(seconds?: number): string | undefined {
   if (seconds === undefined || !Number.isFinite(seconds)) return undefined;
   const days = Math.floor(seconds / 86_400);
-  if (days >= 1) return `${days} 天`;
+  if (days >= 1) return t("{0} 天", days);
   const hours = Math.floor(seconds / 3_600);
-  if (hours >= 1) return `${hours} 小时`;
-  return `${Math.max(1, Math.floor(seconds / 60))} 分钟`;
+  if (hours >= 1) return t("{0} 小时", hours);
+  return t("{0} 分钟", Math.max(1, Math.floor(seconds / 60)));
 }

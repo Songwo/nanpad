@@ -1,9 +1,11 @@
 import { LayoutGrid, Rows3, X } from "lucide-react";
 import type { ReactNode } from "react";
 import { useAppStore } from "@/lib/store";
+import { useSettings } from "@/lib/settings";
 import { tagCounts } from "@/lib/tags";
 import type { Taggable } from "@/lib/types";
 import { cn } from "@/lib/utils";
+import { t } from "@/lib/i18n";
 
 /**
  * The collection the current view lists, before any filtering.
@@ -19,6 +21,8 @@ function useViewCollection(): Array<Partial<Taggable>> {
   const aiAssets = useAppStore((s) => s.aiAssets);
   const secrets = useAppStore((s) => s.secrets);
   const certs = useAppStore((s) => s.certs);
+  const layout = useSettings((s) => s.assetLayout);
+  const hydrated = useAppStore((s) => s.hydrated);
 
   switch (view) {
     case "servers":
@@ -38,6 +42,9 @@ function useViewCollection(): Array<Partial<Taggable>> {
     // neither has a single collection for the strip to count.
     case "overview":
     case "tags":
+      return hydrated && layout !== "cards"
+        ? [...servers, ...domains, ...mailboxes, ...aiAssets, ...secrets, ...certs]
+        : [];
     case "agent":
       return [];
   }
@@ -57,6 +64,7 @@ export function TagBar() {
   const clearTags = useAppStore((s) => s.clearTags);
   const grouped = useAppStore((s) => s.groupByTag);
   const setGroupByTag = useAppStore((s) => s.setGroupByTag);
+  const layout = useSettings((s) => s.assetLayout);
 
   const counts = tagCounts(items);
   if (counts.length === 0) return null;
@@ -82,22 +90,25 @@ export function TagBar() {
         {selected.length > 0 && (
           <button type="button" className="tag-chip tag-chip-clear" onClick={clearTags}>
             <X className="size-3" />
-            清除
+
+            {t("清除")}
           </button>
         )}
       </div>
 
-      <button
-        type="button"
-        className="tag-toggle shrink-0"
-        aria-pressed={grouped}
-        data-on={grouped}
-        title={grouped ? "改为平铺" : "按标签分组"}
-        onClick={() => setGroupByTag(!grouped)}
-      >
-        {grouped ? <Rows3 className="size-3.5" /> : <LayoutGrid className="size-3.5" />}
-        {grouped ? "分组" : "平铺"}
-      </button>
+      {layout === "cards" && (
+        <button
+          type="button"
+          className="tag-toggle shrink-0"
+          aria-pressed={grouped}
+          data-on={grouped}
+          title={grouped ? t("改为平铺") : t("按标签分组")}
+          onClick={() => setGroupByTag(!grouped)}
+        >
+          {grouped ? <Rows3 className="size-3.5" /> : <LayoutGrid className="size-3.5" />}
+          {grouped ? t("分组") : t("平铺")}
+        </button>
+      )}
     </div>
   );
 }

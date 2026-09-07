@@ -6,6 +6,7 @@ import { Field, Input, Textarea } from "./ui/input";
 import { accountId, desktop, type AccountCredential } from "@/lib/desktop";
 import type { AssetKind } from "@/lib/types";
 import { useVault } from "@/lib/vault-state";
+import { t } from "@/lib/i18n";
 
 /** Form keys that belong to the vault, never to the asset record. */
 export const ACCOUNT_KEYS = ["_url", "_username", "_password", "_note"] as const;
@@ -108,9 +109,9 @@ export function AccountFields({
       <div className="rounded-xl bg-canvas p-4">
         <div className="mb-3 flex items-center gap-2">
           <UserRound className="size-4 text-muted" />
-          <h3 className="text-meta font-semibold">{copy.title}</h3>
+          <h3 className="text-meta font-semibold">{t(copy.title)}</h3>
           <span className="ml-auto text-2xs text-subtle">
-            {!unlocked ? "密钥库已锁定" : stored ? "已保存" : "尚未保存"}
+            {!unlocked ? t("密钥库已锁定") : stored ? t("已保存") : t("尚未保存")}
           </span>
         </div>
 
@@ -120,18 +121,19 @@ export function AccountFields({
               type="button"
               variant="outline"
               size="sm"
-              onClick={() => void requireVault("查看或保存账号密码需要先解锁密钥库。")}
+              onClick={() => void requireVault(t("查看或保存账号密码需要先解锁密钥库。"))}
             >
               <KeyRound className="size-3.5" />
-              解锁密钥库
+
+              {t("解锁密钥库")}
             </Button>
-            <span className="text-2xs text-muted">解锁后可读取已保存的账号，或录入新的。</span>
+            <span className="text-2xs text-muted">{t("解锁后可读取已保存的账号，或录入新的。")}</span>
           </div>
         ) : (
           <div className="grid gap-3 sm:grid-cols-2">
             {kind !== "secret" && (
               <>
-                <Field label="登录地址">
+                <Field label={t("登录地址")}>
                   <Input
                     name="account-url"
                     value={form._url ?? ""}
@@ -140,7 +142,7 @@ export function AccountFields({
                     onChange={(e) => set("_url", e.target.value)}
                   />
                 </Field>
-                <Field label="账号">
+                <Field label={t("账号")}>
                   <Input
                     name="account-username"
                     value={form._username ?? ""}
@@ -152,7 +154,7 @@ export function AccountFields({
             )}
 
             <div className={kind === "secret" ? "sm:col-span-2" : "sm:col-span-2"}>
-              <Field label={copy.password}>
+              <Field label={t(copy.password)}>
                 <div className="relative">
                   <Input
                     type={reveal ? "text" : "password"}
@@ -165,7 +167,7 @@ export function AccountFields({
                   />
                   <button
                     type="button"
-                    aria-label={reveal ? "隐藏" : "显示"}
+                    aria-label={reveal ? t("隐藏") : t("显示")}
                     className="absolute right-2 top-1/2 grid size-7 -translate-y-1/2 place-items-center rounded-full text-subtle transition-colors duration-150 ease-out hover:bg-line hover:text-ink"
                     onClick={() => setReveal((v) => !v)}
                   >
@@ -176,7 +178,7 @@ export function AccountFields({
             </div>
 
             <div className="sm:col-span-2">
-              <Field label="备注（恢复码 / 授权码 / 二次验证）">
+              <Field label={t("备注（恢复码 / 授权码 / 二次验证）")}>
                 <Textarea
                   name="account-note"
                   value={form._note ?? ""}
@@ -198,18 +200,19 @@ export function AccountFields({
                     await bridge.vault.remove(accountId(assetId));
                     setStored(false);
                     for (const key of ACCOUNT_KEYS) set(key, "");
-                    toast("已删除保存的账号信息");
+                    toast(t("已删除保存的账号信息"));
                   }}
                 >
                   <Trash2 className="size-3.5" />
-                  删除已保存的账号
+
+                  {t("删除已保存的账号")}
                 </Button>
               </div>
             )}
           </div>
         )}
 
-        <p className="mt-3 text-2xs leading-relaxed text-subtle">{copy.hint}</p>
+        <p className="mt-3 text-2xs leading-relaxed text-subtle">{t(copy.hint)}</p>
       </div>
     </div>
   );

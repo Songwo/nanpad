@@ -1,5 +1,6 @@
 import { clsx, type ClassValue } from "clsx";
 import { extendTailwindMerge } from "tailwind-merge";
+import { t, intlLocale } from "./i18n.ts";
 
 /**
  * tailwind-merge only knows stock Tailwind scales. Our `@theme` adds custom
@@ -45,7 +46,7 @@ export function uid(prefix = "id"): string {
 }
 
 export function formatUsd(n: number): string {
-  return new Intl.NumberFormat("zh-CN", {
+  return new Intl.NumberFormat(intlLocale(), {
     style: "currency",
     currency: "USD",
     maximumFractionDigits: n % 1 === 0 ? 0 : 2,
@@ -58,7 +59,8 @@ export function daysUntil(iso: string): number {
 }
 
 export function formatDate(iso: string): string {
-  return new Intl.DateTimeFormat("zh-CN", {
+  if (!Number.isFinite(new Date(iso).getTime())) return "-";
+  return new Intl.DateTimeFormat(intlLocale(), {
     year: "numeric",
     month: "2-digit",
     day: "2-digit",
@@ -68,12 +70,12 @@ export function formatDate(iso: string): string {
 export function relativeTime(iso: string): string {
   const diff = Date.now() - new Date(iso).getTime();
   const min = Math.round(diff / 60_000);
-  if (min < 1) return "刚刚";
-  if (min < 60) return `${min} 分钟前`;
+  if (min < 1) return t("刚刚");
+  if (min < 60) return t("{0} 分钟前", min);
   const hr = Math.round(min / 60);
-  if (hr < 24) return `${hr} 小时前`;
+  if (hr < 24) return t("{0} 小时前", hr);
   const d = Math.round(hr / 24);
-  if (d < 30) return `${d} 天前`;
+  if (d < 30) return t("{0} 天前", d);
   return formatDate(iso);
 }
 
@@ -82,13 +84,17 @@ export function copyText(text: string): Promise<void> {
 }
 
 export function downloadJson(filename: string, data: unknown) {
-  const blob = new Blob([JSON.stringify(data, null, 2)], {
-    type: "application/json",
-  });
+  downloadText(filename, JSON.stringify(data, null, 2), "application/json");
+}
+
+export function downloadText(filename: string, content: string, type: string) {
+  const blob = new Blob([content], { type });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
   a.download = filename;
+  document.body.appendChild(a);
   a.click();
-  URL.revokeObjectURL(url);
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
 }

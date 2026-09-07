@@ -4,6 +4,7 @@ import { Button } from "./ui/button";
 import { Field, Input } from "./ui/input";
 import { usePresence } from "@/lib/motion";
 import { useVault } from "@/lib/vault-state";
+import { t } from "@/lib/i18n";
 
 /**
  * The one place a master password is typed.
@@ -52,7 +53,7 @@ export function VaultGate() {
     e.preventDefault();
     setError(null);
     if (!exists && password !== confirm) {
-      setError("两次输入的主密码不一致");
+      setError(t("两次输入的主密码不一致"));
       return;
     }
     setWorking(true);
@@ -71,7 +72,7 @@ export function VaultGate() {
     <div className="z-gate fixed inset-0 flex items-center justify-center px-4">
       <button
         type="button"
-        aria-label="取消"
+        aria-label={t("取消")}
         className="anim-scrim absolute inset-0 bg-ink/40"
         data-shown={shown}
         onClick={() => resolvePrompt(false)}
@@ -87,14 +88,14 @@ export function VaultGate() {
           </div>
           <div className="min-w-0">
             <h2 className="text-lg font-semibold tracking-tight">
-              {exists ? "解锁密钥库" : "设置主密码"}
+              {exists ? t("解锁密钥库") : t("设置主密码")}
             </h2>
             <p className="mt-0.5 text-meta text-muted">{prompt?.reason}</p>
           </div>
         </div>
 
         <div className="space-y-3">
-          <Field label="主密码">
+          <Field label={t("主密码")}>
             <Input
               ref={field}
               type="password"
@@ -104,7 +105,7 @@ export function VaultGate() {
             />
           </Field>
           {!exists && (
-            <Field label="再输一次">
+            <Field label={t("再输一次")}>
               <Input
                 type="password"
                 value={confirm}
@@ -118,7 +119,8 @@ export function VaultGate() {
         {!exists && (
           <p className="mt-3 flex gap-2 rounded-md bg-banner px-3 py-2 text-2xs leading-relaxed text-muted">
             <KeyRound className="mt-0.5 size-3.5 shrink-0" />
-            主密码只用来在本机派生加密密钥，不会保存、也不会离开这台电脑。忘记后无法找回，凭据需要重新录入。
+
+            {t("主密码只用来在本机派生加密密钥，不会保存、也不会离开这台电脑。忘记后无法找回，凭据需要重新录入。")}
           </p>
         )}
 
@@ -126,10 +128,11 @@ export function VaultGate() {
 
         <div className="mt-5 flex justify-end gap-2">
           <Button type="button" variant="ghost" onClick={() => resolvePrompt(false)}>
-            取消
+
+            {t("取消")}
           </Button>
           <Button type="submit" disabled={working || password.length < 6}>
-            {working ? "处理中…" : exists ? "解锁" : "创建"}
+            {working ? t("处理中…") : exists ? t("解锁") : t("创建")}
           </Button>
         </div>
       </form>

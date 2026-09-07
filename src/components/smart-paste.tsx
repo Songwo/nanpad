@@ -7,6 +7,7 @@ import { PASTE_HINTS, parsePaste, type PasteMatch } from "@/lib/parse-paste";
 import { KIND_LABEL } from "@/lib/status";
 import type { AssetKind } from "@/lib/types";
 import { cn, daysUntil } from "@/lib/utils";
+import { t } from "@/lib/i18n";
 
 /** A concrete example beats a list of formats when the box is empty. */
 const PLACEHOLDER: Record<AssetKind, string> = {
@@ -48,7 +49,7 @@ export function SmartPaste({
     if (fields._pem) {
       const bridge = desktop();
       if (!bridge) {
-        toast("证书解析需要桌面版");
+        toast(t("证书解析需要桌面版"));
         return;
       }
       setBusy(true);
@@ -61,9 +62,9 @@ export function SmartPaste({
           sans: cert.sans.join(", "),
           host: cert.cn.replace(/^\*\./, ""),
         };
-        toast(`证书 ${cert.cn} · ${daysUntil(cert.expiresAt)} 天后到期`);
+        toast(t("证书 {0} · {1} 天后到期", cert.cn, daysUntil(cert.expiresAt)));
       } catch (err) {
-        toast(err instanceof Error ? err.message : "证书解析失败");
+        toast(err instanceof Error ? err.message : t("证书解析失败"));
         return;
       } finally {
         setBusy(false);
@@ -73,7 +74,7 @@ export function SmartPaste({
     onApply(fields);
     setText("");
     setOpen(false);
-    if (!fields._pem) toast(`已填入${match.label}`);
+    if (!fields._pem) toast(t("已填入{0}", match.label));
   }
 
   return (
@@ -95,14 +96,14 @@ export function SmartPaste({
           }}
         >
           <Sparkles className="size-4" strokeWidth={1.9} />
-          <span className="font-medium">智能粘贴</span>
-          <span className="text-2xs text-subtle">{PASTE_HINTS[kind].hint}</span>
+          <span className="font-medium">{t("智能粘贴")}</span>
+          <span className="text-2xs text-subtle">{t(PASTE_HINTS[kind].hint)}</span>
         </button>
       ) : (
         <div className="rounded-xl bg-canvas p-4">
           <div className="mb-2 flex items-center gap-2">
             <ClipboardPaste className="size-4 text-muted" />
-            <h3 className="text-meta font-semibold">智能粘贴</h3>
+            <h3 className="text-meta font-semibold">{t("智能粘贴")}</h3>
             <button
               type="button"
               className="ml-auto text-2xs text-subtle hover:text-ink"
@@ -111,7 +112,8 @@ export function SmartPaste({
                 setText("");
               }}
             >
-              收起
+
+              {t("收起")}
             </button>
           </div>
 
@@ -119,13 +121,13 @@ export function SmartPaste({
             autoFocus
             value={text}
             spellCheck={false}
-            placeholder={PLACEHOLDER[kind]}
+            placeholder={t(PLACEHOLDER[kind])}
             className="min-h-24 font-mono text-2xs"
             onChange={(e) => setText(e.target.value)}
           />
 
           {text.trim() && ranked.length === 0 && (
-            <p className="mt-2 text-2xs text-muted">没认出来。可以直接在下面的字段里手工填写。</p>
+            <p className="mt-2 text-2xs text-muted">{t("没认出来。可以直接在下面的字段里手工填写。")}</p>
           )}
 
           {ranked.length > 0 && (
@@ -147,7 +149,7 @@ export function SmartPaste({
                             match.kind === kind ? "chip-ok" : "chip-mute",
                           )}
                         >
-                          {KIND_LABEL[match.kind]}
+                          {t(KIND_LABEL[match.kind])}
                         </span>
                       </span>
                       <span className="mt-0.5 block truncate text-2xs text-muted">

@@ -5,6 +5,7 @@ import { Button } from "./ui/button";
 import { Field, Input } from "./ui/input";
 import { desktop, oauthClientId, type OAuthProvider } from "@/lib/desktop";
 import { useVault } from "@/lib/vault-state";
+import { t } from "@/lib/i18n";
 
 type State =
   | { kind: "idle" }
@@ -79,16 +80,16 @@ export function OAuthLogin({
     if (!json) return;
     const parsed = readClientFile(json);
     if (!parsed) {
-      toast("这个 JSON 里没有 client_id");
+      toast(t("这个 JSON 里没有 client_id"));
       return;
     }
     setClientId(parsed.clientId);
     setClientSecret(parsed.clientSecret);
-    toast("已读取客户端配置，保存后即可登录");
+    toast(t("已读取客户端配置，保存后即可登录"));
   }
 
   async function saveClient() {
-    if (!(await requireVault("保存 OAuth 客户端配置需要先解锁密钥库。"))) return;
+    if (!(await requireVault(t("保存 OAuth 客户端配置需要先解锁密钥库。")))) return;
     await bridge!.vault.set(oauthClientId(provider), {
       username: clientId.trim(),
       password: clientSecret.trim(),
@@ -96,7 +97,7 @@ export function OAuthLogin({
     });
     setConfigured(true);
     setEditing(false);
-    toast("客户端配置已保存");
+    toast(t("客户端配置已保存"));
   }
 
   async function signIn() {
@@ -120,11 +121,11 @@ export function OAuthLogin({
       set(
         "notes",
         [
-          `${result.providerLabel} 授权登录${result.name ? ` · ${result.name}` : ""}`,
-          result.refreshToken ? "已保存刷新令牌" : "未返回刷新令牌（可能未请求离线访问）",
+          t("{0} 授权登录{1}", result.providerLabel, result.name ? ` · ${result.name}` : ""),
+          result.refreshToken ? t("已保存刷新令牌") : t("未返回刷新令牌（可能未请求离线访问）"),
         ].join("\n"),
       );
-      toast(`已通过 ${result.providerLabel} 登录 ${result.address}`);
+      toast(t("已通过 {0} 登录 {1}", result.providerLabel, result.address));
     } catch (err) {
       setState({ kind: "fail", message: err instanceof Error ? err.message : String(err) });
     }
@@ -137,7 +138,7 @@ export function OAuthLogin({
     <div className="mt-3 border-t border-line pt-3">
       <div className="mb-2 flex items-center gap-2">
         <ShieldCheck className="size-4 text-muted" />
-        <h4 className="text-meta font-semibold">或用服务商账号授权</h4>
+        <h4 className="text-meta font-semibold">{t("或用服务商账号授权")}</h4>
         <div className="ml-auto flex gap-1">
           {Object.entries(providers).map(([id, p]) => (
             <button
@@ -157,9 +158,10 @@ export function OAuthLogin({
           type="button"
           variant="outline"
           size="sm"
-          onClick={() => void requireVault("OAuth 客户端配置存在密钥库里，需要先解锁。")}
+          onClick={() => void requireVault(t("OAuth 客户端配置存在密钥库里，需要先解锁。"))}
         >
-          解锁密钥库
+
+          {t("解锁密钥库")}
         </Button>
       ) : configured && !editing ? (
         <div className="flex flex-wrap items-center gap-3">
@@ -169,14 +171,16 @@ export function OAuthLogin({
             ) : (
               <ExternalLink className="size-3.5" />
             )}
-            用 {config?.label} 登录
+
+            {t("用 {0} 登录", config?.label ?? "")}
           </Button>
           <button
             type="button"
             className="text-2xs text-subtle hover:text-ink"
             onClick={() => setEditing(true)}
           >
-            换个客户端
+
+            {t("换个客户端")}
           </button>
           {state.kind === "ok" && (
             <span className="flex items-center gap-1.5 text-2xs text-ok">
@@ -196,15 +200,17 @@ export function OAuthLogin({
           <div className="flex flex-wrap items-center gap-2">
             <Button type="button" variant="outline" size="sm" onClick={pickFile}>
               <FileJson className="size-3.5" />
-              选择客户端 JSON
+
+              {t("选择客户端 JSON")}
             </Button>
             <span className="text-2xs text-subtle">
-              就是控制台下载的 client_secret_*.json
+
+              {t("就是控制台下载的 client_secret_*.json")}
             </span>
           </div>
 
           <div className="grid gap-3 sm:grid-cols-2">
-            <Field label="客户端 ID">
+            <Field label={t("客户端 ID")}>
               <Input
                 value={clientId}
                 autoComplete="off"
@@ -213,7 +219,7 @@ export function OAuthLogin({
               />
             </Field>
             {needsSecret && (
-              <Field label="客户端密钥">
+              <Field label={t("客户端密钥")}>
                 <Input
                   type="password"
                   value={clientSecret}
@@ -233,20 +239,22 @@ export function OAuthLogin({
                 className="underline decoration-line-strong underline-offset-2 hover:decoration-ink"
                 onClick={() => void bridge!.openExternal(config.consoleUrl)}
               >
-                打开控制台
+
+                {t("打开控制台")}
               </button>
             </p>
           )}
 
           <Button type="button" variant="outline" size="sm" disabled={!ready} onClick={saveClient}>
-            保存客户端配置
+
+            {t("保存客户端配置")}
           </Button>
         </div>
       )}
 
       <p className="mt-2 text-2xs leading-relaxed text-subtle">
-        授权在你自己的浏览器里完成，应用只拿到已验证的地址与刷新令牌 —— OAuth
-        本来就不会把密码交给第三方应用。
+
+        {t("授权在你自己的浏览器里完成，应用只拿到已验证的地址与刷新令牌 —— OAuth\n        本来就不会把密码交给第三方应用。")}
       </p>
     </div>
   );

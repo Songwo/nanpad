@@ -36,7 +36,8 @@ export class Vault {
     if (this.#doc) return this.#doc;
     try {
       this.#doc = JSON.parse(await readFile(this.#file, "utf8"));
-    } catch {
+    } catch (error) {
+      if (error.code !== "ENOENT") throw new Error("密钥库读取失败，请保留原文件并检查备份。");
       this.#doc = null;
     }
     return this.#doc;

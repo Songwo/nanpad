@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { mkdirSync, readFileSync, realpathSync, statSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
+import { fileURLToPath } from "node:url";
 import { chromium } from "playwright";
 import { checkedOutputPath, checkedUrl } from "./browser-guard.mjs";
 import { computeBrandWarnings } from "./brand-check.mjs";
@@ -27,10 +28,11 @@ if (args.error) {
 }
 
 const url = checkedUrl(args.url);
-const outPng = checkedOutputPath(args.outPng, ["/workspace"]);
+const workspaceRoot = dirname(dirname(fileURLToPath(import.meta.url)));
+const outPng = checkedOutputPath(args.outPng, [workspaceRoot]);
 const derived = derivedPaths(outPng);
-const mobilePng = checkedOutputPath(derived.mobilePng, ["/workspace"]);
-const outJson = checkedOutputPath(derived.verdictJson, ["/workspace"], "verdict JSON");
+const mobilePng = checkedOutputPath(derived.mobilePng, [workspaceRoot]);
+const outJson = checkedOutputPath(derived.verdictJson, [workspaceRoot], "verdict JSON");
 
 const MAX_BASELINE_BYTES = 1024 * 1024;
 const baselineRequested = Boolean(args.baseline);
@@ -38,7 +40,7 @@ let baselinePath = null;
 let baselineResolveError = null;
 if (baselineRequested) {
   try {
-    baselinePath = checkedOutputPath(realpathSync(args.baseline), ["/workspace"], "baseline");
+    baselinePath = checkedOutputPath(realpathSync(args.baseline), [workspaceRoot], "baseline");
   } catch (err) {
     baselineResolveError = err?.code ?? "unresolvable path";
   }
@@ -91,6 +93,7 @@ function compareAgainstBaseline(verdict) {
 let browser = null;
 try {
   browser = await chromium.launch({
+    channel: process.env.BROWSER_SMOKE_CHANNEL || undefined,
     headless: true,
     args: ["--no-sandbox", "--disable-dev-shm-usage"],
   });
@@ -109,6 +112,7 @@ try {
     // networkidle never settles and would burn the whole timeout.
     const resp = await page.goto(url, { waitUntil: "domcontentloaded", timeout: timeoutMs });
     const status = resp?.status() ?? 0;
+    if (status === 200) await page.locator('[data-app-ready="true"]').waitFor({ state: "attached", timeout: timeoutMs });
     await page.waitForTimeout(1000);
 
     const title = await page.title();

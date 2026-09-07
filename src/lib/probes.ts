@@ -40,6 +40,7 @@ function hostStatus(cpu?: number, memory?: number, disk?: number): Status {
  * first unreachable box.
  */
 export async function refreshServer(server: Server): Promise<void> {
+  if (server.demo) return;
   const bridge = desktop();
   if (!bridge) return;
   busy(server.id, true);
@@ -83,6 +84,7 @@ export async function refreshServer(server: Server): Promise<void> {
 }
 
 export async function refreshDomain(domain: Domain): Promise<void> {
+  if (domain.demo) return;
   const bridge = desktop();
   if (!bridge) return;
   busy(domain.id, true);
@@ -120,6 +122,7 @@ export function certHost(cert: Certificate): string {
 }
 
 export async function refreshCert(cert: Certificate): Promise<void> {
+  if (cert.demo) return;
   const bridge = desktop();
   if (!bridge) return;
   busy(cert.id, true);
@@ -177,10 +180,10 @@ export async function refreshAll(kind: "server" | "domain" | "cert"): Promise<nu
   const s = useAppStore.getState();
   const jobs: Array<() => Promise<void>> =
     kind === "server"
-      ? s.servers.map((x) => () => refreshServer(x))
+      ? s.servers.filter((x) => !x.demo).map((x) => () => refreshServer(x))
       : kind === "domain"
-        ? s.domains.map((x) => () => refreshDomain(x))
-        : s.certs.map((x) => () => refreshCert(x));
+        ? s.domains.filter((x) => !x.demo).map((x) => () => refreshDomain(x))
+        : s.certs.filter((x) => !x.demo).map((x) => () => refreshCert(x));
 
   const CONCURRENCY = 4;
   let cursor = 0;

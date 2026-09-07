@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import ssh2 from "ssh2";
+import { SftpService } from "./sftp.mjs";
 
 const { Client } = ssh2;
 
@@ -55,6 +56,7 @@ printf 'loadavg=%s\\n' "$(cut -d' ' -f1-3 /proc/loadavg 2>/dev/null)"
  * connection because a shell channel is the user's, not ours.
  */
 export class SshManager {
+  sftp = new SftpService((target, credential) => this.#connect(target, credential));
   /** @type {Map<string, {client: import("ssh2").Client, stream: any, serverId: string}>} */
   #sessions = new Map();
   #emit;
@@ -72,7 +74,15 @@ export class SshManager {
       keepaliveInterval: 20_000,
       // Older boxes still hand out ssh-rsa host keys; refusing them outright
       // would make the app useless against exactly the servers people keep.
-      algorithms: { serverHostKey: ["ssh-ed25519", "ecdsa-sha2-nistp256", "rsa-sha2-512", "rsa-sha2-256", "ssh-rsa"] },
+      algorithms: {
+        serverHostKey: [
+          "ssh-ed25519",
+          "ecdsa-sha2-nistp256",
+          "rsa-sha2-512",
+          "rsa-sha2-256",
+          "ssh-rsa",
+        ],
+      },
     };
 
     if (!credential) throw new Error("没有找到该主机的凭据，请先在密钥库中保存");
@@ -81,12 +91,15 @@ export class SshManager {
       if (!credential.password) throw new Error("凭据缺少密码");
       config.password = credential.password;
     } else if (credential.kind === "key") {
-      const key = credential.privateKey ?? (credential.privateKeyPath ? await readFile(credential.privateKeyPath, "utf8") : null);
+      const key =
+        credential.privateKey ??
+        (credential.privateKeyPath ? await readFile(credential.privateKeyPath, "utf8") : null);
       if (!key) throw new Error("凭据缺少私钥");
       config.privateKey = key;
       if (credential.passphrase) config.passphrase = credential.passphrase;
     } else if (credential.kind === "agent") {
-      config.agent = process.env.SSH_AUTH_SOCK || (process.platform === "win32" ? "pageant" : undefined);
+      config.agent =
+        process.env.SSH_AUTH_SOCK || (process.platform === "win32" ? "pageant" : undefined);
       if (!config.agent) throw new Error("找不到 SSH agent");
     } else {
       throw new Error(`不支持的认证方式：${credential.kind}`);
@@ -114,20 +127,25 @@ export class SshManager {
     const sessionId = randomUUID();
 
     const stream = await new Promise((resolve, reject) => {
-      client.shell(
-        { term: "xterm-256color", cols: size.cols, rows: size.rows },
-        (err, s) => (err ? reject(new Error(friendly(err))) : resolve(s)),
+      client.shell({ term: "xterm-256color", cols: size.cols, rows: size.rows }, (err, s) =>
+        err ? reject(new Error(friendly(err))) : resolve(s),
       );
     });
 
-    stream.on("data", (chunk) => this.#emit("ssh:data", { sessionId, chunk: chunk.toString("utf8") }));
-    stream.stderr?.on("data", (chunk) => this.#emit("ssh:data", { sessionId, chunk: chunk.toString("utf8") }));
+    stream.on("data", (chunk) =>
+      this.#emit("ssh:data", { sessionId, chunk: chunk.toString("utf8") }),
+    );
+    stream.stderr?.on("data", (chunk) =>
+      this.#emit("ssh:data", { sessionId, chunk: chunk.toString("utf8") }),
+    );
     stream.on("close", () => {
       this.#sessions.delete(sessionId);
       client.end();
       this.#emit("ssh:exit", { sessionId });
     });
-    client.on("error", (err) => this.#emit("ssh:data", { sessionId, chunk: `\r\n\x1b[31m${friendly(err)}\x1b[0m\r\n` }));
+    client.on("error", (err) =>
+      this.#emit("ssh:data", { sessionId, chunk: `\r\n\x1b[31m${friendly(err)}\x1b[0m\r\n` }),
+    );
 
     this.#sessions.set(sessionId, { client, stream, serverId: target.id });
     return { sessionId };
@@ -233,16 +251,19 @@ function clampPct(n) {
 /** ssh2 errors are terse and English; say what actually went wrong. */
 function friendly(err) {
   const msg = String(err?.message ?? err);
-  if (/All configured authentication methods failed/i.test(msg)) return "认证失败：用户名、密码或私钥不正确";
+  if (/All configured authentication methods failed/i.test(msg))
+    return "认证失败：用户名、密码或私钥不正确";
   if (/ECONNREFUSED/i.test(msg)) return "连接被拒绝：目标端口没有 SSH 服务";
   if (/ETIMEDOUT|Timed out while waiting/i.test(msg)) return "连接超时：主机不可达或被防火墙拦截";
   if (/ENOTFOUND|EAI_AGAIN/i.test(msg)) return "无法解析主机名";
   if (/ECONNRESET/i.test(msg)) return "连接被重置";
   // What a DNS wildcard or a captive proxy looks like: the socket opens, then
   // dies before SSH says hello.
-  if (/Connection lost before handshake/i.test(msg)) return "对端未完成 SSH 握手：地址或端口可能不对";
+  if (/Connection lost before handshake/i.test(msg))
+    return "对端未完成 SSH 握手：地址或端口可能不对";
   if (/Handshake failed/i.test(msg)) return "SSH 握手失败：双方没有共同的加密算法";
-  if (/Cannot parse privateKey|no matching key format/i.test(msg)) return "私钥格式无法解析（若有口令请一并填写）";
+  if (/Cannot parse privateKey|no matching key format/i.test(msg))
+    return "私钥格式无法解析（若有口令请一并填写）";
   if (/Encrypted private key detected|passphrase/i.test(msg)) return "私钥已加密，需要填写口令";
   return msg;
 }

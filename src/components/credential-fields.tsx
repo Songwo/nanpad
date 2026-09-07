@@ -4,6 +4,7 @@ import { Button } from "./ui/button";
 import { Field, Input, Select, Textarea } from "./ui/input";
 import { credentialId, desktop, type CredentialKind, type SshCredential } from "@/lib/desktop";
 import { useVault } from "@/lib/vault-state";
+import { t } from "@/lib/i18n";
 
 /** Form keys that belong to the vault, never to the asset record. */
 export const CRED_KEYS = ["_authKind", "_password", "_privateKey", "_passphrase"] as const;
@@ -77,7 +78,7 @@ export function CredentialFields({
   async function runTest() {
     const credential = credentialFromForm(form);
     if (!credential) {
-      setTest({ state: "fail", message: "请先填写密码或私钥" });
+      setTest({ state: "fail", message: t("请先填写密码或私钥") });
       return;
     }
     setTest({ state: "busy" });
@@ -102,34 +103,34 @@ export function CredentialFields({
       <div className="rounded-xl bg-canvas p-4">
         <div className="mb-3 flex items-center gap-2">
           <KeyRound className="size-4 text-muted" />
-          <h3 className="text-meta font-semibold">SSH 凭据</h3>
+          <h3 className="text-meta font-semibold">{t("SSH 凭据")}</h3>
           <span className="ml-auto text-2xs text-subtle">
             {stored === "unknown"
               ? unlocked
-                ? "未读取"
-                : "密钥库已锁定"
+                ? t("未读取")
+                : t("密钥库已锁定")
               : stored
-                ? `已保存（${LABEL[stored]}）`
-                : "尚未保存"}
+                ? t("已保存（{0}）", LABEL[stored])
+                : t("尚未保存")}
           </span>
         </div>
 
         <div className="grid gap-3 sm:grid-cols-2">
-          <Field label="认证方式">
+          <Field label={t("认证方式")}>
             <Select value={kind} onChange={(e) => set("_authKind", e.target.value)}>
-              <option value="password">密码</option>
-              <option value="key">私钥</option>
+              <option value="password">{t("密码")}</option>
+              <option value="key">{t("私钥")}</option>
               <option value="agent">SSH Agent</option>
             </Select>
           </Field>
 
           {kind === "password" && (
-            <Field label="密码">
+            <Field label={t("密码")}>
               <Input
                 type="password"
                 value={form._password ?? ""}
                 autoComplete="off"
-                placeholder={stored === "password" ? "留空则沿用已保存的密码" : ""}
+                placeholder={stored === "password" ? t("留空则沿用已保存的密码") : ""}
                 onChange={(e) => set("_password", e.target.value)}
               />
             </Field>
@@ -137,7 +138,7 @@ export function CredentialFields({
 
           {kind === "key" && (
             <>
-              <Field label="私钥口令（可选）">
+              <Field label={t("私钥口令（可选）")}>
                 <Input
                   type="password"
                   value={form._passphrase ?? ""}
@@ -146,13 +147,13 @@ export function CredentialFields({
                 />
               </Field>
               <div className="sm:col-span-2">
-                <Field label="私钥内容（OpenSSH / PEM）">
+                <Field label={t("私钥内容（OpenSSH / PEM）")}>
                   <Textarea
                     value={form._privateKey ?? ""}
                     spellCheck={false}
                     placeholder={
                       stored === "key"
-                        ? "留空则沿用已保存的私钥"
+                        ? t("留空则沿用已保存的私钥")
                         : "-----BEGIN OPENSSH PRIVATE KEY-----"
                     }
                     className="min-h-28 font-mono text-2xs"
@@ -165,7 +166,8 @@ export function CredentialFields({
 
           {kind === "agent" && (
             <p className="self-end pb-2 text-2xs text-muted sm:col-span-1">
-              使用系统 SSH agent（Windows 为 Pageant，其它平台读 SSH_AUTH_SOCK）。
+
+              {t("使用系统 SSH agent（Windows 为 Pageant，其它平台读 SSH_AUTH_SOCK）。")}
             </p>
           )}
         </div>
@@ -177,16 +179,18 @@ export function CredentialFields({
             ) : (
               <KeyRound className="size-3.5" />
             )}
-            测试连接
+
+            {t("测试连接")}
           </Button>
           {!unlocked && (
             <Button
               type="button"
               variant="ghost"
               size="sm"
-              onClick={() => void requireVault("保存 SSH 凭据需要先解锁密钥库。")}
+              onClick={() => void requireVault(t("保存 SSH 凭据需要先解锁密钥库。"))}
             >
-              解锁密钥库
+
+              {t("解锁密钥库")}
             </Button>
           )}
           {test.message && (
@@ -208,7 +212,8 @@ export function CredentialFields({
         </div>
 
         <p className="mt-3 text-2xs leading-relaxed text-subtle">
-          凭据用主密码派生的密钥加密后单独存放，不写入资产文件，导出 JSON 时也不会带出去。
+
+          {t("凭据用主密码派生的密钥加密后单独存放，不写入资产文件，导出 JSON 时也不会带出去。")}
         </p>
       </div>
     </div>

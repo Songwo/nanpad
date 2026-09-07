@@ -3,6 +3,7 @@ import { createJSONStorage, persist, type StateStorage } from "zustand/middlewar
 import type { Block } from "./agent";
 import { desktop, isDesktop } from "./desktop";
 import { uid } from "./utils";
+import { t } from "./i18n.ts";
 
 export interface Message {
   id: string;
@@ -27,7 +28,7 @@ interface ConversationState {
 
   start: () => string;
   open: (id: string) => void;
-  append: (role: Message["role"], blocks: Block[]) => void;
+  append: (role: Message["role"], blocks: Block[], conversationId?: string) => void;
   remove: (id: string) => void;
   clear: () => void;
   setHydrated: (v: boolean) => void;
@@ -68,7 +69,7 @@ function pickStorage(): StateStorage {
 function titleFrom(blocks: Block[]): string {
   const text = blocks.find((b) => b.type === "text");
   const raw = text && text.type === "text" ? text.text : "";
-  return raw.length > 24 ? `${raw.slice(0, 24)}…` : raw || "新对话";
+  return raw.length > 24 ? `${raw.slice(0, 24)}…` : raw || t("新对话");
 }
 
 export const useConversations = create<ConversationState>()(
@@ -83,7 +84,7 @@ export const useConversations = create<ConversationState>()(
         const now = new Date().toISOString();
         set({
           conversations: [
-            { id, title: "新对话", createdAt: now, updatedAt: now, messages: [] },
+            { id, title: t("新对话"), createdAt: now, updatedAt: now, messages: [] },
             ...get().conversations,
           ].slice(0, 100),
           activeId: id,
@@ -93,12 +94,12 @@ export const useConversations = create<ConversationState>()(
 
       open: (activeId) => set({ activeId }),
 
-      append: (role, blocks) => {
-        const id = get().activeId ?? get().start();
+      append: (role, blocks, conversationId) => {
+        const id = conversationId ?? get().activeId ?? get().start();
         const now = new Date().toISOString();
         const message: Message = { id: uid("msg"), role, at: now, blocks };
         set({
-          activeId: id,
+          activeId: conversationId ? get().activeId : id,
           conversations: get().conversations.map((c) =>
             c.id !== id
               ? c

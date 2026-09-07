@@ -1,6 +1,6 @@
 import { Bot, Globe, House, Menu, Server, SquareTerminal } from "lucide-react";
-import { useEffect } from "react";
-import { Toaster } from "sonner";
+import { useEffect, useSyncExternalStore } from "react";
+import { Toaster, toast } from "sonner";
 import { CommandPalette } from "./command-palette";
 import { Composer } from "./composer";
 import { ExpandLayer } from "./expand-layer";
@@ -12,8 +12,9 @@ import { SshTerminal } from "./ssh-terminal";
 import { Button } from "./ui/button";
 import { TitleBar } from "./title-bar";
 import { VaultGate } from "./vault-gate";
+import { Onboarding } from "./onboarding";
 import { MainView, TopTabs } from "./views";
-import { isDesktop } from "@/lib/desktop";
+import { desktop, isDesktop } from "@/lib/desktop";
 import { useLive } from "@/lib/live";
 import { usePresence } from "@/lib/motion";
 import { refreshAll } from "@/lib/probes";
@@ -21,13 +22,44 @@ import { migrateSecretValues } from "@/lib/vault-migrate";
 import { useAppStore } from "@/lib/store";
 import type { ViewId } from "@/lib/types";
 import { cn } from "@/lib/utils";
-import { startThemeSync } from "@/lib/settings";
+import { startThemeSync, startLocaleSync, useSettings } from "@/lib/settings";
 import { useVault } from "@/lib/vault-state";
+import { t, subscribeLocale, getLocale } from "@/lib/i18n";
 
 export function AppShell() {
+  const locale = useSyncExternalStore(subscribeLocale, getLocale, () => "zh" as const);
+  useEffect(() => startLocaleSync(), []);
+  useEffect(() => {
+    const bridge = desktop();
+    if (bridge) void bridge.preferences.set({ locale }).catch((err) => toast(String(err.message)));
+  }, [locale]);
+  useEffect(() => {
+    const bridge = desktop();
+    if (!bridge) return;
+    const off = bridge.onAttention((asset) =>
+      useAppStore
+        .getState()
+        .setExpanded({ ...asset, origin: { x: window.innerWidth / 2, y: 50, w: 100, h: 50 } }),
+    );
+    const offVault = bridge.onVaultChanged(() => {
+      void useVault.getState().refresh();
+    });
+    const offMetricError = bridge.metrics.onError((event) =>
+      toast(t("指标记录失败：{0}", event.error)),
+    );
+    return () => {
+      off();
+      offVault();
+      offMetricError();
+    };
+  }, []);
   const view = useAppStore((s) => s.view);
   const setView = useAppStore((s) => s.setView);
   const setHydrated = useAppStore((s) => s.setHydrated);
+  const hydrated = useAppStore((s) => s.hydrated);
+  const assetLayout = useSettings((s) => s.assetLayout);
+  const wideWorkspace =
+    hydrated && assetLayout !== "cards" && view !== "agent" && view !== "terminal";
   const setCommandOpen = useAppStore((s) => s.setCommandOpen);
   const openComposer = useAppStore((s) => s.openComposer);
   const vaultUnlocked = useVault((s) => s.unlocked);
@@ -112,38 +144,38 @@ export function AppShell() {
   }, [openComposer, setCommandOpen]);
 
   return (
-    <div className="flex h-dvh min-h-0 flex-col bg-canvas text-ink">
+    <div data-app-ready={hydrated} className="flex h-dvh min-h-0 flex-col bg-canvas text-ink">
       <TitleBar />
       <div className="flex min-h-0 flex-1">
         <Sidebar className="hidden md:flex" />
         <MobileDrawer />
 
-      <div className="flex min-w-0 flex-1 flex-col">
-        <header className="flex h-12 items-center gap-3 border-b border-line bg-sidebar px-3 md:hidden">
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            onClick={() => useAppStore.getState().setMobileNav(true)}
-            aria-label="打开菜单"
-          >
-            <Menu className="size-5" />
-          </Button>
-          <LogoMark className="size-7" />
-          <span className="font-bold tracking-wordmark">司南</span>
-        </header>
+        <div className="flex min-w-0 flex-1 flex-col">
+          <header className="flex h-12 items-center gap-3 border-b border-line bg-sidebar px-3 md:hidden">
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              onClick={() => useAppStore.getState().setMobileNav(true)}
+              aria-label={t("打开菜单")}
+            >
+              <Menu className="size-5" />
+            </Button>
+            <LogoMark className="size-7" />
+            <span className="font-bold tracking-wordmark">{t("司南")}</span>
+          </header>
 
-        {/* One scroll container for the two columns, so both sticky headers
+          {/* One scroll container for the two columns, so both sticky headers
             resolve against the same viewport. */}
-        <div className="min-h-0 flex-1 overflow-y-auto">
-          <div className="mx-auto flex w-full max-w-7xl items-start">
-            <main className="@container min-w-0 flex-1 xl:border-r xl:border-line">
-              <TopTabs />
-              <MainView />
-            </main>
-            <RightRail className="hidden xl:block" />
+          <div className="min-h-0 flex-1 overflow-y-auto">
+            <div className="mx-auto flex w-full max-w-7xl items-start">
+              <main className="@container min-w-0 flex-1 xl:border-r xl:border-line">
+                <TopTabs />
+                <MainView />
+              </main>
+              {!wideWorkspace && <RightRail className="hidden xl:block" />}
+            </div>
           </div>
         </div>
-      </div>
       </div>
 
       <nav className="fixed inset-x-0 bottom-0 z-30 flex h-14 items-center justify-around border-t border-line bg-sidebar/95 px-1 pb-[env(safe-area-inset-bottom)] backdrop-blur md:hidden">
@@ -164,7 +196,7 @@ export function AppShell() {
                 className="size-5 transition-transform duration-240 ease-out-soft"
                 strokeWidth={active ? 2.4 : 1.8}
               />
-              {item.label}
+              {t(item.label)}
               <span
                 className={cn(
                   "absolute inset-x-3 bottom-0.5 h-0.5 rounded-full bg-ink transition-[opacity,transform] duration-240 ease-out-soft",
@@ -182,6 +214,7 @@ export function AppShell() {
       <Composer />
       <CommandPalette />
       <VaultGate />
+      <Onboarding />
       <Toaster
         position="bottom-right"
         toastOptions={{
@@ -204,7 +237,7 @@ function MobileDrawer() {
         type="button"
         className="anim-scrim absolute inset-0 bg-ink/30"
         data-shown={shown}
-        aria-label="关闭菜单"
+        aria-label={t("关闭菜单")}
         onClick={() => setMobileNav(false)}
       />
       <Sidebar className="anim-drawer relative z-10 h-full shadow-float" data-shown={shown} />

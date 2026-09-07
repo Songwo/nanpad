@@ -3,6 +3,7 @@ import type { Terminal } from "@xterm/xterm";
 import { desktop } from "@/lib/desktop";
 import { useVault } from "@/lib/vault-state";
 import type { Server } from "@/lib/types";
+import { t } from "@/lib/i18n";
 
 export type ShellStatus = "connecting" | "open" | "closed" | "error";
 
@@ -90,13 +91,13 @@ export function LiveShell({
       term.loadAddon(fit);
       term.open(mount);
       fit.fit();
-      term.writeln(`\x1b[2m正在连接 ${server.username}@${server.host}:${server.port} …\x1b[0m`);
+      term.writeln(t("\u001b[2m正在连接 {0}@{1}:{2} …\u001b[0m", server.username, server.host, server.port));
 
       // Opening a session needs the stored credential, which needs the vault.
-      if (!(await requireVault(`连接 ${server.name} 需要读取已保存的 SSH 凭据。`))) {
+      if (!(await requireVault(t("连接 {0} 需要读取已保存的 SSH 凭据。", server.name)))) {
         if (disposed) return;
-        term.writeln("\r\n\x1b[33m已取消：密钥库未解锁。\x1b[0m");
-        report("error", "密钥库未解锁");
+        term.writeln(t("\r\n\u001b[33m已取消：密钥库未解锁。\u001b[0m"));
+        report("error", t("密钥库未解锁"));
         return;
       }
       if (disposed) return;
@@ -124,7 +125,7 @@ export function LiveShell({
         bridge.ssh.onExit(({ sessionId: id }) => {
           if (id !== sessionId) return;
           sessionId = null;
-          term?.writeln("\r\n\x1b[2m连接已关闭。\x1b[0m");
+          term?.writeln(t("\r\n\u001b[2m连接已关闭。\u001b[0m"));
           report("closed");
         }),
       );

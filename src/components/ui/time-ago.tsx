@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useCountUp } from "@/lib/motion";
 import { relativeTime } from "@/lib/utils";
+import { intlLocale } from "@/lib/i18n";
 
 /**
  * "3 分钟前", refreshed in place.
@@ -38,6 +39,6 @@ export function CountUp({
 }) {
   const n = useCountUp(value);
   return (
-    <span className={className}>{format ? format(n) : Math.round(n).toLocaleString("zh-CN")}</span>
+    <span className={className}>{format ? format(n) : Math.round(n).toLocaleString(intlLocale())}</span>
   );
 }

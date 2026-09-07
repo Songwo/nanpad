@@ -1,4 +1,5 @@
 import type { AssetKind } from "./types";
+import { t } from "./i18n.ts";
 
 /**
  * What a pasted blob turned out to be.
@@ -100,8 +101,8 @@ export function parsePaste(raw: string, kind?: AssetKind): PasteMatch[] {
     out.push({
       id: "private-key",
       kind: "server",
-      label: "SSH 私钥",
-      detail: `${privateKey[1]}${/ENCRYPTED/.test(text) ? " · 已加密，需要口令" : ""}`,
+      label: t("SSH 私钥"),
+      detail: `${privateKey[1]}${/ENCRYPTED/.test(text) ? t(" · 已加密，需要口令") : ""}`,
       fields: { _authKind: "key", _privateKey: privateKey[0] },
       score: 90,
     });
@@ -112,8 +113,8 @@ export function parsePaste(raw: string, kind?: AssetKind): PasteMatch[] {
     out.push({
       id: "certificate",
       kind: "cert",
-      label: "证书 PEM",
-      detail: "解析签发者、有效期与 SAN",
+      label: t("证书 PEM"),
+      detail: t("解析签发者、有效期与 SAN"),
       // The real parse needs X.509, which lives in the main process.
       fields: { _pem: certificate[0] },
       score: 88,
@@ -152,7 +153,7 @@ function matchMailSettings(text: string): PasteMatch | null {
   return {
     id: "mail-settings",
     kind: "mail",
-    label: "邮箱服务器设置",
+    label: t("邮箱服务器设置"),
     detail: [imap && `IMAP ${imap}`, smtp && `SMTP ${smtp}`].filter(Boolean).join(" · "),
     fields: {
       ...(address ? { address, domain: address.split("@")[1] ?? "", _username: address } : {}),
@@ -210,8 +211,8 @@ function matchSshCommand(text: string): PasteMatch | null {
   return {
     id: "ssh-command",
     kind: "server",
-    label: "SSH 连接命令",
-    detail: [username && `用户 ${username}`, `主机 ${host}`, port && `端口 ${port}`]
+    label: t("SSH 连接命令"),
+    detail: [username && t("用户 {0}", username), t("主机 {0}", host), port && t("端口 {0}", port)]
       .filter(Boolean)
       .join(" · "),
     fields: {
@@ -242,8 +243,8 @@ function matchSshConfig(text: string): PasteMatch | null {
   return {
     id: "ssh-config",
     kind: "server",
-    label: "SSH config 片段",
-    detail: [alias && `别名 ${alias}`, `主机 ${host}`, username && `用户 ${username}`]
+    label: t("SSH config 片段"),
+    detail: [alias && t("别名 {0}", alias), t("主机 {0}", host), username && t("用户 {0}", username)]
       .filter(Boolean)
       .join(" · "),
     fields: {
@@ -276,8 +277,8 @@ function matchApiKey(text: string): PasteMatch | null {
   return {
     id: "api-key",
     kind: "secret",
-    label: `${sig.provider} 密钥`,
-    detail: `识别为 ${sig.name}，完整值会存进加密库`,
+    label: t("{0} 密钥", sig.provider),
+    detail: t("识别为 {0}，完整值会存进加密库", sig.name),
     fields: {
       name: sig.name,
       kind: sig.kind,
@@ -296,7 +297,7 @@ function matchMailbox(text: string): PasteMatch | null {
   return {
     id: "mailbox",
     kind: "mail",
-    label: "邮箱地址",
+    label: t("邮箱地址"),
     detail: address,
     fields: { address, domain: address.split("@")[1] ?? "", _username: address },
     score: 70,
@@ -319,8 +320,8 @@ function matchUrl(text: string): PasteMatch | null {
   return {
     id: "url",
     kind: "domain",
-    label: "网址",
-    detail: `域名 ${registrable} · 登录地址 ${raw}`,
+    label: t("网址"),
+    detail: t("域名 {0} · 登录地址 {1}", registrable, raw),
     fields: { name: registrable, _url: raw },
     score: 60,
   };
@@ -340,7 +341,7 @@ function matchHostPort(text: string): PasteMatch | null {
   return {
     id: "host-port",
     kind: "server",
-    label: "主机地址",
+    label: t("主机地址"),
     detail: [m[1]?.replace("@", ""), m[2], m[3]].filter(Boolean).join(" · "),
     fields: {
       host: m[2],

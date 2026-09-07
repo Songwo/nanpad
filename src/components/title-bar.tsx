@@ -3,6 +3,7 @@ import { WindowControls } from "./window-controls";
 import { desktop } from "@/lib/desktop";
 import { useAppStore } from "@/lib/store";
 import type { ViewId } from "@/lib/types";
+import { t } from "@/lib/i18n";
 
 const VIEW_NAME: Record<ViewId, string> = {
   overview: "总览",
@@ -51,7 +52,8 @@ export function TitleBar() {
       {/* macOS draws its traffic lights over the top-left; leave them room. */}
       {platform === "darwin" && <span className="w-16 shrink-0" />}
       <span className="truncate text-2xs text-subtle">
-        司南 <span className="px-1">·</span> {VIEW_NAME[view]}
+
+        {t("司南")} <span className="px-1">·</span> {t(VIEW_NAME[view])}
       </span>
       <span className="flex-1" />
       <WindowControls />

@@ -24,6 +24,7 @@ import type {
   Snapshot,
 } from "@/lib/types";
 import { uid } from "@/lib/utils";
+import { t } from "@/lib/i18n";
 
 export function Composer() {
   const open = useAppStore((s) => s.composerOpen);
@@ -103,29 +104,29 @@ function ComposerBody({
       const sshCredential = kind === "server" ? credentialFromForm(form) : null;
       const account = accountFromForm(form);
       if (sshCredential || account) {
-        const unlocked = await useVault
-          .getState()
-          .require("保存账号与凭据需要先解锁密钥库。");
+        const unlocked = await useVault.getState().require(t("保存账号与凭据需要先解锁密钥库。"));
         if (!unlocked) {
-          toast("密钥库未解锁，凭据未保存");
+          toast(t("密钥库未解锁，凭据未保存"));
         } else {
           try {
             const vault = desktop()!.vault;
             if (sshCredential) await vault.set(credentialId(id), sshCredential);
             if (account) await vault.set(accountId(id), account);
           } catch (err) {
-            toast(err instanceof Error ? err.message : "凭据保存失败");
+            toast(err instanceof Error ? err.message : t("凭据保存失败"));
           }
         }
       }
     }
 
     persist(kind, id, form, existing);
-    useAppStore.getState().log(
-      `${editingId ? "已更新" : "已添加"} ${KIND_LABEL[kind]} ${form.name || form.address || form.cn || ""}`,
-      kind,
-    );
-    toast(editingId ? "已保存" : "已添加");
+    useAppStore
+      .getState()
+      .log(
+        `${editingId ? t("已更新") : t("已添加")} ${t(KIND_LABEL[kind])} ${form.name || form.address || form.cn || ""}`,
+        kind,
+      );
+    toast.success(editingId ? t("已保存") : t("已添加"));
     onClose();
   }
 
@@ -135,7 +136,7 @@ function ComposerBody({
         type="button"
         className="anim-scrim absolute inset-0 bg-ink/30"
         data-shown={shown}
-        aria-label="关闭"
+        aria-label={t("关闭")}
         onClick={onClose}
       />
       <form
@@ -145,8 +146,8 @@ function ComposerBody({
       >
         <div className="mb-4 flex items-center justify-between">
           <h2 className="text-lg font-semibold tracking-tight">
-            {editingId ? "编辑" : "添加"}
-            {KIND_LABEL[kind]}
+            {editingId ? t("编辑") : t("添加")}
+            {t(KIND_LABEL[kind])}
           </h2>
           <Button type="button" variant="ghost" size="icon-sm" onClick={onClose}>
             <X className="size-4" />
@@ -155,9 +156,9 @@ function ComposerBody({
         <div className="grid gap-3 sm:grid-cols-2">{fields(kind, form, set, editingId)}</div>
         <div className="mt-5 flex justify-end gap-2">
           <Button type="button" variant="ghost" onClick={onClose}>
-            取消
+            {t("取消")}
           </Button>
-          <Button type="submit">{editingId ? "保存" : "添加"}</Button>
+          <Button type="submit">{editingId ? t("保存") : t("添加")}</Button>
         </div>
       </form>
     </div>
@@ -193,9 +194,17 @@ function kindFields(
     <div key={key} className={extra?.span ? "sm:col-span-2" : ""}>
       <Field label={label}>
         {extra?.area ? (
-          <Textarea value={form[key] ?? ""} onChange={(e) => set(key, e.target.value)} />
+          <Textarea
+            aria-label={label}
+            value={form[key] ?? ""}
+            onChange={(e) => set(key, e.target.value)}
+          />
         ) : (
-          <Input value={form[key] ?? ""} onChange={(e) => set(key, e.target.value)} />
+          <Input
+            aria-label={label}
+            value={form[key] ?? ""}
+            onChange={(e) => set(key, e.target.value)}
+          />
         )}
       </Field>
     </div>
@@ -204,15 +213,15 @@ function kindFields(
   switch (kind) {
     case "server":
       return [
-        F("name", "主机名"),
-        F("label", "备注名"),
+        F("name", t("主机名")),
+        F("label", t("备注名")),
         F("host", "IP / Host"),
-        F("port", "SSH 端口"),
-        F("username", "用户名"),
-        F("os", "系统"),
-        F("region", "区域", { span: true }),
-        F("tags", "标签（逗号分隔）", { span: true }),
-        F("notes", "说明", { span: true, area: true }),
+        F("port", t("SSH 端口")),
+        F("username", t("用户名")),
+        F("os", t("系统")),
+        F("region", t("区域"), { span: true }),
+        F("tags", t("标签（逗号分隔）"), { span: true }),
+        F("notes", t("说明"), { span: true, area: true }),
         <CredentialFields
           key="_credentials"
           serverId={editingId}
@@ -227,55 +236,55 @@ function kindFields(
       ];
     case "domain":
       return [
-        F("name", "域名", { span: true }),
-        F("registrar", "注册商"),
+        F("name", t("域名"), { span: true }),
+        F("registrar", t("注册商")),
         F("dns", "DNS"),
-        F("expiresAt", "到期日 YYYY-MM-DD", { span: true }),
-        F("tags", "标签（逗号分隔）", { span: true }),
-        F("notes", "说明", { span: true, area: true }),
+        F("expiresAt", t("到期日 YYYY-MM-DD"), { span: true }),
+        F("tags", t("标签（逗号分隔）"), { span: true }),
+        F("notes", t("说明"), { span: true, area: true }),
       ];
     case "mail":
       return [
         <MailLogin key="_mail-login" form={form} set={set} />,
-        F("address", "地址", { span: true }),
-        F("domain", "所属域名"),
-        F("kind", "类型 mailbox/alias/forward"),
-        F("forwardTo", "转发至", { span: true }),
-        F("tags", "标签（逗号分隔）", { span: true }),
-        F("notes", "说明", { span: true, area: true }),
+        F("address", t("地址"), { span: true }),
+        F("domain", t("所属域名")),
+        F("kind", t("类型 mailbox/alias/forward")),
+        F("forwardTo", t("转发至"), { span: true }),
+        F("tags", t("标签（逗号分隔）"), { span: true }),
+        F("notes", t("说明"), { span: true, area: true }),
       ];
     case "ai":
       return [
-        F("name", "名称"),
-        F("provider", "厂商"),
-        F("plan", "套餐"),
-        F("monthlyUsd", "月费 USD"),
-        F("keyHint", "密钥末位"),
-        F("usagePct", "用量 %"),
-        F("renewsAt", "续费日", { span: true }),
-        F("tags", "标签（逗号分隔）", { span: true }),
-        F("notes", "说明", { span: true, area: true }),
+        F("name", t("名称")),
+        F("provider", t("厂商")),
+        F("plan", t("套餐")),
+        F("monthlyUsd", t("月费 USD")),
+        F("keyHint", t("密钥末位")),
+        F("usagePct", t("用量 %")),
+        F("renewsAt", t("续费日"), { span: true }),
+        F("tags", t("标签（逗号分隔）"), { span: true }),
+        F("notes", t("说明"), { span: true, area: true }),
       ];
     case "secret":
       return [
-        F("name", "名称"),
-        F("kind", "类型 api/ssh/password/token"),
-        F("hint", "提示"),
-        F("tags", "标签（逗号分隔）", { span: true }),
-        F("notes", "说明", { span: true, area: true }),
+        F("name", t("名称")),
+        F("kind", t("类型 api/ssh/password/token")),
+        F("hint", t("提示")),
+        F("tags", t("标签（逗号分隔）"), { span: true }),
+        F("notes", t("说明"), { span: true, area: true }),
       ];
     case "cert":
       return [
         F("cn", "CN", { span: true }),
         // The probe needs somewhere to open a TLS connection; a wildcard CN
         // is not a host, so it can be overridden here.
-        F("host", "探测地址（留空则用 CN）"),
-        F("port", "端口"),
-        F("issuer", "签发者"),
-        F("expiresAt", "到期日"),
-        F("sans", "SAN（逗号分隔）", { span: true }),
-        F("tags", "标签（逗号分隔）", { span: true }),
-        F("notes", "说明", { span: true, area: true }),
+        F("host", t("探测地址（留空则用 CN）")),
+        F("port", t("端口")),
+        F("issuer", t("签发者")),
+        F("expiresAt", t("到期日")),
+        F("sans", t("SAN（逗号分隔）"), { span: true }),
+        F("tags", t("标签（逗号分隔）"), { span: true }),
+        F("notes", t("说明"), { span: true, area: true }),
       ];
   }
 }
@@ -337,7 +346,7 @@ function defaults(kind: AssetKind, existing: unknown): Record<string, string> {
       return {
         name: "",
         provider: "",
-        plan: "月付",
+        plan: t("月付"),
         monthlyUsd: "20",
         keyHint: "",
         usagePct: "0",
@@ -352,12 +361,7 @@ function defaults(kind: AssetKind, existing: unknown): Record<string, string> {
   }
 }
 
-function persist(
-  kind: AssetKind,
-  id: string,
-  form: Record<string, string>,
-  existing: unknown,
-) {
+function persist(kind: AssetKind, id: string, form: Record<string, string>, existing: unknown) {
   const s = useAppStore.getState();
   const statusOf = (iso?: string) => {
     if (!iso) return "online" as const;
@@ -384,7 +388,7 @@ function persist(
         cpu: prev?.cpu ?? 4,
         memory: prev?.memory ?? 12,
         disk: prev?.disk ?? 10,
-        uptime: prev?.uptime ?? "刚刚",
+        uptime: prev?.uptime ?? t("刚刚"),
         lastSeen: prev?.lastSeen ?? new Date().toISOString(),
         notes: form.notes,
         authKind: (form._authKind as Server["authKind"]) ?? prev?.authKind ?? "password",

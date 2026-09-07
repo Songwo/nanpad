@@ -12,13 +12,7 @@ export type ViewId =
   | "agent"
   | "terminal";
 
-export type AssetKind =
-  | "server"
-  | "domain"
-  | "mail"
-  | "ai"
-  | "secret"
-  | "cert";
+export type AssetKind = "server" | "domain" | "mail" | "ai" | "secret" | "cert";
 
 /** How the desktop app authenticates to a host. The secret itself is in the vault. */
 export type AuthKind = "password" | "key" | "agent";
@@ -26,6 +20,7 @@ export type AuthKind = "password" | "key" | "agent";
 /** Free-form grouping labels. Every asset kind carries them, so one tag can
  *  span a project's host, its domain and its certificate. */
 export interface Taggable {
+  demo?: boolean;
   tags: string[];
 }
 
@@ -141,6 +136,7 @@ export type AnyAsset =
   | { kind: "cert"; data: Certificate };
 
 export interface Snapshot {
+  links?: import("./operations").AssetLink[];
   servers: Server[];
   domains: Domain[];
   mailboxes: Mailbox[];

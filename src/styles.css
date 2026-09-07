@@ -1,5 +1,25 @@
 @import "tailwindcss";
 
+.markdown-body { min-width: 0; font-size: 14px; line-height: 1.65; overflow-wrap: anywhere; }
+.markdown-body > * + * { margin-top: 0.75rem; }
+.markdown-body h1, .markdown-body h2, .markdown-body h3 { font-weight: 650; line-height: 1.4; margin-top: 1rem; }
+.markdown-body h1 { font-size: 20px; }
+.markdown-body h2 { font-size: 18px; }
+.markdown-body h3 { font-size: 16px; }
+.markdown-body ul { list-style: disc; padding-left: 1.5rem; }
+.markdown-body ol { list-style: decimal; padding-left: 1.5rem; }
+.markdown-body li + li { margin-top: 0.3rem; }
+.markdown-body blockquote { border-left: 3px solid var(--color-line); padding-left: 1rem; color: var(--color-muted); }
+.markdown-body pre { max-width: 100%; overflow-x: auto; padding: 0.75rem; border-radius: 6px; background: var(--color-canvas); border: 1px solid var(--color-line); }
+.markdown-body code { font-family: monospace; font-size: 0.9em; white-space: pre-wrap; }
+.markdown-body pre code { white-space: pre; }
+.markdown-body a { text-decoration: underline; text-underline-offset: 3px; }
+.markdown-table { overflow-x: auto; max-width: 100%; }
+.markdown-body table { border-collapse: collapse; width: 100%; }
+.markdown-body th, .markdown-body td { border: 1px solid var(--color-line); padding: 0.5rem; text-align: left; min-width: 80px; }
+.markdown-body th { background: var(--color-canvas); font-weight: 600; }
+.markdown-body hr { border-color: var(--color-line); }
+
 /* Two builds consume this file — the web app (root: repo) and the Electron
    renderer (root: electron/renderer). Automatic content detection follows the
    build root, so the desktop bundle would otherwise ship a stylesheet with
@@ -8,10 +28,9 @@
 @source "../electron/renderer";
 
 @theme {
-  --font-sans: "IBM Plex Sans", "Source Han Sans SC", "Noto Sans SC",
-    ui-sans-serif, system-ui, sans-serif;
-  --font-mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, Consolas,
-    monospace;
+  --font-sans:
+    "IBM Plex Sans", "Source Han Sans SC", "Noto Sans SC", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
 
   --color-canvas: #f4f5f5;
   --color-sidebar: #ffffff;
@@ -39,10 +58,8 @@
   --shadow-card:
     0 0 0 1px rgba(15, 20, 25, 0.06), 0 1px 2px -1px rgba(15, 20, 25, 0.05),
     0 2px 8px -2px rgba(15, 20, 25, 0.04);
-  --shadow-card-hover:
-    0 0 0 1px rgba(15, 20, 25, 0.1), 0 8px 24px -8px rgba(15, 20, 25, 0.12);
-  --shadow-float:
-    0 0 0 1px rgba(15, 20, 25, 0.08), 0 24px 64px -16px rgba(15, 20, 25, 0.28);
+  --shadow-card-hover: 0 0 0 1px rgba(15, 20, 25, 0.1), 0 8px 24px -8px rgba(15, 20, 25, 0.12);
+  --shadow-float: 0 0 0 1px rgba(15, 20, 25, 0.08), 0 24px 64px -16px rgba(15, 20, 25, 0.28);
 
   --text-2xs: 0.6875rem;
   --text-2xs--line-height: 1.3;
@@ -92,12 +109,9 @@
   --color-glass: rgba(8, 10, 12, 0.78);
   --color-glass-border: rgba(255, 255, 255, 0.1);
 
-  --shadow-card:
-    0 0 0 1px rgba(255, 255, 255, 0.06), 0 1px 2px -1px rgba(0, 0, 0, 0.5);
-  --shadow-card-hover:
-    0 0 0 1px rgba(255, 255, 255, 0.12), 0 10px 28px -10px rgba(0, 0, 0, 0.7);
-  --shadow-float:
-    0 0 0 1px rgba(255, 255, 255, 0.1), 0 28px 70px -18px rgba(0, 0, 0, 0.8);
+  --shadow-card: 0 0 0 1px rgba(255, 255, 255, 0.06), 0 1px 2px -1px rgba(0, 0, 0, 0.5);
+  --shadow-card-hover: 0 0 0 1px rgba(255, 255, 255, 0.12), 0 10px 28px -10px rgba(0, 0, 0, 0.7);
+  --shadow-float: 0 0 0 1px rgba(255, 255, 255, 0.1), 0 28px 70px -18px rgba(0, 0, 0, 0.8);
 }
 
 /* The status chips are mixed against white in the light theme; against a dark
@@ -240,21 +254,21 @@
     border-radius: 999px;
     background: inherit;
     opacity: 0.35;
-    animation: status-pulse 2.2s ease-in-out infinite;
+    animation: none;
   }
   .status-dot-ok {
     background: var(--color-ok);
   }
   .status-dot-warn {
     background: var(--color-warn);
-    animation: status-blink 1.35s ease-in-out infinite;
+    animation: none;
   }
   .status-dot-warn::after {
     animation-duration: 1.35s;
   }
   .status-dot-crit {
     background: var(--color-crit);
-    animation: status-blink 0.9s ease-in-out infinite;
+    animation: none;
   }
   .status-dot-crit::after {
     animation-duration: 0.9s;
@@ -917,6 +931,57 @@
   }
 }
 
+.agent-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--color-line);
+}
+.agent-settings-numbers {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+.agent-stop {
+  position: absolute;
+  bottom: 8px;
+  right: 8px;
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 6px;
+  background: var(--color-ink);
+  color: var(--color-card);
+}
+.agent-sources {
+  border-top: 1px solid var(--color-line);
+  padding-top: 8px;
+}
+.agent-sources summary {
+  cursor: pointer;
+  color: var(--color-muted);
+  font-size: 12px;
+}
+.agent-sources li {
+  padding: 12px 0;
+  border-bottom: 1px solid var(--color-line);
+}
+.agent-pending {
+  padding: 12px 0;
+}
+@media (max-width: 640px) {
+  .agent-settings-numbers {
+    grid-template-columns: 1fr;
+  }
+  .agent-header button,
+  .agent-stop {
+    min-width: 44px;
+    min-height: 44px;
+  }
+}
+
 /* ------------------------------------------------- desktop window chrome ---
    Deliberately outside @layer: these have to beat Tailwind utilities such as
    `pt-3`, and unlayered rules outrank every layer. Only Electron adds
@@ -935,3 +1000,439 @@
 }
 
 /* The title bar owns the top band now, so the rail needs no inset of its own. */
+
+/* 详情工具沿用已有表面和动效，固定图表高度以避免加载时跳动。 */
+.detail-section {
+  padding: 20px 24px;
+  border-top: 1px solid var(--color-line);
+}
+.tool-heading {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  font-weight: 600;
+}
+.tool-empty {
+  padding: 16px 0;
+  color: var(--color-muted);
+  font-size: 13px;
+}
+.tool-error {
+  margin-top: 8px;
+  font-size: 13px;
+  color: var(--color-crit);
+  overflow-wrap: anywhere;
+}
+.tool-input {
+  min-height: 36px;
+  border: 1px solid var(--color-line-strong);
+  border-radius: 6px;
+  padding: 6px 10px;
+  background: var(--color-card);
+  color: var(--color-ink);
+  font-size: 13px;
+}
+.tool-input:focus-visible {
+  outline: 2px solid var(--color-ink);
+  outline-offset: 2px;
+}
+.metric-history {
+  height: 200px;
+  min-width: 0;
+  margin-top: 12px;
+}
+.metric-history > .tool-empty {
+  height: 100%;
+  display: grid;
+  place-items: center;
+  background: var(--color-canvas);
+}
+.range-option {
+  min-width: 38px;
+  min-height: 32px;
+  border-radius: 6px;
+  color: var(--color-muted);
+  font-size: 12px;
+  transition:
+    background-color 150ms,
+    color 150ms;
+}
+.range-option[aria-pressed="true"] {
+  background: var(--color-ink);
+  color: var(--color-card);
+}
+.file-list {
+  max-height: 300px;
+  overflow: auto;
+}
+.file-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  min-height: 44px;
+  border-bottom: 1px solid var(--color-line);
+}
+.file-row:hover {
+  background: var(--color-canvas);
+}
+button,
+input,
+select,
+h1,
+h2,
+h3,
+p {
+  letter-spacing: 0;
+}
+.settings-dialog {
+  min-width: 0;
+}
+.settings-dialog select {
+  max-width: 100%;
+}
+@media (max-width: 639px) {
+  .settings-dialog {
+    flex-direction: column;
+  }
+  .settings-dialog > nav {
+    width: 100%;
+    flex-direction: row;
+    overflow-x: auto;
+    border-right: 0;
+    border-bottom: 1px solid var(--color-line);
+  }
+  .settings-dialog > nav h2 {
+    display: none;
+  }
+  .settings-dialog > nav button {
+    flex-shrink: 0;
+    min-height: 44px;
+  }
+  .settings-dialog > div {
+    flex: 1;
+    min-height: 0;
+  }
+  .settings-dialog .theme-option {
+    min-width: 0;
+    padding: 12px 6px;
+  }
+  .detail-section {
+    padding: 16px;
+  }
+  .range-option,
+  .tool-input {
+    min-height: 44px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .range-option {
+    transition: none;
+  }
+  .animate-spin {
+    animation: none !important;
+  }
+}
+
+/* 资产工作区沿用现有表面和状态色，表格只在自身区域横向滚动。 */
+.layout-switch {
+  display: flex;
+  gap: 4px;
+  padding: 0 16px 8px;
+}
+.layout-switch button {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 32px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  color: var(--color-muted);
+  transition:
+    background 180ms ease,
+    color 180ms ease;
+}
+.layout-switch button:hover {
+  background: var(--color-line);
+}
+.layout-switch button[aria-pressed="true"] {
+  color: var(--color-ink);
+  background: var(--color-card);
+  border-color: var(--color-line-strong);
+}
+.asset-workspace {
+  min-width: 0;
+  padding: 0 16px 80px;
+}
+.workspace-summary {
+  display: flex;
+  align-items: center;
+  min-height: 44px;
+  color: var(--color-muted);
+  font-size: 12px;
+}
+.workspace-empty {
+  padding: 64px 16px;
+  text-align: center;
+  font-size: 14px;
+  color: var(--color-muted);
+}
+.asset-table-scroll {
+  overflow-x: auto;
+  border-block: 1px solid var(--color-line-strong);
+  background: var(--color-card);
+}
+.asset-table {
+  width: 100%;
+  min-width: 980px;
+  table-layout: fixed;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+.asset-table th {
+  height: 42px;
+  text-align: left;
+  color: var(--color-muted);
+  font-weight: 500;
+  background: var(--color-canvas);
+}
+.asset-table th button {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  width: 100%;
+  height: 42px;
+  white-space: nowrap;
+}
+.asset-table th svg {
+  width: 12px;
+  height: 12px;
+  flex-shrink: 0;
+}
+.asset-table th,
+.asset-table td {
+  padding: 8px 12px;
+}
+.asset-table td {
+  height: 64px;
+  border-top: 1px solid var(--color-line);
+  font-variant-numeric: tabular-nums;
+}
+.asset-table tr {
+  transition: background 180ms ease;
+}
+.asset-table tbody tr:hover {
+  background: var(--color-line);
+}
+.asset-table th:first-child {
+  width: 220px;
+}
+.asset-table th:first-child,
+.asset-table td:first-child {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  background: var(--color-card);
+}
+.asset-table th:first-child {
+  background: var(--color-canvas);
+}
+.asset-table tbody tr:hover td:first-child {
+  background: var(--color-line);
+}
+.asset-table th:nth-child(2) {
+  width: 78px;
+}
+.asset-table th:nth-child(3) {
+  width: 90px;
+}
+.asset-table th:nth-child(4) {
+  width: 132px;
+}
+.asset-table th:nth-child(5),
+.asset-table th:nth-child(6) {
+  width: 76px;
+}
+.asset-table th:nth-child(7) {
+  width: 94px;
+}
+.asset-table th:nth-child(8) {
+  width: 140px;
+}
+.asset-table th:last-child {
+  width: 94px;
+}
+.asset-name {
+  display: block;
+  min-width: 0;
+  width: 100%;
+  text-align: left;
+}
+.asset-name > span,
+.asset-name > small {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.asset-name > span {
+  color: var(--color-ink);
+  font-size: 13px;
+  font-weight: 600;
+}
+.asset-name > small {
+  margin-top: 4px;
+  color: var(--color-muted);
+  font-size: 11px;
+  font-weight: 400;
+}
+.asset-name:hover > span {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.table-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  max-height: 48px;
+  overflow-y: auto;
+}
+.table-tags button {
+  max-width: 110px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  border-radius: 4px;
+  background: var(--color-line);
+  padding: 2px 5px;
+  color: var(--color-muted);
+}
+.table-pagination {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  min-height: 56px;
+  font-size: 12px;
+  color: var(--color-muted);
+}
+.table-pagination select {
+  max-width: 140px;
+}
+.asset-graph {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: min(64vh, 620px);
+  min-height: 380px;
+  border-block: 1px solid var(--color-line-strong);
+}
+.asset-graph .react-flow {
+  flex: 1;
+  min-height: 0;
+  --xy-background-color: var(--color-canvas);
+  --xy-edge-stroke: var(--color-muted);
+  --xy-edge-stroke-width: 1.6;
+  --xy-attribution-background-color: var(--color-card);
+}
+.asset-graph .react-flow__node-asset {
+  width: 220px;
+  border-radius: 8px;
+}
+.asset-graph .react-flow__node-asset.selected .asset-graph-node {
+  border-color: var(--color-ink);
+  box-shadow: 0 0 0 1px var(--color-ink);
+}
+.asset-graph-node {
+  padding: 12px;
+  background: var(--color-card);
+  color: var(--color-ink);
+  border: 1px solid var(--color-line-strong);
+  border-radius: 8px;
+}
+.graph-node-meta {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+.graph-node-meta > span {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  font-size: 11px;
+  color: var(--color-muted);
+}
+.asset-graph .react-flow__handle {
+  width: 7px;
+  height: 7px;
+  background: var(--color-muted);
+  border-color: var(--color-card);
+}
+.graph-toolbar {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: space-between;
+  border-top: 1px solid var(--color-line-strong);
+}
+.graph-controls {
+  display: flex;
+  gap: 2px;
+  padding: 4px;
+  background: var(--color-card);
+}
+.graph-count {
+  display: block;
+  padding: 4px 8px;
+  color: var(--color-muted);
+  background: var(--color-card);
+  font-size: 12px;
+}
+.status-dot::after {
+  content: none;
+}
+.status-feedback {
+  animation: status-feedback 220ms ease-out both;
+}
+@keyframes status-feedback {
+  from {
+    opacity: 0.45;
+    transform: translateY(2px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+[data-sonner-toast][data-type="success"] [data-icon] {
+  color: var(--color-ok);
+  animation: status-feedback 180ms ease-out both;
+}
+@media (max-width: 640px) {
+  .layout-switch button {
+    width: 44px;
+    height: 44px;
+  }
+  .asset-table th:first-child {
+    width: 180px;
+  }
+  .asset-graph {
+    height: max(320px, calc(100dvh - 430px));
+    min-height: 320px;
+  }
+  .graph-controls button {
+    min-width: 40px;
+    min-height: 40px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .status-feedback,
+  [data-sonner-toast][data-type="success"] [data-icon] {
+    animation: none;
+  }
+  .layout-switch button,
+  .asset-table tr {
+    transition: none;
+  }
+}

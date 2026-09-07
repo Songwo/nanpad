@@ -2,6 +2,7 @@ import { KIND_LABEL } from "./status.ts";
 import { tagsOf } from "./tags.ts";
 import type { AssetKind, Snapshot, Status } from "./types.ts";
 import { daysUntil, formatUsd } from "./utils.ts";
+import { t } from "./i18n.ts";
 
 /**
  * One piece of an answer.
@@ -12,6 +13,8 @@ import { daysUntil, formatUsd } from "./utils.ts";
  * without ever writing a password to disk.
  */
 export type Block =
+  | { type: "sources"; sources: import("./agent-client").Source[] }
+  | { type: "run"; model: string; steps: number; tools: string[]; status: "success" | "error" | "stopped" }
   | { type: "text"; text: string }
   | { type: "secret"; assetId: string; kind: AssetKind; field: SecretField; label: string }
   | { type: "asset"; assetId: string; kind: AssetKind }
@@ -37,6 +40,7 @@ export interface Answer {
 }
 
 interface Candidate {
+  score?: number;
   id: string;
   kind: AssetKind;
   label: string;
@@ -118,12 +122,13 @@ const MAX_GRAM = 8;
  * 腾讯云, which token equality never would.
  */
 function grams(query: string): string[] {
-  const q = query.toLowerCase().replace(NON_WORD, " ");
-  const out = new Set<string>();
-  for (let size = Math.min(MAX_GRAM, q.length); size >= 2; size -= 1) {
-    for (let i = 0; i + size <= q.length; i += 1) {
-      const gram = q.slice(i, i + size).trim();
-      if (gram.length >= 2) out.add(gram);
+  const q = query.toLowerCase();
+  const filler = new Set(["what", "which", "where", "when", "how", "is", "are", "the", "for", "my", "of", "to", "me", "has", "does", "have", "password", "mailbox", "email", "server", "host", "domain", "subscription", "this", "month", "in", "on", "and"]);
+  const out = new Set(q.split(NON_WORD).filter((word) => word.length >= 2 && !filler.has(word) && !/\p{Script=Han}/u.test(word)));
+  // 中文按字片段匹配，英文只匹配完整词，避免 for/which 等短片段命中资产。
+  for (const segment of q.match(/\p{Script=Han}+/gu) ?? []) {
+    for (let size = Math.min(MAX_GRAM, segment.length); size >= 2; size -= 1) {
+      for (let i = 0; i + size <= segment.length; i += 1) out.add(segment.slice(i, i + size));
     }
   }
   return [...out];
@@ -147,7 +152,7 @@ function resolve(query: string, candidates: Candidate[]): Candidate[] {
       let score = 0;
       for (const token of c.tokens) {
         // The question quotes the whole token — the strongest signal there is.
-        if (q.includes(token)) {
+        if (/\p{Script=Han}/u.test(token) ? q.includes(token) : windows.includes(token)) {
           score = Math.max(score, token.length * 12 + (c.label.toLowerCase() === token ? 30 : 0));
           continue;
         }
@@ -166,7 +171,7 @@ function resolve(query: string, candidates: Candidate[]): Candidate[] {
     .filter((x) => x.score > 0)
     .sort((a, b) => b.score - a.score);
 
-  return scored.map((x) => x.c);
+  return scored.map((x) => ({ ...x.c, score: x.score }));
 }
 
 // ---------------------------------------------------------------- intents
@@ -184,17 +189,17 @@ type Intent =
 
 function classify(query: string): Intent {
   const q = query.toLowerCase();
-  if (/密码|口令|passwd|password|授权码/.test(q)) return { name: "secret", field: "password" };
-  if (/账号|帐号|用户名|登录名|username/.test(q)) return { name: "secret", field: "username" };
-  if (/登录地址|网址|后台|控制台|链接|url/.test(q)) return { name: "secret", field: "url" };
-  if (/备注|恢复码|二次验证|2fa/.test(q)) return { name: "secret", field: "note" };
-  if (/连一下|连接|登陆一下|开终端|ssh|终端/.test(q)) return { name: "connect" };
-  if (/到期|过期|续费|多久|几天|多少天|expire/.test(q)) return { name: "expiry" };
-  if (/用量|用了多少|使用率|额度|usage/.test(q)) return { name: "usage" };
-  if (/多少钱|月费|花费|花多少|账单|spend|cost/.test(q)) return { name: "spend" };
-  if (/cpu|内存|磁盘|负载|在线|状态|跑得怎么样/.test(q)) return { name: "host" };
-  if (/待处理|需要处理|有什么问题|异常|告警|要注意/.test(q)) return { name: "attention" };
-  if (/有哪些|列一下|全部|多少个|都有什么/.test(q)) return { name: "list" };
+  if (/密码|口令|passwd|password|授权码|app password/.test(q)) return { name: "secret", field: "password" };
+  if (/账号|帐号|用户名|登录名|username|user name|account name|login name/.test(q)) return { name: "secret", field: "username" };
+  if (/登录地址|网址|后台|控制台|链接|url|sign-?in link|console|dashboard/.test(q)) return { name: "secret", field: "url" };
+  if (/备注|恢复码|二次验证|2fa|note|recovery code|backup code/.test(q)) return { name: "secret", field: "note" };
+  if (/连一下|连接|登陆一下|开终端|ssh|终端|connect|terminal|shell|log ?in to/.test(q)) return { name: "connect" };
+  if (/到期|过期|续费|多久|几天|多少天|expire|expiry|expiring|renew|due|run out/.test(q)) return { name: "expiry" };
+  if (/用量|用了多少|使用率|额度|usage|quota|used the most|consumption/.test(q)) return { name: "usage" };
+  if (/多少钱|月费|花费|花多少|账单|spend|cost|bill|how much|per month|monthly/.test(q)) return { name: "spend" };
+  if (/cpu|内存|磁盘|负载|在线|状态|跑得怎么样|memory|disk|load|online|status|doing/.test(q)) return { name: "host" };
+  if (/待处理|需要处理|有什么问题|异常|告警|要注意|attention|needs? (?:my )?(?:attention|action)|anything wrong|issues?|problems?/.test(q)) return { name: "attention" };
+  if (/有哪些|列一下|全部|多少个|都有什么|list|show me|how many|what do i have/.test(q)) return { name: "list" };
   return { name: "unknown" };
 }
 
@@ -216,7 +221,7 @@ const FIELD_LABEL: Record<SecretField, string> = {
  */
 export function ask(query: string, snapshot: Snapshot): Answer {
   const text = query.trim();
-  if (!text) return { blocks: [{ type: "text", text: "想问什么？" }], needsVault: false };
+  if (!text) return { blocks: [{ type: "text", text: t("想问什么？") }], needsVault: false };
 
   const intent = classify(text);
   const candidates = index(snapshot);
@@ -250,7 +255,7 @@ function answerSecret(query: string, field: SecretField, matches: Candidate[]): 
       blocks: [
         {
           type: "text",
-          text: `没找到你说的那个资产。试试说得具体一点，比如「${FIELD_LABEL[field]}」前面加上名称或地址。`,
+          text: t("没找到你说的那个资产。试试说得具体一点，比如「{0}」前面加上名称或地址。", t(FIELD_LABEL[field])),
         },
       ],
       needsVault: false,
@@ -259,7 +264,7 @@ function answerSecret(query: string, field: SecretField, matches: Candidate[]): 
   if (matches.length > 1 && matches[0].tokens.length && matches[1] && sameStrength(matches)) {
     return {
       blocks: [
-        { type: "text", text: `有几个都对得上，你要哪一个的${FIELD_LABEL[field]}？` },
+        { type: "text", text: t("有几个都对得上，你要哪一个的{0}？", t(FIELD_LABEL[field])) },
         {
           type: "choices",
           options: matches.slice(0, 5).map((m) => ({ assetId: m.id, kind: m.kind, label: m.label })),
@@ -272,7 +277,7 @@ function answerSecret(query: string, field: SecretField, matches: Candidate[]): 
   const hit = matches[0];
   return {
     blocks: [
-      { type: "text", text: `${KIND_LABEL[hit.kind]} ${hit.label} 的${FIELD_LABEL[field]}：` },
+      { type: "text", text: t("{0} {1} 的{2}：", t(KIND_LABEL[hit.kind]), hit.label, t(FIELD_LABEL[field])) },
       { type: "secret", assetId: hit.id, kind: hit.kind, field, label: hit.label },
       { type: "asset", assetId: hit.id, kind: hit.kind },
     ],
@@ -282,25 +287,25 @@ function answerSecret(query: string, field: SecretField, matches: Candidate[]): 
 
 /** Two candidates are "equally strong" when neither clearly names the asset. */
 function sameStrength(matches: Candidate[]): boolean {
-  return matches[0].label.length > 0 && matches[1] !== undefined && matches[0].kind === matches[1].kind;
+  return matches[1] !== undefined && matches[0].score === matches[1].score;
 }
 
 function answerConnect(matches: Candidate[]): Answer {
   const host = matches.find((m) => m.kind === "server");
   if (!host) {
-    return { blocks: [{ type: "text", text: "没找到这台主机。" }], needsVault: false };
+    return { blocks: [{ type: "text", text: t("没找到这台主机。") }], needsVault: false };
   }
   if (host.status === "offline") {
     return {
-      blocks: [{ type: "text", text: `${host.label} 目前不可达，先看看它为什么离线。` },
+      blocks: [{ type: "text", text: t("{0} 目前不可达，先看看它为什么离线。", host.label) },
         { type: "asset", assetId: host.id, kind: "server" }],
       needsVault: false,
     };
   }
   return {
     blocks: [
-      { type: "text", text: `连接 ${host.label}：` },
-      { type: "action", action: "ssh", assetId: host.id, kind: "server", label: `打开 ${host.label} 的 SSH 会话` },
+      { type: "text", text: t("连接 {0}：", host.label) },
+      { type: "action", action: "ssh", assetId: host.id, kind: "server", label: t("打开 {0} 的 SSH 会话", host.label) },
     ],
     needsVault: true,
   };
@@ -312,7 +317,7 @@ function answerExpiry(query: string, snapshot: Snapshot, matches: Candidate[]): 
       assetId: d.id,
       kind: "domain" as const,
       label: d.name,
-      meta: `${daysUntil(d.expiresAt)} 天后到期 · ${d.registrar}`,
+      meta: t("{0} 天后到期 · {1}", daysUntil(d.expiresAt), d.registrar),
       status: d.status,
       days: daysUntil(d.expiresAt),
     })),
@@ -320,7 +325,7 @@ function answerExpiry(query: string, snapshot: Snapshot, matches: Candidate[]): 
       assetId: c.id,
       kind: "cert" as const,
       label: c.cn,
-      meta: `${daysUntil(c.expiresAt)} 天后到期 · ${c.issuer}`,
+      meta: t("{0} 天后到期 · {1}", daysUntil(c.expiresAt), c.issuer),
       status: c.status,
       days: daysUntil(c.expiresAt),
     })),
@@ -328,7 +333,7 @@ function answerExpiry(query: string, snapshot: Snapshot, matches: Candidate[]): 
       assetId: a.id,
       kind: "ai" as const,
       label: a.name,
-      meta: `${daysUntil(a.renewsAt)} 天后续费 · ${formatUsd(a.monthlyUsd)}/月`,
+      meta: t("{0} 天后续费 · {1}/月", daysUntil(a.renewsAt), formatUsd(a.monthlyUsd)),
       status: a.status,
       days: daysUntil(a.renewsAt),
     })),
@@ -340,7 +345,7 @@ function answerExpiry(query: string, snapshot: Snapshot, matches: Candidate[]): 
     if (row) {
       return {
         blocks: [
-          { type: "text", text: `${KIND_LABEL[row.kind]} ${row.label}：${row.meta}。` },
+          { type: "text", text: t("{0} {1}：{2}。", t(KIND_LABEL[row.kind]), row.label, row.meta) },
           { type: "asset", assetId: row.assetId, kind: row.kind },
         ],
         needsVault: false,
@@ -358,13 +363,13 @@ function answerExpiry(query: string, snapshot: Snapshot, matches: Candidate[]): 
   const soon = dated.filter((r) => r.days <= window);
   if (soon.length === 0) {
     return {
-      blocks: [{ type: "text", text: `${window} 天内没有要到期的东西。` }],
+      blocks: [{ type: "text", text: t("{0} 天内没有要到期的东西。", window) }],
       needsVault: false,
     };
   }
   return {
     blocks: [
-      { type: "text", text: `${window} 天内有 ${soon.length} 项要到期，最近的排在前面：` },
+      { type: "text", text: t("{0} 天内有 {1} 项要到期，最近的排在前面：", window, soon.length) },
       { type: "rows", rows: soon.slice(0, 10) },
     ],
     needsVault: false,
@@ -379,7 +384,7 @@ function answerUsage(snapshot: Snapshot, matches: Candidate[]): Answer {
       blocks: [
         {
           type: "text",
-          text: `${ai.name} 本月用量 ${ai.usagePct}%，月费 ${formatUsd(ai.monthlyUsd)}，${daysUntil(ai.renewsAt)} 天后续费。`,
+          text: t("{0} 本月用量 {1}%，月费 {2}，{3} 天后续费。", ai.name, ai.usagePct, formatUsd(ai.monthlyUsd), daysUntil(ai.renewsAt)),
         },
         { type: "asset", assetId: ai.id, kind: "ai" },
       ],
@@ -393,14 +398,14 @@ function answerUsage(snapshot: Snapshot, matches: Candidate[]): Answer {
       assetId: a.id,
       kind: "ai" as const,
       label: a.name,
-      meta: `用量 ${a.usagePct}% · ${formatUsd(a.monthlyUsd)}/月`,
+      meta: t("用量 {0}% · {1}/月", a.usagePct, formatUsd(a.monthlyUsd)),
       status: a.status,
     }));
   if (rows.length === 0) {
-    return { blocks: [{ type: "text", text: "还没有记录任何 AI 订阅。" }], needsVault: false };
+    return { blocks: [{ type: "text", text: t("还没有记录任何 AI 订阅。") }], needsVault: false };
   }
   return {
-    blocks: [{ type: "text", text: "按用量从高到低：" }, { type: "rows", rows }],
+    blocks: [{ type: "text", text: t("按用量从高到低：") }, { type: "rows", rows }],
     needsVault: false,
   };
 }
@@ -408,7 +413,7 @@ function answerUsage(snapshot: Snapshot, matches: Candidate[]): Answer {
 function answerSpend(snapshot: Snapshot): Answer {
   const total = snapshot.aiAssets.reduce((a, x) => a + x.monthlyUsd, 0);
   if (snapshot.aiAssets.length === 0) {
-    return { blocks: [{ type: "text", text: "还没有记录任何订阅，所以是 0。" }], needsVault: false };
+    return { blocks: [{ type: "text", text: t("还没有记录任何订阅，所以是 0。") }], needsVault: false };
   }
   const rows = [...snapshot.aiAssets]
     .sort((a, b) => b.monthlyUsd - a.monthlyUsd)
@@ -416,14 +421,14 @@ function answerSpend(snapshot: Snapshot): Answer {
       assetId: a.id,
       kind: "ai" as const,
       label: a.name,
-      meta: `${formatUsd(a.monthlyUsd)}/月 · ${a.provider}`,
+      meta: t("{0}/月 · {1}", formatUsd(a.monthlyUsd), a.provider),
       status: a.status,
     }));
   return {
     blocks: [
       {
         type: "text",
-        text: `${snapshot.aiAssets.length} 个订阅，每月合计 ${formatUsd(total)}。`,
+        text: t("{0} 个订阅，每月合计 {1}。", snapshot.aiAssets.length, formatUsd(total)),
       },
       { type: "rows", rows },
     ],
@@ -437,10 +442,10 @@ function answerHost(snapshot: Snapshot, matches: Candidate[]): Answer {
     const s = snapshot.servers.find((x) => x.id === named.id)!;
     const detail =
       s.probeError ??
-      `CPU ${s.cpu}% · 内存 ${s.memory}% · 磁盘 ${s.disk}% · 运行 ${s.uptime}`;
+      t("CPU {0}% · 内存 {1}% · 磁盘 {2}% · 运行 {3}", s.cpu, s.memory, s.disk, s.uptime);
     return {
       blocks: [
-        { type: "text", text: `${s.name}：${detail}` },
+        { type: "text", text: t("{0}：{1}", s.name, detail) },
         { type: "asset", assetId: s.id, kind: "server" },
       ],
       needsVault: false,
@@ -451,13 +456,13 @@ function answerHost(snapshot: Snapshot, matches: Candidate[]): Answer {
     assetId: s.id,
     kind: "server" as const,
     label: s.name,
-    meta: s.probeError ?? `CPU ${s.cpu}% · 内存 ${s.memory}% · 磁盘 ${s.disk}%`,
+    meta: s.probeError ?? t("CPU {0}% · 内存 {1}% · 磁盘 {2}%", s.cpu, s.memory, s.disk),
     status: s.status,
   }));
   if (rows.length === 0) {
-    return { blocks: [{ type: "text", text: "还没有记录任何主机。" }], needsVault: false };
+    return { blocks: [{ type: "text", text: t("还没有记录任何主机。") }], needsVault: false };
   }
-  return { blocks: [{ type: "text", text: "所有主机：" }, { type: "rows", rows }], needsVault: false };
+  return { blocks: [{ type: "text", text: t("所有主机：") }, { type: "rows", rows }], needsVault: false };
 }
 
 function answerAttention(snapshot: Snapshot): Answer {
@@ -466,37 +471,37 @@ function answerAttention(snapshot: Snapshot): Answer {
       assetId: s.id,
       kind: "server" as const,
       label: s.name,
-      meta: s.probeError ?? (s.status === "offline" ? "主机离线" : `CPU ${s.cpu}%`),
+      meta: s.probeError ?? (s.status === "offline" ? t("主机离线") : `CPU ${s.cpu}%`),
       status: s.status,
     })),
     ...snapshot.certs.filter((c) => c.status !== "online").map((c) => ({
       assetId: c.id,
       kind: "cert" as const,
       label: c.cn,
-      meta: c.trusted === false ? "证书链不受信任" : `${daysUntil(c.expiresAt)} 天后到期`,
+      meta: c.trusted === false ? t("证书链不受信任") : t("{0} 天后到期", daysUntil(c.expiresAt)),
       status: c.status,
     })),
     ...snapshot.domains.filter((d) => d.status !== "online").map((d) => ({
       assetId: d.id,
       kind: "domain" as const,
       label: d.name,
-      meta: `${daysUntil(d.expiresAt)} 天后到期`,
+      meta: t("{0} 天后到期", daysUntil(d.expiresAt)),
       status: d.status,
     })),
     ...snapshot.aiAssets.filter((a) => a.status !== "online").map((a) => ({
       assetId: a.id,
       kind: "ai" as const,
       label: a.name,
-      meta: `用量 ${a.usagePct}%`,
+      meta: t("用量 {0}%", a.usagePct),
       status: a.status,
     })),
   ];
 
   if (rows.length === 0) {
-    return { blocks: [{ type: "text", text: "没有待处理的事项，全部正常。" }], needsVault: false };
+    return { blocks: [{ type: "text", text: t("没有待处理的事项，全部正常。") }], needsVault: false };
   }
   return {
-    blocks: [{ type: "text", text: `有 ${rows.length} 项需要留意：` }, { type: "rows", rows }],
+    blocks: [{ type: "text", text: t("有 {0} 项需要留意：", rows.length) }, { type: "rows", rows }],
     needsVault: false,
   };
 }
@@ -506,11 +511,11 @@ function answerList(query: string, snapshot: Snapshot): Answer {
   const all = index(snapshot);
   const list = kind ? all.filter((c) => c.kind === kind) : all;
   if (list.length === 0) {
-    return { blocks: [{ type: "text", text: "这一类还没有任何记录。" }], needsVault: false };
+    return { blocks: [{ type: "text", text: t("这一类还没有任何记录。") }], needsVault: false };
   }
   return {
     blocks: [
-      { type: "text", text: `共 ${list.length} 项${kind ? KIND_LABEL[kind] : "资产"}：` },
+      { type: "text", text: t("共 {0} 项{1}：", list.length, kind ? t(KIND_LABEL[kind]) : t("资产")) },
       {
         type: "rows",
         rows: list.slice(0, 20).map((c) => ({
@@ -531,22 +536,22 @@ function answerUnknown(matches: Candidate[]): Answer {
     const hit = matches[0];
     return {
       blocks: [
-        { type: "text", text: `找到了 ${KIND_LABEL[hit.kind]} ${hit.label}，但没看懂你想问它什么。` },
+        { type: "text", text: t("找到了 {0} {1}，但没看懂你想问它什么。", t(KIND_LABEL[hit.kind]), hit.label) },
         { type: "asset", assetId: hit.id, kind: hit.kind },
-        { type: "text", text: "可以问：密码 / 账号 / 还有多久到期 / 用量 / 状态。" },
+        { type: "text", text: t("可以问：密码 / 账号 / 还有多久到期 / 用量 / 状态。") },
       ],
       needsVault: false,
     };
   }
   return {
     blocks: [
-      { type: "text", text: "这个我还没学会。可以试试这些问法：" },
+      { type: "text", text: t("这个我还没学会。可以试试这些问法：") },
       {
         type: "rows",
         rows: SAMPLES.map((s, i) => ({
           assetId: `sample-${i}`,
           kind: "server" as const,
-          label: s,
+          label: t(s),
           meta: "",
         })),
       },

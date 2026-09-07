@@ -1,5 +1,6 @@
 import { accountId, desktop } from "./desktop";
 import { useAppStore } from "./store";
+import { t } from "./i18n.ts";
 
 /**
  * Move plaintext secret bodies out of `assets.json` and into the vault.
@@ -37,7 +38,7 @@ export async function migrateSecretValues(): Promise<number> {
   }
 
   if (moved > 0) {
-    useAppStore.getState().log(`已把 ${moved} 条密钥内容移入加密库`, "secret");
+    useAppStore.getState().log(t("已把 {0} 条密钥内容移入加密库", moved), "secret");
   }
   return moved;
 }

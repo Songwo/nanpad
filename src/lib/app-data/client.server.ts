@@ -211,7 +211,9 @@ function tokenIdentityKey(token: string): string {
             .digest("base64url");
         }
       }
-    } catch {}
+    } catch {
+      // 不是可解析的 JWT 时，用下方的原始令牌摘要作为缓存键。
+    }
   }
   return createHash("sha256").update(token).digest("base64url");
 }

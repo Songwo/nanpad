@@ -9,6 +9,7 @@ import { useAppStore } from "@/lib/store";
 import type { AssetKind } from "@/lib/types";
 import { copyText } from "@/lib/utils";
 import { useVault } from "@/lib/vault-state";
+import { t } from "@/lib/i18n";
 
 /**
  * The read side of a saved account, shown inside the detail sheet.
@@ -58,67 +59,69 @@ export function AccountPanel({ assetId, kind }: { assetId: string; kind: AssetKi
     <section className="border-t border-line px-4 py-4">
       <div className="mb-3 flex items-center gap-2">
         <UserRound className="size-4 text-muted" />
-        <h3 className="text-meta font-semibold">{copy.title}</h3>
+        <h3 className="text-meta font-semibold">{t(copy.title)}</h3>
       </div>
 
       {!unlocked ? (
         <Button
           variant="outline"
           size="sm"
-          onClick={() => void requireVault("查看已保存的账号密码需要先解锁密钥库。")}
+          onClick={() => void requireVault(t("查看已保存的账号密码需要先解锁密钥库。"))}
         >
           <Lock className="size-3.5" />
-          解锁查看
+
+          {t("解锁查看")}
         </Button>
       ) : !checked ? (
-        <p className="text-meta text-muted">读取中…</p>
+        <p className="text-meta text-muted">{t("读取中…")}</p>
       ) : !record ? (
         <div className="flex items-center gap-3">
           <Button variant="outline" size="sm" onClick={() => openComposer(kind, assetId)}>
             <KeyRound className="size-3.5" />
-            录入账号密码
+
+            {t("录入账号密码")}
           </Button>
-          <span className="text-2xs text-muted">尚未保存任何账号信息。</span>
+          <span className="text-2xs text-muted">{t("尚未保存任何账号信息。")}</span>
         </div>
       ) : (
         <dl className="space-y-2">
           {record.url && (
-            <Row label="登录地址">
+            <Row label={t("登录地址")}>
               <button
                 type="button"
                 className="truncate text-left text-meta text-ink underline decoration-line-strong underline-offset-2 hover:decoration-ink"
-                onClick={() => bridge.openExternal(record.url!).catch(() => toast("无法打开链接"))}
+                onClick={() => bridge.openExternal(record.url!).catch(() => toast(t("无法打开链接")))}
               >
                 {record.url}
               </button>
-              <IconAction label="打开" onClick={() => bridge.openExternal(record.url!)}>
+              <IconAction label={t("打开")} onClick={() => bridge.openExternal(record.url!)}>
                 <ExternalLink className="size-3.5" />
               </IconAction>
             </Row>
           )}
 
           {record.username && (
-            <Row label="账号">
+            <Row label={t("账号")}>
               <span className="truncate font-mono text-meta">{record.username}</span>
-              <CopyAction value={record.username} what="账号" />
+              <CopyAction value={record.username} what={t("账号")} />
             </Row>
           )}
 
           {record.password && (
-            <Row label={copy.password}>
+            <Row label={t(copy.password)}>
               <span className="truncate font-mono text-meta">
                 {reveal ? record.password : "•".repeat(Math.min(18, record.password.length))}
               </span>
-              <IconAction label={reveal ? "隐藏" : "显示"} onClick={() => setReveal((v) => !v)}>
+              <IconAction label={reveal ? t("隐藏") : t("显示")} onClick={() => setReveal((v) => !v)}>
                 {reveal ? <EyeOff className="size-3.5" /> : <Eye className="size-3.5" />}
               </IconAction>
-              <CopyAction value={record.password} what={copy.password} />
+              <CopyAction value={record.password} what={t(copy.password)} />
             </Row>
           )}
 
           {record.note && (
             <div>
-              <dt className="mb-1 text-2xs text-subtle">备注</dt>
+              <dt className="mb-1 text-2xs text-subtle">{t("备注")}</dt>
               <dd>
                 <pre className="whitespace-pre-wrap rounded-md bg-canvas px-3 py-2 font-mono text-2xs text-ink">
                   {record.note}
@@ -128,7 +131,8 @@ export function AccountPanel({ assetId, kind }: { assetId: string; kind: AssetKi
           )}
 
           <p className="pt-1 text-2xs text-subtle">
-            更新于 <TimeAgo iso={record.updatedAt} />
+
+            {t("更新于")} <TimeAgo iso={record.updatedAt} />
           </p>
         </dl>
       )}
@@ -173,10 +177,10 @@ function IconAction({
 function CopyAction({ value, what }: { value: string; what: string }) {
   return (
     <IconAction
-      label={`复制${what}`}
+      label={t("复制{0}", what)}
       onClick={() => {
         void copyText(value);
-        toast(`已复制${what}`);
+        toast(t("已复制{0}", what));
       }}
     >
       <Copy className="size-3.5" />

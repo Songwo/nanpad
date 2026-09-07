@@ -1,4 +1,5 @@
 import type { AssetKind, Taggable } from "./types.ts";
+import { t } from "./i18n.ts";
 
 /** Tolerates records written before tags existed. */
 export function tagsOf(asset: Partial<Taggable> | null | undefined): string[] {
@@ -81,7 +82,7 @@ export function groupByTag<T extends Partial<Taggable>>(items: T[]): TagGroup<T>
     .sort((a, b) => b.items.length - a.items.length || a.tag.localeCompare(b.tag, "zh-CN"));
 
   if (loose.length) {
-    groups.push({ tag: UNTAGGED, label: UNTAGGED_LABEL, items: loose });
+    groups.push({ tag: UNTAGGED, label: t(UNTAGGED_LABEL), items: loose });
   }
   return groups;
 }

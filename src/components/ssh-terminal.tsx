@@ -6,6 +6,7 @@ import { usePresence } from "@/lib/motion";
 import { useAppStore } from "@/lib/store";
 import type { Server } from "@/lib/types";
 import { cn } from "@/lib/utils";
+import { t } from "@/lib/i18n";
 
 type Line = { id: number; text: string; tone?: "dim" | "ok" | "warn" | "err" };
 
@@ -62,7 +63,7 @@ function TerminalWindow({
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-8">
       <button
         type="button"
-        aria-label="关闭终端"
+        aria-label={t("关闭终端")}
         className="anim-scrim absolute inset-0 bg-ink/45 backdrop-blur-sm"
         data-shown={shown}
         onClick={onClose}
@@ -77,7 +78,7 @@ function TerminalWindow({
               type="button"
               className="size-3 rounded-full bg-crit"
               onClick={onClose}
-              aria-label="关闭"
+              aria-label={t("关闭")}
             />
             <span className="size-3 rounded-full bg-warn/90" />
             <span className="size-3 rounded-full bg-ok/90" />
@@ -87,13 +88,13 @@ function TerminalWindow({
             <span className="font-mono text-meta text-term">
               ssh {server.username}@{server.host} · {server.label}
             </span>
-            <span className="text-2xs text-term/55">{badge.label}</span>
+            <span className="text-2xs text-term/55">{t(badge.label)}</span>
           </div>
           <button
             type="button"
             className="grid size-7 place-items-center rounded-full text-term/70 transition-colors duration-150 ease-out hover:bg-white/10 hover:text-term"
             onClick={onClose}
-            aria-label="关闭终端"
+            aria-label={t("关闭终端")}
           >
             <X className="size-3.5" />
           </button>
@@ -134,12 +135,12 @@ function SimShell({ server, onClose }: { server: Server; onClose: () => void }) 
   useEffect(() => {
     let alive = true;
     const steps: [number, string, Line["tone"]?][] = [
-      [120, `OpenSSH_9.6p1 连接 ${server.host}:${server.port}`, "dim"],
-      [380, `解析 ${server.name} (${server.host}) 完成`, "dim"],
-      [640, `ECDSA 指纹 SHA256:${fakeFp(server.id)}`, "dim"],
-      [880, `认证公钥 … 成功`, "ok"],
+      [120, t("OpenSSH_9.6p1 连接 {0}:{1}", server.host, server.port), "dim"],
+      [380, t("解析 {0} ({1}) 完成", server.name, server.host), "dim"],
+      [640, t("ECDSA 指纹 SHA256:{0}", fakeFp(server.id)), "dim"],
+      [880, t("认证公钥 … 成功"), "ok"],
       [1100, `Welcome to ${server.os}  ·  ${server.region}`, "ok"],
-      [1280, `这是浏览器内的模拟会话，桌面版才会真正连出网络。`, "warn"],
+      [1280, t("这是浏览器内的模拟会话，桌面版才会真正连出网络。"), "warn"],
     ];
     const timers = steps.map(([ms, text, tone]) =>
       window.setTimeout(() => {
@@ -243,7 +244,7 @@ function SimShell({ server, onClose }: { server: Server; onClose: () => void }) 
             className="min-w-0 flex-1 bg-transparent text-term outline-none"
             autoComplete="off"
             spellCheck={false}
-            aria-label="命令"
+            aria-label={t("命令")}
           />
           {!input && <span className="term-cursor" />}
         </form>
@@ -263,12 +264,12 @@ function interpret(
     return [
       {
         text: [
-          "内置命令  help  clear  exit",
-          "系统      ls  pwd  cd  whoami  hostname  uname -a  uptime",
-          "资源      top  free -h  df -h  ps",
-          "网络      ip addr  ping  ss -tlnp",
-          "服务      docker ps  systemctl status nginx|postgresql",
-          "其它      neofetch  cat /etc/os-release",
+          t("内置命令  help  clear  exit"),
+          t("系统      ls  pwd  cd  whoami  hostname  uname -a  uptime"),
+          t("资源      top  free -h  df -h  ps"),
+          t("网络      ip addr  ping  ss -tlnp"),
+          t("服务      docker ps  systemctl status nginx|postgresql"),
+          t("其它      neofetch  cat /etc/os-release"),
         ].join("\n"),
         tone: "dim",
       },
@@ -399,11 +400,11 @@ function interpret(
     ];
   }
   if (base.startsWith("rm ") || base.includes("reboot") || base.includes("shutdown")) {
-    return [{ text: "拒绝：演示终端禁止破坏性命令。", tone: "err" }];
+    return [{ text: t("拒绝：演示终端禁止破坏性命令。"), tone: "err" }];
   }
   return [
     {
-      text: `command not found: ${base}    输入 help 查看可用命令`,
+      text: t("command not found: {0}    输入 help 查看可用命令", base),
       tone: "err",
     },
   ];

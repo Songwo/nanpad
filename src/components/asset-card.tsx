@@ -29,12 +29,9 @@ import type {
   Server as ServerT,
 } from "@/lib/types";
 import { cn, copyText, daysUntil, formatDate, formatUsd } from "@/lib/utils";
+import { t } from "@/lib/i18n";
 
-export function openFromEvent(
-  e: MouseEvent<HTMLElement>,
-  kind: AssetKind,
-  id: string,
-) {
+export function openFromEvent(e: MouseEvent<HTMLElement>, kind: AssetKind, id: string) {
   const el = e.currentTarget;
   const r = el.getBoundingClientRect();
   useAppStore.getState().setExpanded({
@@ -44,13 +41,7 @@ export function openFromEvent(
   });
 }
 
-export function ServerCard({
-  data,
-  compact = true,
-}: {
-  data: ServerT;
-  compact?: boolean;
-}) {
+export function ServerCard({ data, compact = true }: { data: ServerT; compact?: boolean }) {
   const liveCpu = useLive((s) => s.cpu[data.id]);
   const liveMem = useLive((s) => s.memory[data.id]);
   const cpu = liveCpu ?? data.cpu;
@@ -61,9 +52,7 @@ export function ServerCard({
     <article
       className={cn(
         "group relative bg-card p-4 text-left",
-        compact
-          ? "card-tap cursor-pointer rounded-xl shadow-card"
-          : "rounded-2xl",
+        compact ? "card-tap cursor-pointer rounded-xl shadow-card" : "rounded-2xl",
       )}
       data-asset-id={compact ? data.id : undefined}
       onClick={compact ? (e) => openFromEvent(e, "server", data.id) : undefined}
@@ -75,9 +64,13 @@ export function ServerCard({
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
             <h3 className="truncate font-semibold tracking-tight">{data.name}</h3>
-            <span className={chipClass(status)}>
+            <span
+              key={status}
+              className={cn(chipClass(status), "status-feedback")}
+              data-status={status}
+            >
               <span className={dotClass(status)} />
-              {STATUS_LABEL[status]}
+              {t(STATUS_LABEL[status])}
             </span>
           </div>
           <p className="mt-0.5 truncate text-meta text-muted">
@@ -94,8 +87,8 @@ export function ServerCard({
 
       <div className="mt-4 grid grid-cols-3 gap-3">
         <Metric label="CPU" value={cpu} />
-        <Metric label="内存" value={mem} />
-        <Metric label="磁盘" value={data.disk} />
+        <Metric label={t("内存")} value={mem} />
+        <Metric label={t("磁盘")} value={data.disk} />
       </div>
 
       <div className="mt-3 flex flex-wrap gap-1.5">
@@ -103,7 +96,7 @@ export function ServerCard({
           <CardTag key={t} tag={t} />
         ))}
         <span className="ml-auto text-2xs tabular-nums text-subtle">
-          运行 {data.uptime} · <TimeAgo iso={data.lastSeen} />
+          {t("运行 {0}", data.uptime)} · <TimeAgo iso={data.lastSeen} />
         </span>
       </div>
 
@@ -115,13 +108,13 @@ export function ServerCard({
             <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-2xs">
               {data.kernel && (
                 <div>
-                  <dt className="text-subtle">内核</dt>
+                  <dt className="text-subtle">{t("内核")}</dt>
                   <dd className="font-mono text-ink">{data.kernel}</dd>
                 </div>
               )}
               {data.loadavg && (
                 <div>
-                  <dt className="text-subtle">负载</dt>
+                  <dt className="text-subtle">{t("负载")}</dt>
                   <dd className="font-mono text-ink">{data.loadavg}</dd>
                 </div>
               )}
@@ -129,8 +122,8 @@ export function ServerCard({
           )}
           <p className="text-meta leading-relaxed text-muted">{data.notes}</p>
           <div className="flex flex-wrap gap-2">
-            <CopyBtn text={`${data.username}@${data.host} -p ${data.port}`} label="复制 SSH" />
-            <CopyBtn text={data.host} label="复制 IP" />
+            <CopyBtn text={`${data.username}@${data.host} -p ${data.port}`} label={t("复制 SSH")} />
+            <CopyBtn text={data.host} label={t("复制 IP")} />
             {status !== "offline" && (
               <button
                 type="button"
@@ -141,7 +134,8 @@ export function ServerCard({
                 }}
               >
                 <SquareTerminal className="size-3.5" />
-                玻璃终端
+
+                {t("玻璃终端")}
               </button>
             )}
           </div>
@@ -161,7 +155,8 @@ function ProbeNote({ id, error, at }: { id: string; error?: string; at?: string 
     return (
       <p className="mt-3 flex items-center gap-1.5 text-2xs text-muted">
         <Loader2 className="size-3.5 animate-spin" />
-        正在采集…
+
+        {t("正在采集…")}
       </p>
     );
   }
@@ -176,7 +171,7 @@ function ProbeNote({ id, error, at }: { id: string; error?: string; at?: string 
   }
   return (
     <p className="mt-3 text-2xs text-subtle">
-      实时采集于 <TimeAgo iso={at!} />
+      {t("实时采集于")} <TimeAgo iso={at!} />
     </p>
   );
 }
@@ -208,21 +203,13 @@ function Metric({ label, value }: { label: string; value: number }) {
   );
 }
 
-export function DomainCard({
-  data,
-  compact = true,
-}: {
-  data: Domain;
-  compact?: boolean;
-}) {
+export function DomainCard({ data, compact = true }: { data: Domain; compact?: boolean }) {
   const d = daysUntil(data.expiresAt);
   return (
     <article
       className={cn(
         "bg-card p-4 text-left",
-        compact
-          ? "card-tap cursor-pointer rounded-xl shadow-card"
-          : "rounded-2xl",
+        compact ? "card-tap cursor-pointer rounded-xl shadow-card" : "rounded-2xl",
       )}
       data-asset-id={compact ? data.id : undefined}
       onClick={compact ? (e) => openFromEvent(e, "domain", data.id) : undefined}
@@ -239,14 +226,18 @@ export function DomainCard({
             {data.registrar} · DNS {data.dns}
           </p>
         </div>
-        <span className={chipClass(data.status)}>
+        <span
+          key={data.status}
+          className={cn(chipClass(data.status), "status-feedback")}
+          data-status={data.status}
+        >
           <span className={dotClass(data.status)} />
-          {d <= 0 ? "已过期" : `${d} 天`}
+          {d <= 0 ? t("已过期") : t("{0} 天", d)}
         </span>
       </header>
       <p className="mt-3 text-meta text-muted">
-        到期 {formatDate(data.expiresAt)}
-        {data.autoRenew ? " · 自动续费" : " · 未开自动续费"}
+        {t("到期 {0}", formatDate(data.expiresAt))}
+        {data.autoRenew ? t(" · 自动续费") : t(" · 未开自动续费")}
       </p>
       <TagRow tags={tagsOf(data)} />
       <ProbeNote id={data.id} error={data.probeError} at={data.probedAt} />
@@ -260,30 +251,22 @@ export function DomainCard({
             ))}
           </ul>
           <p>{data.notes}</p>
-          <CopyBtn text={data.name} label="复制域名" />
+          <CopyBtn text={data.name} label={t("复制域名")} />
         </div>
       )}
     </article>
   );
 }
 
-export function MailCard({
-  data,
-  compact = true,
-}: {
-  data: Mailbox;
-  compact?: boolean;
-}) {
+export function MailCard({ data, compact = true }: { data: Mailbox; compact?: boolean }) {
   const pct = data.quotaMb ? Math.round((data.usedMb / data.quotaMb) * 100) : 0;
   const kindLabel =
-    data.kind === "mailbox" ? "邮箱" : data.kind === "alias" ? "别名" : "转发";
+    data.kind === "mailbox" ? t("邮箱") : data.kind === "alias" ? t("别名") : t("转发");
   return (
     <article
       className={cn(
         "bg-card p-4 text-left",
-        compact
-          ? "card-tap cursor-pointer rounded-xl shadow-card"
-          : "rounded-2xl",
+        compact ? "card-tap cursor-pointer rounded-xl shadow-card" : "rounded-2xl",
       )}
       data-asset-id={compact ? data.id : undefined}
       onClick={compact ? (e) => openFromEvent(e, "mail", data.id) : undefined}
@@ -301,14 +284,18 @@ export function MailCard({
             {data.forwardTo ? ` → ${data.forwardTo}` : ""}
           </p>
         </div>
-        <span className={chipClass(data.status)}>
+        <span
+          key={data.status}
+          className={cn(chipClass(data.status), "status-feedback")}
+          data-status={data.status}
+        >
           <span className={dotClass(data.status)} />
-          {STATUS_LABEL[data.status]}
+          {t(STATUS_LABEL[data.status])}
         </span>
       </header>
       {data.quotaMb > 0 && (
         <div className="mt-4">
-          <Metric label="容量" value={pct} />
+          <Metric label={t("容量")} value={pct} />
           <p className="mt-1 text-2xs text-subtle tabular-nums">
             {data.usedMb} / {data.quotaMb} MB
           </p>
@@ -320,20 +307,12 @@ export function MailCard({
   );
 }
 
-export function AiCard({
-  data,
-  compact = true,
-}: {
-  data: AiAsset;
-  compact?: boolean;
-}) {
+export function AiCard({ data, compact = true }: { data: AiAsset; compact?: boolean }) {
   return (
     <article
       className={cn(
         "bg-card p-4 text-left",
-        compact
-          ? "card-tap cursor-pointer rounded-xl shadow-card"
-          : "rounded-2xl",
+        compact ? "card-tap cursor-pointer rounded-xl shadow-card" : "rounded-2xl",
       )}
       data-asset-id={compact ? data.id : undefined}
       onClick={compact ? (e) => openFromEvent(e, "ai", data.id) : undefined}
@@ -352,17 +331,21 @@ export function AiCard({
         </div>
         <span className="text-body font-semibold tabular-nums">
           {formatUsd(data.monthlyUsd)}
-          <span className="text-2xs font-normal text-subtle"> /月</span>
+          <span className="text-2xs font-normal text-subtle"> {t("/月")}</span>
         </span>
       </header>
       <div className="mt-4">
-        <Metric label="本月用量" value={data.usagePct} />
+        <Metric label={t("本月用量")} value={data.usagePct} />
       </div>
       <div className="mt-3 flex items-center justify-between text-2xs text-subtle">
         <span className="font-mono">{data.keyHint}</span>
-        <span className={chipClass(data.status)}>
+        <span
+          key={data.status}
+          className={cn(chipClass(data.status), "status-feedback")}
+          data-status={data.status}
+        >
           <span className={dotClass(data.status)} />
-          {daysUntil(data.renewsAt)} 天后续费
+          {daysUntil(data.renewsAt)} {t("天后续费")}
         </span>
       </div>
       <TagRow tags={tagsOf(data)} />
@@ -371,13 +354,7 @@ export function AiCard({
   );
 }
 
-export function SecretCard({
-  data,
-  compact = true,
-}: {
-  data: Secret;
-  compact?: boolean;
-}) {
+export function SecretCard({ data, compact = true }: { data: Secret; compact?: boolean }) {
   const kindLabel =
     data.kind === "api"
       ? "API"
@@ -385,14 +362,12 @@ export function SecretCard({
         ? "SSH"
         : data.kind === "token"
           ? "Token"
-          : "密码";
+          : t("密码");
   return (
     <article
       className={cn(
         "bg-card p-4 text-left",
-        compact
-          ? "card-tap cursor-pointer rounded-xl shadow-card"
-          : "rounded-2xl",
+        compact ? "card-tap cursor-pointer rounded-xl shadow-card" : "rounded-2xl",
       )}
       data-asset-id={compact ? data.id : undefined}
       onClick={compact ? (e) => openFromEvent(e, "secret", data.id) : undefined}
@@ -410,7 +385,7 @@ export function SecretCard({
         <span className="chip chip-mute">{kindLabel}</span>
       </header>
       <p className="mt-3 text-2xs text-subtle">
-        上次轮换 {formatDate(data.lastRotated)}
+        {t("上次轮换")} {formatDate(data.lastRotated)}
       </p>
       <TagRow tags={tagsOf(data)} />
       {!compact && (
@@ -433,29 +408,21 @@ function SecretReveal({ value }: { value: string }) {
       onClick={(e) => {
         e.stopPropagation();
         copyText(value);
-        toast("已复制到剪贴板");
+        toast(t("已复制到剪贴板"));
       }}
     >
-      点击复制完整值 · {value.slice(0, 18)}…
+      {t("点击复制完整值 · {0}…", value.slice(0, 18))}
     </button>
   );
 }
 
-export function CertCard({
-  data,
-  compact = true,
-}: {
-  data: Certificate;
-  compact?: boolean;
-}) {
+export function CertCard({ data, compact = true }: { data: Certificate; compact?: boolean }) {
   const d = daysUntil(data.expiresAt);
   return (
     <article
       className={cn(
         "bg-card p-4 text-left",
-        compact
-          ? "card-tap cursor-pointer rounded-xl shadow-card"
-          : "rounded-2xl",
+        compact ? "card-tap cursor-pointer rounded-xl shadow-card" : "rounded-2xl",
       )}
       data-asset-id={compact ? data.id : undefined}
       onClick={compact ? (e) => openFromEvent(e, "cert", data.id) : undefined}
@@ -470,18 +437,23 @@ export function CertCard({
           </div>
           <p className="mt-0.5 text-meta text-muted">{data.issuer}</p>
         </div>
-        <span className={chipClass(data.status)}>
+        <span
+          key={data.status}
+          className={cn(chipClass(data.status), "status-feedback")}
+          data-status={data.status}
+        >
           <span className={dotClass(data.status)} />
-          {d <= 0 ? "已过期" : `${d} 天`}
+          {d <= 0 ? t("已过期") : t("{0} 天", d)}
         </span>
       </header>
       <p className="mt-3 text-meta text-muted">
-        到期 {formatDate(data.expiresAt)}
+        {t("到期 {0}", formatDate(data.expiresAt))}
         {data.protocol ? ` · ${data.protocol}` : ""}
       </p>
       {data.trusted === false && (
         <p className="mt-1 text-2xs text-crit">
-          证书链不受信任{data.untrustedReason ? `：${data.untrustedReason}` : ""}
+          {t("证书链不受信任")}
+          {data.untrustedReason ? t("：{0}", data.untrustedReason) : ""}
         </p>
       )}
       <TagRow tags={tagsOf(data)} />
@@ -505,7 +477,7 @@ function CopyBtn({ text, label }: { text: string; label: string }) {
       onClick={(e) => {
         e.stopPropagation();
         copyText(text);
-        toast("已复制");
+        toast(t("已复制"));
       }}
     >
       <Copy className="size-3.5" />

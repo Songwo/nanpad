@@ -24,14 +24,56 @@ function on(channel, handler) {
 
 contextBridge.exposeInMainWorld("sinan", {
   isDesktop: true,
+  aiAccounts: {
+    list: () => unwrap(ipcRenderer.invoke("ai-accounts:list")),
+    start: (provider) => unwrap(ipcRenderer.invoke("ai-accounts:start", provider)),
+    status: (id) => unwrap(ipcRenderer.invoke("ai-accounts:status", id)),
+    finish: (id, code) => unwrap(ipcRenderer.invoke("ai-accounts:finish", id, code)),
+    cancel: (id) => unwrap(ipcRenderer.invoke("ai-accounts:cancel", id)),
+    refresh: (id) => unwrap(ipcRenderer.invoke("ai-accounts:refresh", id)),
+    remove: (id) => unwrap(ipcRenderer.invoke("ai-accounts:remove", id)),
+  },
+  profile: {
+    get: () => unwrap(ipcRenderer.invoke("profile:get")),
+    save: (value) => unwrap(ipcRenderer.invoke("profile:save", value)),
+  },
+  agent: {
+    config: () => unwrap(ipcRenderer.invoke("agent:config")),
+    saveConfig: (config) => unwrap(ipcRenderer.invoke("agent:save-config", config)),
+    models: () => unwrap(ipcRenderer.invoke("agent:models")),
+    test: () => unwrap(ipcRenderer.invoke("agent:test")),
+    run: (request) => unwrap(ipcRenderer.invoke("agent:run", request)),
+    cancel: (id) => unwrap(ipcRenderer.invoke("agent:cancel", id)),
+    knowledge: () => unwrap(ipcRenderer.invoke("agent:knowledge")),
+    rebuild: () => unwrap(ipcRenderer.invoke("agent:rebuild")),
+    importDocument: () => unwrap(ipcRenderer.invoke("agent:import-document")),
+    removeDocument: (id) => unwrap(ipcRenderer.invoke("agent:remove-document", id)),
+    onEvent: (handler) => on("agent:event", handler),
+  },
 
   info: () => unwrap(ipcRenderer.invoke("app:info")),
   checkUpdate: () => unwrap(ipcRenderer.invoke("app:check-update")),
   openDataDir: () => unwrap(ipcRenderer.invoke("shell:open-path", "userData")),
   openExternal: (url) => unwrap(ipcRenderer.invoke("shell:open-external", url)),
   pickJson: () => unwrap(ipcRenderer.invoke("dialog:pick-json")),
+  preferences: {
+    get: () => unwrap(ipcRenderer.invoke("preferences:get")),
+    set: (patch) => unwrap(ipcRenderer.invoke("preferences:set", patch)),
+  },
+  onAttention: (handler) => on("app:attention", handler),
+  onVaultChanged: (handler) => on("vault:changed", handler),
+  metrics: {
+    list: (id, since) => unwrap(ipcRenderer.invoke("metrics:list", id, since)),
+    onUpdated: (handler) => on("metrics:updated", handler),
+    onError: (handler) => on("metrics:error", handler),
+  },
+  sftp: {
+    list: (id, path) => unwrap(ipcRenderer.invoke("sftp:list", id, path)),
+    download: (id, path) => unwrap(ipcRenderer.invoke("sftp:download", id, path)),
+  },
 
   store: {
+    addDemo: () => unwrap(ipcRenderer.invoke("store:add-demo")),
     load: () => unwrap(ipcRenderer.invoke("store:load")),
     save: (snapshot) => unwrap(ipcRenderer.invoke("store:save", snapshot)),
     loadConversations: () => unwrap(ipcRenderer.invoke("store:load-conversations")),
@@ -83,7 +125,8 @@ contextBridge.exposeInMainWorld("sinan", {
   },
 
   cert: {
-    probe: (host, port, servername) => unwrap(ipcRenderer.invoke("cert:probe", host, port, servername)),
+    probe: (host, port, servername) =>
+      unwrap(ipcRenderer.invoke("cert:probe", host, port, servername)),
     parsePem: (pem) => unwrap(ipcRenderer.invoke("cert:parse-pem", pem)),
   },
 });

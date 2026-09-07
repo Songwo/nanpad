@@ -22,6 +22,8 @@ import { attentionOf } from "@/lib/status";
 import type { AssetKind, ViewId } from "@/lib/types";
 import { cn, downloadJson } from "@/lib/utils";
 import { useVault } from "@/lib/vault-state";
+import { t } from "@/lib/i18n";
+import { useProfile } from "@/lib/profile";
 
 export const NAV: {
   id: ViewId;
@@ -76,7 +78,7 @@ export function Sidebar({ className, ...rest }: HTMLAttributes<HTMLElement>) {
               onClick={() => setView(item.id)}
             >
               <Icon className="size-6 shrink-0" strokeWidth={active ? 2.4 : 1.8} />
-              <span className="flex-1 text-left">{item.label}</span>
+              <span className="flex-1 text-left">{t(item.label)}</span>
               {n > 0 ? (
                 <span className="grid size-5 place-items-center rounded-full bg-crit text-2xs font-semibold tabular-nums text-card">
                   {n}
@@ -93,7 +95,8 @@ export function Sidebar({ className, ...rest }: HTMLAttributes<HTMLElement>) {
           className="w-full text-base font-semibold"
           onClick={() => openComposer(kind)}
         >
-          添加资产
+
+          {t("添加资产")}
         </Button>
         <ProfileMenu />
       </div>
@@ -107,6 +110,7 @@ function ProfileMenu() {
   const importSnapshot = useAppStore((s) => s.importSnapshot);
   const vaultUnlocked = useVault((s) => s.unlocked);
   const lockVault = useVault((s) => s.lock);
+  const name = useProfile((s) => s.profile?.name) || "Nanpad";
   const [open, setOpen] = useState(false);
   const { mounted, shown } = usePresence(open, 150);
   const root = useRef<HTMLDivElement>(null);
@@ -151,15 +155,16 @@ function ProfileMenu() {
       className="relative flex items-center gap-3 rounded-2xl px-2 py-2 transition-colors duration-150 ease-out hover:bg-line"
     >
       <div className="grid size-10 shrink-0 place-items-center rounded-full bg-ink text-meta font-semibold text-card">
-        林
+
+        {Array.from(name)[0]}
       </div>
       <div className="min-w-0 flex-1">
-        <div className="truncate text-body font-semibold leading-tight">林深</div>
-        <div className="truncate text-2xs text-muted">@sinan.local</div>
+        <div className="truncate text-body font-semibold leading-tight">{name}</div>
+        <div className="truncate text-2xs text-muted">{t("本地个人空间")}</div>
       </div>
       <button
         type="button"
-        aria-label="更多操作"
+        aria-label={t("更多操作")}
         aria-expanded={open}
         className="flex size-8 items-center justify-center rounded-full text-muted transition-colors duration-150 ease-out hover:bg-card hover:text-ink"
         onClick={() => setOpen((v) => !v)}
@@ -171,9 +176,10 @@ function ProfileMenu() {
           className="anim-panel absolute bottom-14 right-0 z-30 w-44 overflow-hidden rounded-lg bg-card py-1 shadow-float"
           data-shown={shown}
         >
-          {item("导出 JSON", () => {
+          {item(t("导出 JSON"), () => {
             const s = useAppStore.getState();
             downloadJson("sinan-assets.json", {
+              links: s.links,
               servers: s.servers,
               domains: s.domains,
               mailboxes: s.mailboxes,
@@ -181,9 +187,9 @@ function ProfileMenu() {
               secrets: s.secrets,
               certs: s.certs,
             });
-            log("已导出资产快照");
+            log(t("已导出资产快照"));
           })}
-          {item("导入 JSON", () => {
+          {item(t("导入 JSON"), () => {
             const input = document.createElement("input");
             input.type = "file";
             input.accept = "application/json";
@@ -191,13 +197,13 @@ function ProfileMenu() {
               const file = input.files?.[0];
               if (!file) return;
               importSnapshot(JSON.parse(await file.text()));
-              log("已导入资产快照");
+              log(t("已导入资产快照"));
             };
             input.click();
           })}
-          {item("设置…", () => useAppStore.getState().setSettingsOpen(true))}
-          {vaultUnlocked && item("锁定密钥库", () => void lockVault())}
-          {item(isDesktop() ? "清空全部数据" : "重置演示数据", () => resetDemo(), "danger")}
+          {item(t("设置…"), () => useAppStore.getState().setSettingsOpen(true))}
+          {vaultUnlocked && item(t("锁定密钥库"), () => void lockVault())}
+          {item(isDesktop() ? t("清空全部数据") : t("重置演示数据"), () => resetDemo(), "danger")}
         </div>
       )}
     </div>

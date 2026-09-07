@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import { useMemo, type ReactNode } from "react";
 import { AgentHistory } from "./agent-view";
+import { CalendarExport } from "./operations-panel";
 import { TimeAgo } from "./ui/time-ago";
 import { isDesktop } from "@/lib/desktop";
 import { useLive } from "@/lib/live";
@@ -20,6 +21,7 @@ import { tagIndex } from "@/lib/tags";
 import { useAppStore } from "@/lib/store";
 import type { AssetKind, Status, ViewId } from "@/lib/types";
 import { cn, daysUntil } from "@/lib/utils";
+import { t, getLocale } from "@/lib/i18n";
 
 const KIND_ICON: Record<AssetKind | "system", LucideIcon> = {
   server: ServerIcon,
@@ -56,6 +58,7 @@ interface Alert {
  * a `useShallow` selector into a render loop.
  */
 export function useAlerts(): Alert[] {
+  const locale = getLocale();
   const servers = useAppStore((s) => s.servers);
   const domains = useAppStore((s) => s.domains);
   const mailboxes = useAppStore((s) => s.mailboxes);
@@ -72,7 +75,7 @@ export function useAlerts(): Alert[] {
           kind: "server" as const,
           status: x.status,
           title: x.name,
-          detail: x.status === "offline" ? "主机离线" : `CPU ${x.cpu}% · 负载偏高`,
+          detail: x.status === "offline" ? t("主机离线") : t("CPU {0}% · 负载偏高", x.cpu),
         })),
       ...certs
         .filter((x) => x.status !== "online")
@@ -99,7 +102,7 @@ export function useAlerts(): Alert[] {
           kind: "ai" as const,
           status: x.status,
           title: x.name,
-          detail: `本月用量 ${x.usagePct}%`,
+          detail: t("本月用量 {0}%", x.usagePct),
         })),
       ...mailboxes
         .filter((x) => x.status !== "online")
@@ -108,7 +111,7 @@ export function useAlerts(): Alert[] {
           kind: "mail" as const,
           status: x.status,
           title: x.address,
-          detail: "投递异常",
+          detail: t("投递异常"),
         })),
       ...secrets
         .filter((x) => x.status !== "online")
@@ -117,11 +120,11 @@ export function useAlerts(): Alert[] {
           kind: "secret" as const,
           status: x.status,
           title: x.name,
-          detail: "建议轮换",
+          detail: t("建议轮换"),
         })),
     ];
     return out.sort((a, b) => rank(b.status) - rank(a.status));
-  }, [servers, domains, mailboxes, aiAssets, secrets, certs]);
+  }, [servers, domains, mailboxes, aiAssets, secrets, certs, locale]);
 }
 
 function rank(s: Status) {
@@ -130,7 +133,7 @@ function rank(s: Status) {
 
 function expiryDetail(iso: string) {
   const d = daysUntil(iso);
-  return d <= 0 ? "已过期" : `${d} 天后到期`;
+  return d <= 0 ? t("已过期") : t("{0} 天后到期", d);
 }
 
 /**
@@ -149,7 +152,7 @@ export function RightRail({ className }: { className?: string }) {
       <div className="sticky top-3 space-y-4">
         <button type="button" className="rail-search" onClick={() => setCommandOpen(true)}>
           <Search className="size-4 shrink-0" />
-          <span className="flex-1 text-left">搜索资产、跳转、连接</span>
+          <span className="flex-1 text-left">{t("搜索资产、跳转、连接")}</span>
           <kbd className="rounded-xs bg-card px-1.5 py-0.5 font-mono text-2xs text-muted">⌘K</kbd>
         </button>
 
@@ -157,9 +160,21 @@ export function RightRail({ className }: { className?: string }) {
             picture while you are mid-conversation. */}
         {view === "agent" && <AgentHistory />}
 
-        <Panel title="需要留意" trailing={alerts.length ? `${alerts.length}` : undefined}>
+        <Panel
+          title={t("需要留意")}
+          trailing={
+            <span className="flex items-center gap-2">
+              {alerts.length > 0 && (
+                <span className="grid size-5 place-items-center rounded-full bg-crit text-2xs font-semibold text-card tabular-nums">
+                  {alerts.length}
+                </span>
+              )}
+              <CalendarExport />
+            </span>
+          }
+        >
           {alerts.length === 0 ? (
-            <p className="px-4 pb-4 text-meta text-muted">全部资产运转正常。</p>
+            <p className="px-4 pb-4 text-meta text-muted">{t("全部资产运转正常。")}</p>
           ) : (
             <ul>
               {alerts.slice(0, 5).map((a) => (
@@ -173,7 +188,7 @@ export function RightRail({ className }: { className?: string }) {
 
         <QuickTerminal />
 
-        <Panel title="最近动态">
+        <Panel title={t("最近动态")}>
           <ul className="space-y-3 px-4 pb-4">
             {activity.slice(0, 5).map((a) => {
               const Icon = KIND_ICON[a.kind] ?? AlertTriangle;
@@ -191,9 +206,11 @@ export function RightRail({ className }: { className?: string }) {
         </Panel>
 
         <p className="px-1 text-2xs leading-relaxed text-subtle">
-          ⌘K 全局搜索 · ⌘N 新建资产 · / 打开命令面板
+          {t("⌘K 全局搜索 · ⌘N 新建资产 · / 打开命令面板")}
           <br />
-          {isDesktop() ? "资产存放在本机数据文件中，凭据单独加密保存。" : "数据保存在此浏览器中，可随时导出为 JSON。"}
+          {isDesktop()
+            ? t("资产存放在本机数据文件中，凭据单独加密保存。")
+            : t("数据保存在此浏览器中，可随时导出为 JSON。")}
         </p>
       </div>
     </aside>
@@ -206,18 +223,14 @@ function Panel({
   children,
 }: {
   title: string;
-  trailing?: string;
+  trailing?: ReactNode;
   children: ReactNode;
 }) {
   return (
     <section className="overflow-hidden rounded-xl bg-card shadow-card">
       <header className="flex items-center justify-between px-4 pb-2 pt-3.5">
         <h2 className="font-semibold tracking-tight">{title}</h2>
-        {trailing ? (
-          <span className="grid size-5 place-items-center rounded-full bg-crit text-2xs font-semibold text-card tabular-nums">
-            {trailing}
-          </span>
-        ) : null}
+        {trailing ? <span className="flex shrink-0 items-center">{trailing}</span> : null}
       </header>
       {children}
     </section>
@@ -252,7 +265,7 @@ function AlertRow({ alert }: { alert: Alert }) {
           <span className="block truncate font-medium">{alert.title}</span>
           <span className="block truncate text-2xs text-muted">{alert.detail}</span>
         </span>
-        <span className={chipClass(alert.status)}>{STATUS_LABEL[alert.status]}</span>
+        <span className={chipClass(alert.status)}>{t(STATUS_LABEL[alert.status])}</span>
       </button>
     </li>
   );
@@ -281,14 +294,14 @@ function TagPanel() {
   if (index.length === 0) return null;
 
   return (
-    <Panel title="分组">
+    <Panel title={t("分组")}>
       <div className="flex flex-wrap gap-1.5 px-4 pb-4">
         {index.slice(0, 12).map((entry) => (
           <button
             key={entry.tag}
             type="button"
             className="tag-chip"
-            title={entry.byKind.map((b) => `${KIND_LABEL[b.kind]} ${b.count}`).join(" · ")}
+            title={entry.byKind.map((b) => `${t(KIND_LABEL[b.kind])} ${b.count}`).join(" · ")}
             onClick={() => focusTag(entry.tag)}
           >
             {entry.tag}
@@ -297,7 +310,7 @@ function TagPanel() {
         ))}
         {index.length > 12 && (
           <button type="button" className="tag-chip tag-chip-clear" onClick={() => setView("tags")}>
-            还有 {index.length - 12} 个
+            {t("还有 {0} 个", index.length - 12)}
           </button>
         )}
       </div>
@@ -313,7 +326,7 @@ function QuickTerminal() {
   if (online.length === 0) return null;
 
   return (
-    <Panel title="快捷终端">
+    <Panel title={t("快捷终端")}>
       <ul className="pb-2">
         {online.map((s) => (
           <li key={s.id}>

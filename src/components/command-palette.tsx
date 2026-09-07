@@ -18,6 +18,7 @@ import { useAppStore } from "@/lib/store";
 import { KIND_LABEL } from "@/lib/status";
 import { tagIndex, tagsOf } from "@/lib/tags";
 import type { AssetKind } from "@/lib/types";
+import { t } from "@/lib/i18n";
 
 const KIND_ICON: Record<AssetKind, LucideIcon> = {
   server: ServerIcon,
@@ -109,7 +110,7 @@ function Palette({ shown, onClose }: { shown: boolean; onClose: () => void }) {
       view: Parameters<typeof setView>[0],
     ): Entry => ({
       id: `${kind}:${id}`,
-      search: `${label} ${meta} ${tags.join(" ")} ${KIND_LABEL[kind]}`,
+      search: `${label} ${meta} ${tags.join(" ")} ${t(KIND_LABEL[kind])}`,
       icon: KIND_ICON[kind],
       label,
       meta,
@@ -120,7 +121,7 @@ function Palette({ shown, onClose }: { shown: boolean; onClose: () => void }) {
 
     const pages: Entry[] = NAV.map((n) => ({
       id: `page:${n.id}`,
-      search: `${n.label} 页面`,
+      search: t("{0} 页面", n.label),
       icon: n.icon,
       label: n.label,
       run: () => {
@@ -128,22 +129,22 @@ function Palette({ shown, onClose }: { shown: boolean; onClose: () => void }) {
         onClose();
       },
     }));
-    out.push({ heading: "页面", entries: pages });
+    out.push({ heading: t("页面"), entries: pages });
 
     const sshEntries: Entry[] = servers.map((s) => ({
       id: `ssh:${s.id}`,
       search: `ssh ${s.name} ${s.host} ${s.username} ${tagsOf(s).join(" ")}`,
       icon: SquareTerminal,
-      label: `连接 ${s.name}`,
+      label: t("连接 {0}", s.name),
       meta: `${s.username}@${s.host}`,
-      hint: s.status === "offline" ? "离线" : undefined,
+      hint: s.status === "offline" ? t("离线") : undefined,
       run: () => {
         if (s.status !== "offline") openSsh(s.id);
         else setView("servers");
         onClose();
       },
     }));
-    if (sshEntries.length) out.push({ heading: "SSH 会话", entries: sshEntries });
+    if (sshEntries.length) out.push({ heading: t("SSH 会话"), entries: sshEntries });
 
     const assets: Entry[] = [
       ...servers.map((s) => asset("server", s.id, s.name, s.host, tagsOf(s), "servers")),
@@ -153,20 +154,20 @@ function Palette({ shown, onClose }: { shown: boolean; onClose: () => void }) {
       ...secrets.map((s) => asset("secret", s.id, s.name, s.hint, tagsOf(s), "vault")),
       ...certs.map((s) => asset("cert", s.id, s.cn, s.issuer, tagsOf(s), "certs")),
     ];
-    if (assets.length) out.push({ heading: "资产", entries: assets });
+    if (assets.length) out.push({ heading: t("资产"), entries: assets });
 
     const tags = tagIndex({ servers, domains, mailboxes, aiAssets, secrets, certs });
     if (tags.length) {
       out.push({
-        heading: "分组",
-        entries: tags.map((t) => ({
-          id: `tag:${t.tag}`,
-          search: `标签 分组 ${t.tag}`,
+        heading: t("分组"),
+        entries: tags.map((entry) => ({
+          id: `tag:${entry.tag}`,
+          search: t("标签 分组 {0}", entry.tag),
           icon: Tag,
-          label: t.tag,
-          meta: `${t.total} 项资产`,
+          label: entry.tag,
+          meta: t("{0} 项资产", entry.total),
           run: () => {
-            focusTag(t.tag);
+            focusTag(entry.tag);
             onClose();
           },
         })),
@@ -174,12 +175,12 @@ function Palette({ shown, onClose }: { shown: boolean; onClose: () => void }) {
     }
 
     out.push({
-      heading: "新建",
+      heading: t("新建"),
       entries: (Object.keys(KIND_LABEL) as AssetKind[]).map((kind) => ({
         id: `new:${kind}`,
-        search: `新建 添加 ${KIND_LABEL[kind]}`,
+        search: t("新建 添加 {0}", t(KIND_LABEL[kind])),
         icon: Plus,
-        label: `添加${KIND_LABEL[kind]}`,
+        label: t("添加{0}", t(KIND_LABEL[kind])),
         run: () => {
           openComposer(kind);
           onClose();
@@ -209,7 +210,7 @@ function Palette({ shown, onClose }: { shown: boolean; onClose: () => void }) {
         type="button"
         className="anim-scrim absolute inset-0 bg-ink/30"
         data-shown={shown}
-        aria-label="关闭搜索"
+        aria-label={t("关闭搜索")}
         onClick={onClose}
       />
       <Command
@@ -219,12 +220,13 @@ function Palette({ shown, onClose }: { shown: boolean; onClose: () => void }) {
       >
         <Command.Input
           autoFocus
-          placeholder="搜索资产、标签、页面，或直接连 SSH…"
+          placeholder={t("搜索资产、标签、页面，或直接连 SSH…")}
           className="h-13 w-full shrink-0 border-b border-line bg-transparent px-4 text-body outline-none placeholder:text-subtle"
         />
         <Command.List className="min-h-0 flex-1 overflow-y-auto p-2">
           <Command.Empty className="px-3 py-10 text-center text-meta text-muted">
-            没有匹配项
+
+            {t("没有匹配项")}
           </Command.Empty>
           {sections.map((section) => (
             <Command.Group key={section.heading} heading={section.heading} className="cmd-group">
@@ -244,13 +246,13 @@ function Palette({ shown, onClose }: { shown: boolean; onClose: () => void }) {
         <footer className="flex shrink-0 items-center gap-4 border-t border-line px-4 py-2 text-2xs text-subtle">
           <span>
             <Key>↑</Key>
-            <Key>↓</Key> 选择
+            <Key>↓</Key>  {t("选择")}
           </span>
           <span>
-            <Key>↵</Key> 打开
+            <Key>↵</Key>  {t("打开")}
           </span>
           <span>
-            <Key>esc</Key> 关闭
+            <Key>esc</Key>  {t("关闭")}
           </span>
         </footer>
       </Command>

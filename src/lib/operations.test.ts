@@ -1,0 +1,75 @@
+import assert from "node:assert/strict";
+import { test } from "node:test";
+import { normalizeLinks, createCalendar, calendarItems, type AssetRef } from "./operations.ts";
+import type { Snapshot } from "./types.ts";
+
+const empty: Snapshot = {
+  servers: [],
+  domains: [],
+  certs: [],
+  mailboxes: [],
+  aiAssets: [],
+  secrets: [],
+};
+test("关联去重、自关联和悬空引用被清除，同 ID 不同种类不混淆", () => {
+  const from: AssetRef = { kind: "server", id: "same" },
+    to: AssetRef = { kind: "domain", id: "same" };
+  const snapshot = {
+    ...empty,
+    servers: [{ id: "same", name: "host" }],
+    domains: [{ id: "same", name: "site" }],
+  } as Snapshot;
+  assert.deepEqual(
+    normalizeLinks(
+      [
+        { from, to },
+        { from: to, to: from },
+        { from, to: from },
+        { from, to: { kind: "cert", id: "missing" } },
+        null,
+      ],
+      snapshot,
+    ),
+    [{ from, to }],
+  );
+  assert.deepEqual(normalizeLinks([{ from, to }], empty), []);
+  assert.deepEqual(
+    normalizeLinks(
+      [{ from: { ...from, origin: { x: 10 } }, to: { ...to, label: "界面名称" } }],
+      snapshot,
+    ),
+    [{ from, to }],
+  );
+});
+test("日历遵循 CRLF、全天结束日和 UTF-8 75 字节折行", () => {
+  const title = "生产域名，证书;".repeat(25) + "\nBEGIN:VEVENT";
+  const result = createCalendar(
+    [{ id: "domain:1", date: "2026-12-31", title, detail: "Check\\renew\nnow" }],
+    new Date("2026-09-07T00:00:00Z"),
+  );
+  assert.ok(result.includes("DTEND;VALUE=DATE:20270101\r\n"));
+  assert.ok(result.includes("UID:domain%3A1@nanpad.local"));
+  for (const line of result.split("\r\n")) assert.ok(Buffer.byteLength(line) <= 75);
+  assert.equal(result.split("\r\nBEGIN:VEVENT\r\n").length, 2);
+  assert.ok(result.replace(/\r\n /g, "").includes("\\nBEGIN:VEVENT"));
+});
+test("正常状态但即将到期的资产仍导出，不导出备注和凭据", () => {
+  const now = new Date("2026-09-07T00:00:00Z");
+  const snapshot = {
+    ...empty,
+    domains: [
+      {
+        id: "d1",
+        name: "example.com",
+        expiresAt: "2026-09-10",
+        status: "online",
+        notes: "private password",
+      },
+      { id: "d2", name: "later", expiresAt: "2027-01-01", status: "online" },
+    ],
+  } as Snapshot;
+  const items = calendarItems(snapshot, now);
+  assert.equal(items.length, 1);
+  assert.equal(items[0].date, "2026-09-10");
+  assert.ok(!createCalendar(items, now).includes("private password"));
+});

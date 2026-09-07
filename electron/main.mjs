@@ -1,14 +1,32 @@
-import { app, BrowserWindow, dialog, ipcMain, shell, Menu, net } from "electron";
+import {
+  app,
+  BrowserWindow,
+  dialog,
+  ipcMain,
+  shell,
+  Menu,
+  net,
+  Tray,
+  nativeImage,
+  Notification,
+  safeStorage,
+} from "electron";
 import { X509Certificate } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { readFile, writeFile, rename, mkdir } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { dirname, join, posix } from "node:path";
 import { fileURLToPath } from "node:url";
 import { SshManager } from "./services/ssh.mjs";
 import { probeCertificate, probeDomain } from "./services/net-probe.mjs";
 import { MAIL_PROVIDERS, providerForAddress, testMailbox } from "./services/mail.mjs";
 import { OAUTH_PROVIDERS, signIn as oauthSignIn } from "./services/oauth.mjs";
 import { Vault, vaultPath } from "./services/vault.mjs";
+import { MetricsStore } from "./services/metrics.mjs";
+import { notificationCandidates, NotificationTracker } from "./services/notifications.mjs";
+import { AgentService } from "./services/agent-service.mjs";
+import { ProfileService } from "./services/profile.mjs";
+import { AiAccounts } from "./services/ai-accounts.mjs";
+import { mergeDemo, DEMO_KNOWLEDGE } from "./services/demo.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 
@@ -16,6 +34,9 @@ const here = dirname(fileURLToPath(import.meta.url));
 // entry, so Electron would call itself "Electron" and put the user's assets in
 // a directory named after the runtime. Pin it before anything reads a path.
 app.setName("Nanpad");
+// 桌面集成测试使用独立目录，避免读取或覆盖用户的资产与密钥库。
+if (!app.isPackaged && process.env.NANPAD_TEST_DATA_DIR)
+  app.setPath("userData", process.env.NANPAD_TEST_DATA_DIR);
 
 /**
  * Our version, not Electron's.
@@ -41,6 +62,73 @@ const DEV_URL = process.env.SINAN_DEV_URL || null;
 let win = null;
 let vault = null;
 let ssh = null;
+let metrics;
+let agent;
+let aiAccounts;
+let tray = null;
+let quitting = false;
+let notificationTimer;
+let currentSnapshot = {};
+let preferences = { closeToTray: true, notifications: true, locale: "zh" };
+const tracker = new NotificationTracker();
+const writes = new Map();
+let preferenceWrites = Promise.resolve();
+
+function showWindow() {
+  if (!win || win.isDestroyed()) return;
+  if (win.isMinimized()) win.restore();
+  win.show();
+  win.focus();
+}
+
+function notifyAttention() {
+  if (!preferences.notifications || !Notification.isSupported()) return;
+  const items = tracker.take(notificationCandidates(currentSnapshot));
+  if (!items.length) return;
+  const en = preferences.locale === "en";
+  const notification = new Notification({
+    title: en ? "Nanpad: assets need attention" : "司南：资产需要留意",
+    body: items
+      .slice(0, 5)
+      .map(
+        (item) =>
+          `${item.name}: ${item.reason === "offline" ? (en ? "Connection failed" : "连接失败") : item.days <= 0 ? (en ? "Expired" : "已到期") : en ? `Expires in ${item.days} days` : `${item.days} 天后到期`}`,
+      )
+      .join("\n"),
+  });
+  notification.on("click", () => {
+    showWindow();
+    emit("app:attention", { kind: items[0].kind, id: items[0].id });
+  });
+  notification.show();
+}
+
+function updateTray() {
+  if (!tray) return;
+  const en = preferences.locale === "en";
+  tray.setToolTip("Nanpad");
+  tray.setContextMenu(
+    Menu.buildFromTemplate([
+      { label: en ? "Open Nanpad" : "打开司南", click: showWindow },
+      {
+        label: en ? "Lock vault" : "锁定密钥库",
+        click: () => {
+          vault?.lock();
+          emit("vault:changed", {});
+        },
+      },
+      { type: "separator" },
+      { label: en ? "Quit" : "退出", click: () => app.quit() },
+    ]),
+  );
+}
+
+function savedServer(id) {
+  const server = currentSnapshot.servers?.find((x) => x.id === id);
+  if (!server) throw new Error("Server no longer exists");
+  if (server.demo) throw new Error("演示主机不允许进行真实连接。");
+  return { id: server.id, host: server.host, port: server.port, username: server.username };
+}
 
 function dataFile() {
   return join(app.getPath("userData"), "assets.json");
@@ -51,12 +139,20 @@ function conversationsFile() {
 }
 
 /** Write JSON without ever leaving a half-written file behind. */
-async function writeJson(file, value) {
-  await mkdir(dirname(file), { recursive: true });
-  const tmp = `${file}.tmp`;
-  await writeFile(tmp, JSON.stringify(value, null, 2), "utf8");
-  await rename(tmp, file);
-  return true;
+function writeJson(file, value) {
+  const content = JSON.stringify(value, null, 2);
+  const task = (writes.get(file) ?? Promise.resolve()).then(async () => {
+    await mkdir(dirname(file), { recursive: true });
+    const tmp = `${file}.tmp`;
+    await writeFile(tmp, content, "utf8");
+    await rename(tmp, file);
+    return true;
+  });
+  writes.set(
+    file,
+    task.catch(() => {}),
+  );
+  return task;
 }
 
 async function createWindow() {
@@ -69,7 +165,9 @@ async function createWindow() {
     backgroundColor: "#f4f5f5",
     // electron-builder stamps the icon into the packaged exe, but a dev window
     // would otherwise sit in the taskbar wearing Electron's own atom.
-    icon: join(here, "../build/icon.png"),
+    icon: app.isPackaged
+      ? join(process.resourcesPath, "icon.png")
+      : join(here, "../build/icon.png"),
     // The app paints its own chrome. macOS keeps its traffic lights — they are
     // a platform convention people reach for by muscle memory — while Windows
     // and Linux get in-app controls that share the rest of the UI's hover
@@ -84,10 +182,22 @@ async function createWindow() {
       nodeIntegration: false,
       sandbox: false,
       spellcheck: false,
+      backgroundThrottling: false,
     },
   });
 
-  win.once("ready-to-show", () => win?.show());
+  win.once("ready-to-show", () => {
+    if (!process.env.NANPAD_TEST_DATA_DIR) win?.show();
+  });
+  win.on("close", (event) => {
+    if (!quitting && preferences.closeToTray && tray) {
+      event.preventDefault();
+      win.hide();
+    }
+  });
+  win.on("closed", () => {
+    win = null;
+  });
 
   // The maximise button has two shapes; keep the renderer in step with reality
   // rather than with what it last asked for.
@@ -127,7 +237,92 @@ function handle(channel, fn) {
 
 function registerIpc() {
   vault = new Vault(vaultPath(app.getPath("userData")));
+  const profile = new ProfileService(join(app.getPath("userData"), "profile.json"), vault);
+  handle("profile:get", () => profile.get());
+  handle("profile:save", (value) => profile.save(value));
+  aiAccounts = new AiAccounts({ vault, openExternal: (url) => shell.openExternal(url), fetchImpl: (...args) => net.fetch(...args) });
+  handle("ai-accounts:list", () => aiAccounts.list());
+  handle("ai-accounts:start", (provider) => aiAccounts.start(provider));
+  handle("ai-accounts:status", (id) => aiAccounts.status(id));
+  handle("ai-accounts:finish", (id, code) => aiAccounts.finish(id, code));
+  handle("ai-accounts:cancel", (id) => aiAccounts.cancel(id));
+  handle("ai-accounts:refresh", (id) => aiAccounts.refresh(id));
+  handle("ai-accounts:remove", (id) => aiAccounts.remove(id));
+  app.once("before-quit", () => aiAccounts.stop());
   ssh = new SshManager(emit);
+  metrics = new MetricsStore(join(app.getPath("userData"), "metrics.json"));
+  agent = new AgentService({
+    directory: app.getPath("userData"),
+    secureStorage: safeStorage,
+    getSnapshot: () => currentSnapshot,
+    emit: (event) => emit("agent:event", event),
+  });
+  handle("agent:config", () => agent.config());
+  handle("agent:save-config", (config) => agent.saveConfig(config));
+  handle("agent:models", () => agent.models());
+  handle("agent:test", () => agent.test());
+  handle("agent:run", (request) => agent.run(request));
+  handle("agent:cancel", (id) => agent.cancel(id));
+  handle("agent:knowledge", () => agent.knowledge());
+  handle("agent:rebuild", () => agent.rebuild());
+  handle("agent:remove-document", (id) => agent.removeDocument(id));
+  handle("agent:import-document", async () => {
+    const selected = await dialog.showOpenDialog(win, {
+      properties: ["openFile"],
+      filters: [{ name: "Text / Markdown", extensions: ["txt", "md"] }],
+    });
+    if (selected.canceled || !selected.filePaths[0]) return null;
+    const file = selected.filePaths[0];
+    const { stat } = await import("node:fs/promises");
+    if ((await stat(file)).size > 512000) throw new Error("知识文档不能超过 500 KB。");
+    return agent.addDocument(file.split(/[\\/]/).pop(), await readFile(file, "utf8"));
+  });
+  handle("store:add-demo", async () => {
+    if (app.isPackaged) throw new Error("生产版本不提供演示数据导入。");
+    // 与当前磁盘内容合并；重复导入保留原记录及其修改。
+    const saved = JSON.parse(
+      await readFile(dataFile(), "utf8").catch((error) => {
+        if (error.code === "ENOENT") return "{}";
+        throw error;
+      }),
+    );
+    const next = mergeDemo(saved.state ?? saved);
+    await agent.addDocument("星桥商城演示运维手册.md", DEMO_KNOWLEDGE);
+    await writeJson(dataFile(), { ...saved, state: next, version: saved.version ?? 0 });
+    currentSnapshot = next;
+    return next;
+  });
+  handle("preferences:get", () => ({
+    ...preferences,
+    notificationSupported: Notification.isSupported(),
+    trayAvailable: Boolean(tray),
+  }));
+  handle("preferences:set", (patch) => {
+    const task = preferenceWrites.then(async () => {
+      const next = { ...preferences };
+      if (typeof patch?.closeToTray === "boolean") next.closeToTray = patch.closeToTray;
+      if (typeof patch?.notifications === "boolean") next.notifications = patch.notifications;
+      if (patch?.locale === "zh" || patch?.locale === "en") next.locale = patch.locale;
+      await writeJson(join(app.getPath("userData"), "preferences.json"), next);
+      preferences = next;
+      updateTray();
+      Menu.setApplicationMenu(buildMenu());
+      return preferences;
+    });
+    preferenceWrites = task.catch(() => {});
+    return task;
+  });
+  handle("metrics:list", (id, since) => metrics.list(id, Number.isFinite(since) ? since : 0));
+  handle("sftp:list", async (id, path) =>
+    ssh.sftp.list(savedServer(id), await vault.get(credentialId(id)), path),
+  );
+  handle("sftp:download", async (id, path) => {
+    const target = savedServer(id);
+    const credential = await vault.get(credentialId(id));
+    const result = await dialog.showSaveDialog(win, { defaultPath: posix.basename(path) });
+    if (result.canceled || !result.filePath) return false;
+    return ssh.sftp.download(target, credential, path, result.filePath);
+  });
 
   handle("app:info", async () => ({
     platform: process.platform,
@@ -158,7 +353,12 @@ function registerIpc() {
       return null;
     }
   });
-  handle("store:save", (snapshot) => writeJson(dataFile(), snapshot));
+  handle("store:save", async (snapshot) => {
+    await writeJson(dataFile(), snapshot);
+    currentSnapshot = snapshot?.state ?? snapshot ?? {};
+    notifyAttention();
+    return true;
+  });
   handle("store:load-conversations", async () => {
     try {
       return JSON.parse(await readFile(conversationsFile(), "utf8"));
@@ -182,8 +382,19 @@ function registerIpc() {
   handle("vault:list", () => vault.list());
 
   // ---- ssh ----------------------------------------------------------------
-  handle("ssh:open", async (target, size) => ssh.openShell(target, await vault.get(credentialId(target.id)), size));
-  handle("ssh:probe", async (target) => ssh.probe(target, await vault.get(credentialId(target.id))));
+  handle("ssh:open", async (target, size) =>
+    ssh.openShell(savedServer(target.id), await vault.get(credentialId(target.id)), size),
+  );
+  handle("ssh:probe", async (target) => {
+    const probe = await ssh.probe(savedServer(target.id), await vault.get(credentialId(target.id)));
+    try {
+      await metrics.record(target.id, probe);
+      emit("metrics:updated", { id: target.id });
+    } catch (err) {
+      emit("metrics:error", { id: target.id, error: String(err.message) });
+    }
+    return probe;
+  });
   // The credential form tests what is on screen, which is not saved yet.
   handle("ssh:test", (target, credential) => ssh.test(target, credential));
   handle("ssh:close", (sessionId) => {
@@ -300,10 +511,20 @@ async function checkForUpdate(current) {
     return { state: "unavailable", current, page: RELEASES_PAGE, reason: "仓库为私有或尚无发布" };
   }
   if (body.status === 403) {
-    return { state: "unavailable", current, page: RELEASES_PAGE, reason: "GitHub 接口限流，请稍后再试" };
+    return {
+      state: "unavailable",
+      current,
+      page: RELEASES_PAGE,
+      reason: "GitHub 接口限流，请稍后再试",
+    };
   }
   if (body.status !== 200) {
-    return { state: "unavailable", current, page: RELEASES_PAGE, reason: `GitHub 返回 ${body.status}` };
+    return {
+      state: "unavailable",
+      current,
+      page: RELEASES_PAGE,
+      reason: `GitHub 返回 ${body.status}`,
+    };
   }
 
   const tag = String(JSON.parse(body.text)?.tag_name ?? "").replace(/^v/, "");
@@ -320,8 +541,12 @@ async function checkForUpdate(current) {
 
 /** Numeric-segment compare; enough for the `major.minor.patch` tags we cut. */
 function compareVersions(a, b) {
-  const pa = String(a).split(".").map((n) => Number.parseInt(n, 10) || 0);
-  const pb = String(b).split(".").map((n) => Number.parseInt(n, 10) || 0);
+  const pa = String(a)
+    .split(".")
+    .map((n) => Number.parseInt(n, 10) || 0);
+  const pb = String(b)
+    .split(".")
+    .map((n) => Number.parseInt(n, 10) || 0);
   for (let i = 0; i < Math.max(pa.length, pb.length); i += 1) {
     const diff = (pa[i] ?? 0) - (pb[i] ?? 0);
     if (diff !== 0) return diff;
@@ -334,18 +559,46 @@ if (!app.requestSingleInstanceLock()) {
   app.quit();
 } else {
   app.on("second-instance", () => {
-    if (win) {
-      if (win.isMinimized()) win.restore();
-      win.focus();
-    }
+    showWindow();
   });
 
   app.whenReady().then(async () => {
+    app.setAppUserModelId("dev.songwo.nanpad");
+    try {
+      const saved = JSON.parse(
+        await readFile(join(app.getPath("userData"), "preferences.json"), "utf8"),
+      );
+      for (const key of ["closeToTray", "notifications"])
+        if (typeof saved[key] === "boolean") preferences[key] = saved[key];
+      if (["zh", "en"].includes(saved.locale)) preferences.locale = saved.locale;
+    } catch (err) {
+      if (err.code !== "ENOENT") console.error("preferences:load", err.message);
+    }
+    try {
+      const saved = JSON.parse(await readFile(dataFile(), "utf8"));
+      currentSnapshot = saved?.state ?? saved ?? {};
+    } catch (err) {
+      if (err.code !== "ENOENT") console.error("assets:load", err.message);
+    }
     Menu.setApplicationMenu(buildMenu());
     registerIpc();
+    try {
+      const icon = nativeImage.createFromPath(
+        app.isPackaged ? join(process.resourcesPath, "icon.png") : join(here, "../build/icon.png"),
+      );
+      tray = new Tray(icon.resize({ width: 20, height: 20 }));
+      tray.on("double-click", showWindow);
+      tray.on("click", showWindow);
+      updateTray();
+    } catch (err) {
+      console.error("tray:create", err.message);
+    }
     await createWindow();
+    notificationTimer = setInterval(notifyAttention, 60_000);
+    notifyAttention();
     app.on("activate", () => {
       if (BrowserWindow.getAllWindows().length === 0) createWindow();
+      else showWindow();
     });
   });
 
@@ -354,40 +607,56 @@ if (!app.requestSingleInstanceLock()) {
     if (process.platform !== "darwin") app.quit();
   });
 
-  app.on("before-quit", () => ssh?.closeAll());
+  app.on("before-quit", () => {
+    agent?.close();
+    quitting = true;
+    clearInterval(notificationTimer);
+    ssh?.closeAll();
+    tray?.destroy();
+    tray = null;
+  });
 }
 
 function buildMenu() {
   const isMac = process.platform === "darwin";
+  const label = (zh, en) => (preferences.locale === "en" ? en : zh);
   return Menu.buildFromTemplate([
     ...(isMac ? [{ role: "appMenu" }] : []),
     {
-      label: "文件",
-      submenu: [
-        { label: "锁定密钥库", click: () => vault?.lock() },
-        { type: "separator" },
-        isMac ? { role: "close", label: "关闭窗口" } : { role: "quit", label: "退出" },
-      ],
-    },
-    { label: "编辑", role: "editMenu" },
-    {
-      label: "视图",
-      submenu: [
-        { role: "reload", label: "重新载入" },
-        { role: "toggleDevTools", label: "开发者工具" },
-        { type: "separator" },
-        { role: "resetZoom", label: "实际大小" },
-        { role: "zoomIn", label: "放大" },
-        { role: "zoomOut", label: "缩小" },
-        { type: "separator" },
-        { role: "togglefullscreen", label: "全屏" },
-      ],
-    },
-    {
-      label: "帮助",
+      label: label("文件", "File"),
       submenu: [
         {
-          label: "项目主页",
+          label: label("锁定密钥库", "Lock vault"),
+          click: () => {
+            vault?.lock();
+            emit("vault:changed", {});
+          },
+        },
+        { type: "separator" },
+        isMac
+          ? { role: "close", label: label("关闭窗口", "Close window") }
+          : { role: "quit", label: label("退出", "Quit") },
+      ],
+    },
+    { label: label("编辑", "Edit"), role: "editMenu" },
+    {
+      label: label("视图", "View"),
+      submenu: [
+        { role: "reload", label: label("重新载入", "Reload") },
+        { role: "toggleDevTools", label: label("开发者工具", "Developer tools") },
+        { type: "separator" },
+        { role: "resetZoom", label: label("实际大小", "Actual size") },
+        { role: "zoomIn", label: label("放大", "Zoom in") },
+        { role: "zoomOut", label: label("缩小", "Zoom out") },
+        { type: "separator" },
+        { role: "togglefullscreen", label: label("全屏", "Full screen") },
+      ],
+    },
+    {
+      label: label("帮助", "Help"),
+      submenu: [
+        {
+          label: label("项目主页", "Project homepage"),
           click: () => shell.openExternal("https://github.com/Songwo/nanpad"),
         },
       ],

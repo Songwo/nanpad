@@ -6,6 +6,7 @@ import { Button } from "./ui/button";
 import { Field, Input, Select } from "./ui/input";
 import { desktop, type MailLogin, type MailProvider } from "@/lib/desktop";
 import { cn } from "@/lib/utils";
+import { t } from "@/lib/i18n";
 
 type State =
   | { kind: "idle" }
@@ -78,10 +79,10 @@ export function MailLogin({
       const lines = [
         `IMAP: ${result.imap.host}:${result.imap.port}`,
         result.smtp ? `SMTP: ${result.smtp.host}:${result.smtp.port}` : null,
-        `登录验证通过 · 收件箱 ${result.messages} 封，未读 ${result.unseen} 封`,
+        t("登录验证通过 · 收件箱 {0} 封，未读 {1} 封", result.messages, result.unseen),
       ].filter(Boolean);
       set("notes", lines.join("\n"));
-      toast(`已登录 ${result.address}`);
+      toast(t("已登录 {0}", result.address));
     } catch (err) {
       setState({ kind: "fail", message: err instanceof Error ? err.message : String(err) });
     }
@@ -92,27 +93,29 @@ export function MailLogin({
       {!open ? (
         <button type="button" className="paste-trigger" onClick={() => setOpen(true)}>
           <LogIn className="size-4" strokeWidth={1.9} />
-          <span className="font-medium">快捷登录</span>
+          <span className="font-medium">{t("快捷登录")}</span>
           <span className="text-2xs text-subtle">
-            登录一次，地址 / 容量 / 服务器设置自动填好
+
+            {t("登录一次，地址 / 容量 / 服务器设置自动填好")}
           </span>
         </button>
       ) : (
         <div className="rounded-xl bg-canvas p-4">
           <div className="mb-3 flex items-center gap-2">
             <Mail className="size-4 text-muted" />
-            <h3 className="text-meta font-semibold">快捷登录</h3>
+            <h3 className="text-meta font-semibold">{t("快捷登录")}</h3>
             <button
               type="button"
               className="ml-auto text-2xs text-subtle hover:text-ink"
               onClick={() => setOpen(false)}
             >
-              收起
+
+              {t("收起")}
             </button>
           </div>
 
           <div className="grid gap-3 sm:grid-cols-2">
-            <Field label="邮箱地址">
+            <Field label={t("邮箱地址")}>
               <Input
                 autoFocus
                 value={address}
@@ -121,9 +124,9 @@ export function MailLogin({
                 onChange={(e) => setAddress(e.target.value)}
               />
             </Field>
-            <Field label="服务商">
+            <Field label={t("服务商")}>
               <Select value={provider} onChange={(e) => setProvider(e.target.value)}>
-                <option value="">自动识别 / 自定义</option>
+                <option value="">{t("自动识别 / 自定义")}</option>
                 {Object.entries(providers).map(([id, p]) => (
                   <option key={id} value={id}>
                     {p.label}
@@ -132,7 +135,7 @@ export function MailLogin({
               </Select>
             </Field>
             <div className="sm:col-span-2">
-              <Field label="密码 / 授权码">
+              <Field label={t("密码 / 授权码")}>
                 <Input
                   type="password"
                   value={password}
@@ -165,13 +168,14 @@ export function MailLogin({
               ) : (
                 <LogIn className="size-3.5" />
               )}
-              登录并填充
+
+              {t("登录并填充")}
             </Button>
 
             {state.kind === "ok" && (
               <span className="flex items-center gap-1.5 text-2xs text-ok">
                 <CheckCircle2 className="size-3.5" />
-                {state.result.providerLabel} · 收件箱 {state.result.messages} 封
+                {state.result.providerLabel} {t("· 收件箱 {0} 封", state.result.messages)}
                 {state.result.quotaMb
                   ? ` · ${state.result.usedMb}/${state.result.quotaMb} MB`
                   : ""}
@@ -186,7 +190,8 @@ export function MailLogin({
           </div>
 
           <p className="mt-3 text-2xs leading-relaxed text-subtle">
-            登录直接连服务商的 IMAP，凭据校验通过后才会存进加密库；不经过任何中间服务。
+
+            {t("登录直接连服务商的 IMAP，凭据校验通过后才会存进加密库；不经过任何中间服务。")}
           </p>
 
           <OAuthLogin set={set} />

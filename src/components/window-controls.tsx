@@ -1,6 +1,7 @@
 import { Copy, Minus, Square, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { desktop } from "@/lib/desktop";
+import { t } from "@/lib/i18n";
 
 /**
  * Minimise / maximise / close, drawn by the app.
@@ -35,12 +36,12 @@ export function WindowControls() {
 
   return (
     <div className="win-controls no-drag">
-      <button type="button" aria-label="最小化" onClick={() => bridge.win.minimize()}>
+      <button type="button" aria-label={t("最小化")} onClick={() => bridge.win.minimize()}>
         <Minus className="size-4" strokeWidth={2} />
       </button>
       <button
         type="button"
-        aria-label={maximized ? "还原" : "最大化"}
+        aria-label={maximized ? t("还原") : t("最大化")}
         onClick={() => bridge.win.toggleMaximize()}
       >
         {maximized ? (
@@ -51,7 +52,7 @@ export function WindowControls() {
       </button>
       <button
         type="button"
-        aria-label="关闭"
+        aria-label={t("关闭")}
         data-close
         onClick={() => bridge.win.close()}
       >

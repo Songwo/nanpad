@@ -6,6 +6,7 @@ import { isDesktop } from "@/lib/desktop";
 import { refreshAll, refreshById, useProbeState, type ProbeKind } from "@/lib/probes";
 import { cn } from "@/lib/utils";
 import { useVault } from "@/lib/vault-state";
+import { t } from "@/lib/i18n";
 
 const NEEDS_VAULT: Record<ProbeKind, boolean> = { server: true, domain: false, cert: false };
 const LABEL: Record<ProbeKind, string> = { server: "主机", domain: "域名", cert: "证书" };
@@ -21,22 +22,23 @@ export function RefreshAllButton({ kind }: { kind: ProbeKind | null }) {
       variant="outline"
       size="sm"
       disabled={busy}
-      title={`重新采集全部${LABEL[kind]}`}
+      title={t("重新采集全部{0}", t(LABEL[kind]))}
       onClick={async () => {
-        if (NEEDS_VAULT[kind] && !(await requireVault("采集主机指标需要读取已保存的 SSH 凭据。"))) {
+        if (NEEDS_VAULT[kind] && !(await requireVault(t("采集主机指标需要读取已保存的 SSH 凭据。")))) {
           return;
         }
         setBusy(true);
         try {
           const n = await refreshAll(kind);
-          toast(`已刷新 ${n} 项${LABEL[kind]}`);
+          toast(t("已刷新 {0} 项{1}", n, t(LABEL[kind])));
         } finally {
           setBusy(false);
         }
       }}
     >
       <RefreshCw className={cn("size-3.5", busy && "animate-spin")} />
-      刷新
+
+      {t("刷新")}
     </Button>
   );
 }
@@ -52,10 +54,10 @@ export function RefreshOneButton({ kind, id }: { kind: ProbeKind; id: string }) 
       variant="ghost"
       size="icon-sm"
       disabled={busy}
-      aria-label="重新采集"
-      title="重新采集"
+      aria-label={t("重新采集")}
+      title={t("重新采集")}
       onClick={async () => {
-        if (NEEDS_VAULT[kind] && !(await requireVault("采集主机指标需要读取已保存的 SSH 凭据。"))) {
+        if (NEEDS_VAULT[kind] && !(await requireVault(t("采集主机指标需要读取已保存的 SSH 凭据。")))) {
           return;
         }
         await refreshById(kind, id);

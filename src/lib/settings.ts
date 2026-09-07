@@ -1,10 +1,15 @@
 import { create } from "zustand";
 import { persist, createJSONStorage } from "zustand/middleware";
+import { resolveLocale, setLocale, type LocaleChoice } from "./i18n";
 
 export type ThemeChoice = "system" | "light" | "dark";
 export type ResolvedTheme = "light" | "dark";
 
 interface SettingsState {
+  assetLayout: "cards" | "table" | "graph";
+  setAssetLayout: (layout: "cards" | "table" | "graph") => void;
+  language: LocaleChoice;
+  setLanguage: (language: LocaleChoice) => void;
   theme: ThemeChoice;
   /** What `theme` currently resolves to — "system" follows the OS. */
   resolved: ResolvedTheme;
@@ -33,6 +38,13 @@ export function resolveTheme(choice: ThemeChoice): ResolvedTheme {
 export const useSettings = create<SettingsState>()(
   persist(
     (set) => ({
+      assetLayout: "cards",
+      setAssetLayout: (assetLayout) => set({ assetLayout }),
+      language: "system",
+      setLanguage: (language) => {
+        setLocale(resolveLocale(language));
+        set({ language });
+      },
       theme: "system",
       resolved: "light",
       setTheme: (theme) => set({ theme, resolved: resolveTheme(theme) }),
@@ -45,7 +57,8 @@ export const useSettings = create<SettingsState>()(
           ? { getItem: () => null, setItem: () => {}, removeItem: () => {} }
           : window.localStorage,
       ),
-      partialize: (s) => ({ theme: s.theme }) as SettingsState,
+      partialize: (s) =>
+        ({ theme: s.theme, language: s.language, assetLayout: s.assetLayout }) as SettingsState,
       onRehydrateStorage: () => (state) => {
         state?.setResolved(resolveTheme(state.theme));
       },
@@ -81,5 +94,20 @@ export function startThemeSync(): () => void {
   return () => {
     media.removeEventListener("change", apply);
     unsubscribe();
+  };
+}
+
+export function startLocaleSync(): () => void {
+  const apply = () => {
+    setLocale(resolveLocale(useSettings.getState().language));
+    document.documentElement.lang =
+      resolveLocale(useSettings.getState().language) === "zh" ? "zh-CN" : "en";
+  };
+  apply();
+  const unsubscribe = useSettings.subscribe(apply);
+  window.addEventListener("languagechange", apply);
+  return () => {
+    unsubscribe();
+    window.removeEventListener("languagechange", apply);
   };
 }
