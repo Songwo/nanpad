@@ -1,15 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import {
-  ExternalLink,
-  RefreshCw,
-  Trash2,
-  Lock,
-  Plus,
-  Check,
-  Loader2,
-  Link2,
-  Copy,
-} from "lucide-react";
+import { ExternalLink, RefreshCw, Trash2, Lock, Plus, Check, Loader2, Copy } from "lucide-react";
 import { desktop } from "@/lib/desktop";
 import { AI_PROVIDER_NAMES, type AiAccount, type AiProvider } from "@/lib/ai-accounts";
 import { useVault } from "@/lib/vault-state";
@@ -69,6 +59,10 @@ function QuotaDetails({ account }: { account: AiAccount }) {
   const number = (value: number) => value.toLocaleString(undefined, { maximumFractionDigits: 2 });
   return (
     <div className="space-y-3">
+      <p className="flex items-center gap-2 text-meta text-ok">
+        <Check className="size-4 shrink-0" />
+        {t("本机已保存授权")}
+      </p>
       <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-meta">
         <div>
           <dt className="text-muted">{t("授权返回的套餐")}</dt>
@@ -87,7 +81,12 @@ function QuotaDetails({ account }: { account: AiAccount }) {
       </dl>
       {stale && (
         <p role="status" className="text-meta text-warn">
-          {t("额度更新未完成，部分数据不是最新。")}
+          {t(usage ? "额度更新未完成，部分数据不是最新。" : "额度同步失败，尚无用量数据。")}
+        </p>
+      )}
+      {account.usageRefresh?.errorCode === "FORBIDDEN" && (
+        <p className="text-meta leading-relaxed text-muted">
+          {t("额度请求被拒绝不表示缺少登录回调；仅凭 HTTP 403 无法确定服务商拒绝的原因。")}
         </p>
       )}
       {account.usageRefresh?.status === "error" && (
@@ -238,7 +237,7 @@ export function AiAccountsPanel({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
-  const [manual, setManual] = useState(false);
+  const [phase, setPhase] = useState<"pending" | "exchanging" | "syncing">("pending");
   const loadAccounts = useCallback(async () => {
     const rows = await api!.list();
     if (!alive.current) return;
@@ -301,11 +300,17 @@ export function AiAccountsPanel({
       void (async () => {
         try {
           const result = await api.status(session.id);
-          if (stopped || ["pending", "exchanging"].includes(result.status)) return;
+          if (stopped) return;
+          if (result.status === "pending" || result.status === "exchanging") {
+            setPhase(result.status);
+            return;
+          }
           window.clearInterval(timer);
           currentSession.current = null;
           if (result.status !== "connected")
             throw new Error(result.error || t("授权已取消或超时，请重试。"));
+          setPhase("syncing");
+          setCode("");
           setBusy(true);
           const rows = await api.list();
           if (stopped) return;
@@ -397,7 +402,7 @@ export function AiAccountsPanel({
               }
               currentSession.current = value.id;
               setCode("");
-              setManual(value.mode === "code" || Boolean(value.manualCallback));
+              setPhase("pending");
               setSession(value);
             })
           }
@@ -415,6 +420,7 @@ export function AiAccountsPanel({
           <Button
             type="button"
             variant="outline"
+            disabled={phase === "syncing"}
             onClick={() =>
               void task(async () => {
                 await api!.cancel(session.id);
@@ -428,14 +434,25 @@ export function AiAccountsPanel({
           </Button>
         )}
       </div>
+      {!session && displayed.length > 0 && (
+        <p className="mb-3 text-meta text-muted">{t("当前没有进行中的登录授权。")}</p>
+      )}
       {!api && <p className="text-meta text-muted">{t("网页登录需要桌面版")}</p>}
       {session && (
         <div className="mb-3 space-y-2">
           <p role="status" className="flex items-center gap-2 text-meta text-muted">
             <Loader2 className="size-4 shrink-0 animate-spin" />
-            {t(session.mode === "code" ? "等待填写授权结果" : "等待浏览器授权返回…")}
+            {t(
+              phase === "syncing"
+                ? "登录回调已处理，正在同步额度…"
+                : phase === "exchanging"
+                  ? "已收到回调，正在验证授权…"
+                  : session.mode === "code" || session.manualCallback
+                    ? "等待填写授权结果"
+                    : "等待浏览器授权返回…",
+            )}
           </p>
-          {session.redirectUri && (
+          {phase === "pending" && session.redirectUri && (
             <div className="flex min-w-0 items-center gap-2 text-meta text-muted">
               <span className="shrink-0">{t("回调地址")}</span>
               <code className="min-w-0 flex-1 break-all text-2xs">{session.redirectUri}</code>
@@ -456,22 +473,23 @@ export function AiAccountsPanel({
               </Button>
             </div>
           )}
-          {!manual && (
-            <Button type="button" variant="outline" onClick={() => setManual(true)}>
-              <Link2 className="size-4" />
-              {t("粘贴回调链接")}
-            </Button>
-          )}
         </div>
       )}
-      {session && manual && (
+      {session && phase !== "syncing" && (
         <form
           className="mb-4 space-y-2"
           onSubmit={(event) => {
             event.preventDefault();
+            if (busy || phase !== "pending") return;
             void task(async () => {
-              await api!.finish(session.id, code);
-              setCode("");
+              setPhase("exchanging");
+              try {
+                await api!.finish(session.id, code);
+                setCode("");
+              } catch (err) {
+                if (alive.current) setPhase("pending");
+                throw err;
+              }
             });
           }}
         >
@@ -480,11 +498,13 @@ export function AiAccountsPanel({
               aria-label={t("回调链接或授权码")}
               type="password"
               autoComplete="off"
+              spellCheck={false}
+              disabled={busy || phase !== "pending"}
               value={code}
               onChange={(e) => setCode(e.target.value)}
             />
           </Field>
-          <Button type="submit" disabled={busy || !code.trim()}>
+          <Button type="submit" disabled={busy || phase !== "pending" || !code.trim()}>
             {t("完成授权")}
           </Button>
         </form>

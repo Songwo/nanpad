@@ -225,6 +225,49 @@ async function seededService(t, provider, fetchImpl) {
   return { service, vault, id };
 }
 
+for (const [status, errorCode] of [
+  [403, "FORBIDDEN"],
+  [429, "RATE_LIMITED"],
+]) {
+  test(`授权码交换 HTTP ${status} 不误报额度失败，不重试且不泄漏响应正文`, async (t) => {
+    let opened;
+    const calls = [];
+    const vault = memoryVault();
+    const service = new AiAccounts({
+      vault,
+      providers: {
+        openai: { ...AI_PROVIDERS.openai, redirect: "http://127.0.0.1:0/auth/callback" },
+      },
+      openExternal: async (url) => {
+        opened = new URL(url);
+      },
+      fetchImpl: async (url) => {
+        calls.push(url);
+        return new Response("private-token-response-secret", { status });
+      },
+    });
+    t.after(() => service.stop());
+    const session = await service.start("openai");
+    const callback = new URL(session.redirectUri);
+    callback.searchParams.set("code", "test-code");
+    callback.searchParams.set("state", opened.searchParams.get("state"));
+    await assert.rejects(service.finish(session.id, callback.toString()), (error) => {
+      assert.equal(error.code, errorCode);
+      assert.equal(error.status, status);
+      assert.match(error.message, new RegExp(`HTTP ${status}`));
+      assert.doesNotMatch(error.message, /额度|private-token-response-secret/);
+      if (status === 403) assert.match(error.message, /无法确定具体原因/);
+      return true;
+    });
+    const failed = service.status(session.id);
+    assert.equal(failed.status, "error");
+    assert.doesNotMatch(JSON.stringify(failed), /private-token-response-secret|额度/);
+    assert.deepEqual(await service.list(), []);
+    assert.deepEqual(await vault.list(), []);
+    assert.deepEqual(calls, [AI_PROVIDERS.openai.token]);
+  });
+}
+
 test("完整回调链接严格匹配地址、state和唯一参数；成功后不可重放", async (t) => {
   let opened,
     calls = 0;
@@ -461,7 +504,13 @@ test("401触发一次刷新并使用新令牌查询，403保留旧快照与可�
   assert.equal(calls.filter((call) => call.url === AI_PROVIDERS.openai.token).length, 1);
   assert.equal(calls.at(-1).token, "Bearer rotated-secret");
   forbidden = true;
-  await assert.rejects(service.refresh(id), /HTTP 403/);
+  await assert.rejects(service.refresh(id), (error) => {
+    assert.equal(error.code, "FORBIDDEN");
+    assert.equal(error.status, 403);
+    assert.match(error.message, /HTTP 403/);
+    assert.match(error.message, /无法确定具体原因/);
+    return true;
+  });
   const stored = (await service.list())[0];
   assert.equal(stored.usage.status, "stale");
   assert.equal(stored.usage.checkedAt, first.usage.checkedAt);

@@ -4,7 +4,7 @@
 
 ## 版本准备
 
-更新 package.json、package-lock.json 与 src/lib/changelog.ts，执行 `node scripts/write-changelog.mjs` 同步 CHANGELOG.md。本版说明保存在 `docs/releases/v0.2.1.md`。README 的安装包名、构建目录及教程应与版本一致；描述实际支持范围，不将本机协议测试写成真实账号登录成功。
+更新 package.json、package-lock.json 与 src/lib/changelog.ts，执行 `node scripts/write-changelog.mjs` 同步 CHANGELOG.md。本版说明保存在 `docs/releases/v0.2.2.md`。README 的安装包名、构建目录及教程应与版本一致；描述实际支持范围，不将本机协议测试写成真实账号登录成功。
 
 ## 必须验证
 
@@ -20,7 +20,7 @@ node scripts/ai-subscription-integration.mjs
 npm run build
 ```
 
-检查桌面首次启动、升级解锁、Markdown 输出、主题化下拉菜单、锁库状态以及未配置网络服务时的错误。AI 订阅需检查快速登录入口、自动及手动回调、重复授权、分类额度，以及刷新失败后仍保留账号和上次结果。头像与资产图片需检查上传、更换、移除、保存及重启恢复，并确认超限文件和无效格式被拒绝。
+检查桌面首次启动、升级解锁、Markdown 输出、主题化下拉菜单、锁库状态以及未配置网络服务时的错误。AI 订阅需检查快速登录入口、自动及手动回调、重复授权、分类额度，以及刷新失败后仍保留账号和上次结果。本版还需确认等待授权时回调输入直接可见，验证授权与同步额度阶段分别显示，令牌请求的 403 / 429 不被误写成额度查询错误。头像与资产图片需检查上传、更换、移除、保存及重启恢复，并确认超限文件和无效格式被拒绝。
 
 网页开发和生产输出均执行 browser-smoke，查看桌面及移动截图。真实供应商登录由账户持有人在网页完成，不通过自动化读取私人浏览器会话。Release 说明分别记录自动化验证和真实账号验证的范围；额度查询来源不能写成各家网页订阅的全部权益。
 
@@ -32,6 +32,6 @@ npm run desktop:dist -- --win --x64 --publish never
 
 打包脚本将主进程及编译后的界面放入系统临时目录中的独立暂存区，使用仓库锁文件版本安装 `ssh2`、`imapflow`、`openai`、`minisearch` 及其运行依赖，再通过 electron-builder 内置的目录遍历器收集依赖，避免将网页构建工具装进桌面包。排除可选原生加速模块，SSH 使用库自带的 JavaScript 实现；无需 Visual Studio 编译环境。复用本机已安装的同版本 Electron，输出到 `release/v版本号/`；构建结束清理暂存区。
 
-安装包生成后检查版本和包内容，运行 `node scripts/release-smoke.mjs release/v0.2.1/win-unpacked/Nanpad.exe` 验证打包程序，计算 SHA256，补齐 Release 说明中的验证记录。该脚本使用独立临时数据目录，不修改日常资料。发布时显式选择源码、文档和必要资源，不提交临时截图、日志、用户数据或运行目录。将发布标签指向已经验证的提交，再上传 `Nanpad-0.2.1-setup.exe` 与 `SHA256SUMS.txt`。
+安装包生成后检查版本和包内容，运行 `node scripts/release-smoke.mjs release/v0.2.2/win-unpacked/Nanpad.exe` 验证打包程序，计算 SHA256，补齐 Release 说明中的验证记录。该脚本使用独立临时数据目录，不修改日常资料。发布时显式选择源码、文档和必要资源，不提交临时截图、日志、用户数据或运行目录。将发布标签指向已经验证的提交，再上传 `Nanpad-0.2.2-setup.exe` 与 `SHA256SUMS.txt`。
 
 当前发行未配置 Authenticode 证书。需要签名发行时，在维护者受保护的构建环境中配置 electron-builder 签名参数；证书与密码不得写入仓库。

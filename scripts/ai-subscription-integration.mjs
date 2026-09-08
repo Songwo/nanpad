@@ -46,9 +46,12 @@ try {
       globalThis.__qaOpened = [];
       globalThis.__qaUsed = 25;
       globalThis.__qaFailUsage = false;
+      globalThis.__qaFailureStatus = 503;
       globalThis.__qaOpenaiIdentity = "qa-openai";
       globalThis.__qaDelayUsage = false;
       globalThis.__qaReleaseUsage = null;
+      globalThis.__qaDelayToken = false;
+      globalThis.__qaReleaseToken = null;
       const service = new AiAccounts({
         vault,
         providers,
@@ -62,7 +65,11 @@ try {
             ) ?? [];
           if (!provider) throw new Error("Unexpected test request");
           let body;
-          if (url === provider.token)
+          if (url === provider.token) {
+            if (globalThis.__qaDelayToken)
+              await new Promise((resolve) => {
+                globalThis.__qaReleaseToken = resolve;
+              });
             body = {
               access_token: "qa-only-access",
               refresh_token: "qa-only-refresh",
@@ -82,16 +89,17 @@ try {
                 ".x",
               account: { uuid: "qa-claude", email_address: "claude@example.test" },
             };
-          else if (url === provider.userinfo)
+          } else if (url === provider.userinfo)
             body = { sub: "qa-user", email: id + "@example.test" };
           else if (url === provider.profile)
             body = { cloudaicompanionProject: "qa-project", currentTier: { name: "Code Assist" } };
           else {
-            if (globalThis.__qaFailUsage) return new Response("unavailable", { status: 503 });
             if (globalThis.__qaDelayUsage)
               await new Promise((resolve) => {
                 globalThis.__qaReleaseUsage = resolve;
               });
+            if (globalThis.__qaFailUsage)
+              return new Response("unavailable", { status: globalThis.__qaFailureStatus });
             const used = globalThis.__qaUsed;
             body =
               id === "openai"
@@ -182,6 +190,7 @@ try {
     );
     await panel.getByRole("button", { name: "网页登录授权" }).click();
     await panel.getByRole("button", { name: "取消授权" }).waitFor();
+    await panel.getByLabel("回调链接或授权码", { exact: true }).waitFor();
     const url = new URL(await instance.evaluate(() => globalThis.__qaOpened.at(-1)));
     if (provider === "claude") {
       assert.equal(await panel.locator("form form").count(), 0);
@@ -194,7 +203,6 @@ try {
       callback.searchParams.set("state", url.searchParams.get("state"));
       callback.searchParams.set("code", "test-code");
       if (provider === "openai") {
-        await panel.getByRole("button", { name: "粘贴回调链接", exact: true }).click();
         await panel
           .getByLabel("回调链接或授权码")
           .fill(callback.toString().replace(url.searchParams.get("state"), "wrong-state"));
@@ -368,6 +376,89 @@ try {
   await page.getByText("桌面验证用户", { exact: true }).waitFor();
   assert.equal((await saved()).length, 5);
   assert.equal((await saved()).find((item) => item.id === manualSubscription.id).usagePct, 73);
+
+  // 自动回调与额度失败分阶段验收；所有链接和响应仅在隔离测试进程内生成。
+  await page.getByRole("button", { name: /^AI 订阅(?:\s+\d+)?$/ }).click();
+  await instance.evaluate(() => {
+    globalThis.__qaOpenaiIdentity = "qa-openai-forbidden";
+    globalThis.__qaDelayToken = true;
+    globalThis.__qaDelayUsage = true;
+    globalThis.__qaFailUsage = true;
+    globalThis.__qaFailureStatus = 403;
+  });
+  await open();
+  await chooseOption(
+    page,
+    dialog.getByRole("combobox", { name: "授权服务商" }),
+    providerNames.openai,
+  );
+  await dialog.getByRole("button", { name: "网页登录授权", exact: true }).click();
+  const callbackInput = dialog.getByLabel("回调链接或授权码", { exact: true });
+  await callbackInput.waitFor();
+  assert.equal(await callbackInput.getAttribute("type"), "password");
+  assert.equal(await callbackInput.isEnabled(), true);
+  await callbackInput.scrollIntoViewIfNeeded();
+  await page.screenshot({ path: "screenshots/nanpad-callback-visible-desktop.png" });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await callbackInput.scrollIntoViewIfNeeded();
+  await page.screenshot({ path: "screenshots/nanpad-callback-visible-mobile.png" });
+  assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+  await page.setViewportSize({ width: 1280, height: 900 });
+  const openedUrl = new URL(await instance.evaluate(() => globalThis.__qaOpened.at(-1)));
+  const automaticCallback = new URL(openedUrl.searchParams.get("redirect_uri"));
+  automaticCallback.searchParams.set("state", openedUrl.searchParams.get("state"));
+  automaticCallback.searchParams.set("code", "isolated-auto-callback");
+  assert.equal((await fetch(automaticCallback)).status, 200);
+  await dialog.getByText("已收到回调，正在验证授权…", { exact: true }).waitFor();
+  assert.equal(await callbackInput.isDisabled(), true);
+  assert.equal(
+    await dialog.getByRole("button", { name: "完成授权", exact: true }).isDisabled(),
+    true,
+  );
+  await instance.evaluate(() => {
+    if (!globalThis.__qaReleaseToken) throw new Error("Delayed token request did not start");
+    globalThis.__qaDelayToken = false;
+    globalThis.__qaReleaseToken();
+    globalThis.__qaReleaseToken = null;
+  });
+  await dialog.getByText("登录回调已处理，正在同步额度…", { exact: true }).waitFor();
+  await callbackInput.waitFor({ state: "detached" });
+  assert.equal(await dialog.getByRole("button", { name: "取消授权" }).isDisabled(), true);
+  await instance.evaluate(() => {
+    if (!globalThis.__qaReleaseUsage) throw new Error("Delayed quota request did not start");
+    globalThis.__qaDelayUsage = false;
+    globalThis.__qaReleaseUsage();
+    globalThis.__qaReleaseUsage = null;
+  });
+  await dialog.getByRole("button", { name: "取消授权" }).waitFor({ state: "detached" });
+  await dialog.getByRole("button", { name: "完成", exact: true }).click();
+  await dialog.waitFor({ state: "detached" });
+  const failedAccount = await instance.evaluate(async () =>
+    (await globalThis.__qaAccounts.list()).find((item) => item.accountId === "qa-openai-forbidden"),
+  );
+  assert.ok(failedAccount);
+  const failedAsset = (await saved()).find((item) => item.oauthAccountId === failedAccount.id);
+  assert.ok(failedAsset);
+  assert.equal(failedAsset.usageAvailable, false);
+  assert.equal(failedAccount.usage, null);
+  assert.equal(failedAccount.usageRefresh.errorCode, "FORBIDDEN");
+  await page.locator('[data-asset-id="' + failedAsset.id + '"]').click();
+  await details.getByText("本机已保存授权", { exact: true }).waitFor();
+  await details.getByText("当前没有进行中的登录授权。", { exact: true }).waitFor();
+  await details.getByText("额度同步失败，尚无用量数据。", { exact: true }).waitFor();
+  const explanation = details.getByText(
+    "额度请求被拒绝不表示缺少登录回调；仅凭 HTTP 403 无法确定服务商拒绝的原因。",
+    { exact: true },
+  );
+  await explanation.waitFor();
+  assert.equal(await details.getByRole("progressbar").count(), 0);
+  await explanation.scrollIntoViewIfNeeded();
+  await page.screenshot({ path: "screenshots/nanpad-callback-403-desktop.png" });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await explanation.scrollIntoViewIfNeeded();
+  await page.screenshot({ path: "screenshots/nanpad-callback-403-mobile.png" });
+  assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+  await page.setViewportSize({ width: 1280, height: 900 });
   assert.deepEqual(errors, []);
   console.log(
     JSON.stringify({
@@ -375,6 +466,9 @@ try {
       providers: 4,
       actualComposer: true,
       callbacks: true,
+      callbackInputVisible: true,
+      automaticCallbackPhases: true,
+      forbiddenQuotaSeparateFromAuthorization: true,
       cancellation: true,
       duplicatePrevention: true,
       refresh: true,
@@ -388,6 +482,7 @@ try {
     }),
   );
 } finally {
+  await instance?.evaluate(() => globalThis.__qaReleaseToken?.()).catch(() => {});
   await instance?.evaluate(() => globalThis.__qaReleaseUsage?.()).catch(() => {});
   await instance?.evaluate(() => globalThis.__qaAccounts?.stop()).catch(() => {});
   await instance?.close();

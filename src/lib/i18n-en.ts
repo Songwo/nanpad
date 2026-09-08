@@ -786,6 +786,13 @@ export const EN: Record<string, string> = {
   复制回调地址: "Copy callback address",
   粘贴回调链接: "Paste callback URL",
   回调链接或授权码: "Callback URL or authorization code",
+  本机已保存授权: "Authorization saved on this device",
+  "当前没有进行中的登录授权。": "No sign-in authorization is in progress.",
+  "登录回调已处理，正在同步额度…": "Sign-in callback processed. Syncing quotas…",
+  "已收到回调，正在验证授权…": "Callback received. Verifying authorization…",
+  "额度同步失败，尚无用量数据。": "Quota sync failed. No usage data is available yet.",
+  "额度请求被拒绝不表示缺少登录回调；仅凭 HTTP 403 无法确定服务商拒绝的原因。":
+    "A rejected quota request does not indicate a missing sign-in callback. HTTP 403 alone does not identify why the provider refused the request.",
   代码审查: "Code review",
   个人头像: "Profile photo",
   资产图片: "Asset image",

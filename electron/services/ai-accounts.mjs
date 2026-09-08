@@ -286,11 +286,8 @@ export class AiAccounts {
     if (!response.ok) {
       const messages = {
         401: ["UNAUTHORIZED", "登录凭据已失效（HTTP 401），请重新授权。"],
-        403: [
-          "FORBIDDEN",
-          "服务商拒绝读取额度（HTTP 403），当前授权范围、账号资格或网络访问不被允许。",
-        ],
-        429: ["RATE_LIMITED", "额度查询过于频繁（HTTP 429），请稍后重试。"],
+        403: ["FORBIDDEN", "服务商拒绝了本次请求（HTTP 403），仅凭此状态码无法确定具体原因。"],
+        429: ["RATE_LIMITED", "请求过于频繁（HTTP 429），请稍后重试。"],
       };
       const [code, message] = messages[response.status] ?? [
         "HTTP_ERROR",
