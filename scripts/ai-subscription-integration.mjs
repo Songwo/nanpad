@@ -304,6 +304,7 @@ try {
       .getAttribute("aria-valuenow"),
     "25",
   );
+  await remainingQuota.scrollIntoViewIfNeeded();
   await page.screenshot({ path: "screenshots/nanpad-ai-gemini-remaining.png" });
   await page.keyboard.press("Escape");
   await details.waitFor({ state: "detached" });
@@ -360,6 +361,7 @@ try {
   assert.equal(linkedSubscription.monthlyUsd, 19.99);
   assert.equal(linkedSubscription.notes, "保留手动资料并等待首次授权额度");
   assert.equal((await saved()).length, 5);
+  await details.getByText("Spark / 主要额度", { exact: true }).scrollIntoViewIfNeeded();
   await page.screenshot({ path: "screenshots/nanpad-ai-first-link-delayed-usage.png" });
   assert.equal(JSON.stringify(await saved()).includes("qa-only-access"), false);
   await page.reload();
