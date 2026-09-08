@@ -2,6 +2,7 @@ import { Pencil, Trash2, X } from "lucide-react";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { AiCard, CertCard, DomainCard, MailCard, SecretCard, ServerCard } from "./asset-card";
 import { AccountPanel } from "./account-panel";
+import { AiAccountsPanel } from "./ai-accounts";
 import { AssetRelations, MetricHistory, SftpBrowser } from "./operations-panel";
 import { RefreshOneButton } from "./refresh-button";
 import { Button } from "./ui/button";
@@ -25,6 +26,7 @@ export function ExpandLayer() {
   const setExpanded = useAppStore((s) => s.setExpanded);
   const openComposer = useAppStore((s) => s.openComposer);
   const remove = useAppStore((s) => s.remove);
+  const aiAssets = useAppStore((s) => s.aiAssets);
 
   const [visible, setVisible] = useState<ExpandState | null>(null);
   const [shown, setShown] = useState(false);
@@ -141,7 +143,10 @@ export function ExpandLayer() {
             <SftpBrowser key={`files:${visible.id}`} serverId={visible.id} />
           )}
           <AssetRelations key={`links:${visible.kind}:${visible.id}`} asset={visible} />
-          <AccountPanel assetId={visible.id} kind={visible.kind} />
+          {(visible.kind !== "ai" ||
+            !aiAssets.find((item) => item.id === visible.id)?.oauthAccountId) && (
+            <AccountPanel assetId={visible.id} kind={visible.kind} />
+          )}
         </div>
       </div>
     </div>
@@ -171,7 +176,21 @@ function ExpandedBody({ kind, id }: { kind: AssetKind; id: string }) {
     }
     case "ai": {
       const d = aiAssets.find((x) => x.id === id);
-      return d ? <AiCard data={d} compact={false} /> : <Missing />;
+      return d ? (
+        <>
+          <AiCard data={d} compact={false} />
+          <div className="px-4 pb-4">
+            <AiAccountsPanel
+              key={d.id}
+              assetId={d.id}
+              linkedAccountId={d.oauthAccountId}
+              initialProvider={d.oauthProvider}
+            />
+          </div>
+        </>
+      ) : (
+        <Missing />
+      );
     }
     case "secret": {
       const d = secrets.find((x) => x.id === id);

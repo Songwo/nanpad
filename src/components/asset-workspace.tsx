@@ -26,6 +26,7 @@ import { t, getLocale, intlLocale } from "@/lib/i18n";
 import { formatDate, formatUsd } from "@/lib/utils";
 import { openFromEvent } from "./asset-card";
 import { Button } from "./ui/button";
+import { Select } from "./ui/input";
 import { StatusBadge } from "./ui/status-badge";
 
 const AssetGraph = lazy(() => import("./asset-graph"));
@@ -226,18 +227,13 @@ function AssetTable({ rows }: { rows: AssetRow[] }) {
         </table>
       </div>
       <div className="table-pagination">
-        <select
-          className="tool-input"
+        <Select
+          className="w-36 text-meta"
           aria-label={t("每页条数")}
-          value={pagination.pageSize}
-          onChange={(e) => table.setPageSize(Number(e.target.value))}
-        >
-          {[25, 50, 100].map((n) => (
-            <option value={n} key={n}>
-              {t("每页 {0} 项", n)}
-            </option>
-          ))}
-        </select>
+          value={String(pagination.pageSize)}
+          onValueChange={(value) => table.setPageSize(Number(value))}
+          options={[25, 50, 100].map((n) => ({ value: String(n), label: t("每页 {0} 项", n) }))}
+        />
         <span className="ml-auto" aria-live="polite">
           {t("第 {0} / {1} 页", pagination.pageIndex + 1, table.getPageCount())}
         </span>

@@ -7,10 +7,13 @@ import { t } from "@/lib/i18n";
 import { Button } from "./ui/button";
 import { Field, Input } from "./ui/input";
 import { LogoMark } from "./logo";
+import { ImagePicker } from "./image-picker";
 
 export function ProfileForm({ initial = false }: { initial?: boolean }) {
   const profile = useProfile((s) => s.profile);
   const [name, setName] = useState(profile?.name ?? "");
+  const [avatar, setAvatar] = useState(profile?.avatarDataUrl ?? "");
+  const [imageBusy, setImageBusy] = useState(false);
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
   const [busy, setBusy] = useState(false);
@@ -21,13 +24,18 @@ export function ProfileForm({ initial = false }: { initial?: boolean }) {
       className="space-y-4"
       onSubmit={async (event) => {
         event.preventDefault();
+        if (imageBusy) return;
         setBusy(true);
         setError("");
         setSaved(false);
         try {
           if (initial && !profile?.vaultExists && password !== confirm)
             throw new Error(t("两次主密码不一致"));
-          await desktop()?.profile.save({ name, password: initial ? password : undefined });
+          await desktop()?.profile.save({
+            name,
+            avatarDataUrl: avatar,
+            password: initial ? password : undefined,
+          });
           setPassword("");
           setConfirm("");
           await useProfile.getState().refresh();
@@ -40,6 +48,16 @@ export function ProfileForm({ initial = false }: { initial?: boolean }) {
         }
       }}
     >
+      <ImagePicker
+        avatar
+        value={avatar}
+        onChange={(value) => {
+          setAvatar(value);
+          setSaved(false);
+        }}
+        onBusyChange={setImageBusy}
+        disabled={busy}
+      />
       <Field label={t("你的名字")}>
         <Input
           aria-label={t("你的名字")}
@@ -96,7 +114,7 @@ export function ProfileForm({ initial = false }: { initial?: boolean }) {
           {t("已保存")}
         </p>
       )}
-      <Button type="submit" disabled={busy || !name.trim()}>
+      <Button type="submit" disabled={busy || imageBusy || !name.trim()}>
         {initial ? <KeyRound className="size-4" /> : <UserRound className="size-4" />}
         {t(busy ? "处理中…" : initial ? "进入司南" : "保存")}
       </Button>

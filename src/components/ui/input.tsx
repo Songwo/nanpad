@@ -3,10 +3,10 @@ import type {
   LabelHTMLAttributes,
   ReactNode,
   Ref,
-  SelectHTMLAttributes,
   TextareaHTMLAttributes,
 } from "react";
 import { cn } from "@/lib/utils";
+export { Select, type SelectOption, type SelectProps } from "./select";
 
 // React 19 passes `ref` through props, so no forwardRef wrapper is needed.
 export function Input({
@@ -26,10 +26,7 @@ export function Input({
   );
 }
 
-export function Textarea({
-  className,
-  ...props
-}: TextareaHTMLAttributes<HTMLTextAreaElement>) {
+export function Textarea({ className, ...props }: TextareaHTMLAttributes<HTMLTextAreaElement>) {
   return (
     <textarea
       className={cn(
@@ -43,10 +40,7 @@ export function Textarea({
 
 export function Label({ className, ...props }: LabelHTMLAttributes<HTMLLabelElement>) {
   return (
-    <label
-      className={cn("mb-1.5 block text-meta font-medium text-muted", className)}
-      {...props}
-    />
+    <label className={cn("mb-1.5 block text-meta font-medium text-muted", className)} {...props} />
   );
 }
 
@@ -56,23 +50,5 @@ export function Field({ label, children }: { label: string; children: ReactNode 
       <Label>{label}</Label>
       {children}
     </div>
-  );
-}
-
-export function Select({
-  className,
-  children,
-  ...props
-}: SelectHTMLAttributes<HTMLSelectElement>) {
-  return (
-    <select
-      className={cn(
-        "h-10 w-full appearance-none rounded-md bg-card px-3 text-body text-ink shadow-[0_0_0_1px_var(--color-line-strong)] outline-none transition-[box-shadow] duration-150 focus:shadow-[0_0_0_2px_var(--color-ink)]",
-        className,
-      )}
-      {...props}
-    >
-      {children}
-    </select>
   );
 }

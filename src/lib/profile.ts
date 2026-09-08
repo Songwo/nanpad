@@ -3,6 +3,7 @@ import { desktop } from "./desktop";
 
 export interface Profile {
   name: string;
+  avatarDataUrl?: string;
   ready: boolean;
   vaultExists: boolean;
 }

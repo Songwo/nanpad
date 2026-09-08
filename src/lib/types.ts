@@ -20,6 +20,7 @@ export type AuthKind = "password" | "key" | "agent";
 /** Free-form grouping labels. Every asset kind carries them, so one tag can
  *  span a project's host, its domain and its certificate. */
 export interface Taggable {
+  imageDataUrl?: string;
   demo?: boolean;
   tags: string[];
 }
@@ -81,6 +82,17 @@ export interface Mailbox extends Taggable {
 }
 
 export interface AiAsset extends Taggable {
+  oauthAccountId?: string;
+  oauthProvider?: import("./ai-accounts").AiProvider;
+  oauthDisconnected?: boolean;
+  accountEmail?: string;
+  usageCheckedAt?: string;
+  usageAvailable?: boolean;
+  usageSummary?: string;
+  usageStale?: boolean;
+  usageScope?: string;
+  monthlyUsdKnown?: boolean;
+  subscriptionExpiresAt?: string | null;
   id: string;
   name: string;
   provider: string;

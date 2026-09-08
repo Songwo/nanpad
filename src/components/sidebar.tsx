@@ -11,7 +11,7 @@ import {
   Tags,
   type LucideIcon,
 } from "lucide-react";
-import { useEffect, useRef, useState, type HTMLAttributes } from "react";
+import { useEffect, useMemo, useRef, useState, type HTMLAttributes } from "react";
 import { useShallow } from "zustand/react/shallow";
 import { LogoWord } from "./logo";
 import { Button } from "./ui/button";
@@ -24,6 +24,8 @@ import { cn, downloadJson } from "@/lib/utils";
 import { useVault } from "@/lib/vault-state";
 import { t } from "@/lib/i18n";
 import { useProfile } from "@/lib/profile";
+import { toast } from "sonner";
+import { safeImageDataUrl } from "../../electron/services/image-data.mjs";
 
 export const NAV: {
   id: ViewId;
@@ -95,7 +97,6 @@ export function Sidebar({ className, ...rest }: HTMLAttributes<HTMLElement>) {
           className="w-full text-base font-semibold"
           onClick={() => openComposer(kind)}
         >
-
           {t("添加资产")}
         </Button>
         <ProfileMenu />
@@ -111,6 +112,8 @@ function ProfileMenu() {
   const vaultUnlocked = useVault((s) => s.unlocked);
   const lockVault = useVault((s) => s.lock);
   const name = useProfile((s) => s.profile?.name) || "Nanpad";
+  const avatarDataUrl = useProfile((s) => s.profile?.avatarDataUrl);
+  const avatar = useMemo(() => safeImageDataUrl(avatarDataUrl), [avatarDataUrl]);
   const [open, setOpen] = useState(false);
   const { mounted, shown } = usePresence(open, 150);
   const root = useRef<HTMLDivElement>(null);
@@ -154,9 +157,12 @@ function ProfileMenu() {
       ref={root}
       className="relative flex items-center gap-3 rounded-2xl px-2 py-2 transition-colors duration-150 ease-out hover:bg-line"
     >
-      <div className="grid size-10 shrink-0 place-items-center rounded-full bg-ink text-meta font-semibold text-card">
-
-        {Array.from(name)[0]}
+      <div className="grid size-10 shrink-0 place-items-center overflow-hidden rounded-full bg-ink text-meta font-semibold text-card">
+        {avatar ? (
+          <img src={avatar} alt={t("个人头像")} className="size-full object-cover" />
+        ) : (
+          Array.from(name)[0]
+        )}
       </div>
       <div className="min-w-0 flex-1">
         <div className="truncate text-body font-semibold leading-tight">{name}</div>
@@ -196,8 +202,12 @@ function ProfileMenu() {
             input.onchange = async () => {
               const file = input.files?.[0];
               if (!file) return;
-              importSnapshot(JSON.parse(await file.text()));
-              log(t("已导入资产快照"));
+              try {
+                importSnapshot(JSON.parse(await file.text()));
+                log(t("已导入资产快照"));
+              } catch (error) {
+                toast.error(error instanceof Error ? error.message : String(error));
+              }
             };
             input.click();
           })}

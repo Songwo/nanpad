@@ -1,10 +1,12 @@
-import { X } from "lucide-react";
+import { X, LogIn, Pencil } from "lucide-react";
 import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { toast } from "sonner";
 import { AccountFields, accountFromForm } from "./account-fields";
 import { CredentialFields, credentialFromForm } from "./credential-fields";
 import { MailLogin } from "./mail-login";
 import { SmartPaste } from "./smart-paste";
+import { AiAccountsPanel } from "./ai-accounts";
+import { ImagePicker } from "./image-picker";
 import { Button } from "./ui/button";
 import { Field, Input, Textarea } from "./ui/input";
 import { accountId, credentialId, desktop, isDesktop } from "@/lib/desktop";
@@ -75,11 +77,15 @@ function ComposerBody({
     certs,
   });
   const [form, setForm] = useState<Record<string, string>>(() => defaults(kind, existing));
+  const [aiMode, setAiMode] = useState<"login" | "manual">(editingId ? "manual" : "login");
+  const [imageBusy, setImageBusy] = useState(false);
 
   // Reset only when the form changes *subject*. Keying on `existing` would
   // wipe half-typed input every time a background probe rewrote the record.
   useEffect(() => {
     setForm(defaults(kind, findAsset(kind, editingId, useAppStore.getState())));
+    setAiMode(editingId ? "manual" : "login");
+    setImageBusy(false);
   }, [kind, editingId]);
 
   useEffect(() => {
@@ -96,6 +102,7 @@ function ComposerBody({
 
   async function submit(e: FormEvent) {
     e.preventDefault();
+    if (imageBusy) return;
     const id = editingId ?? uid(kind.slice(0, 3));
 
     // Secrets go to the encrypted vault before the asset is written, so a
@@ -139,28 +146,93 @@ function ComposerBody({
         aria-label={t("关闭")}
         onClick={onClose}
       />
-      <form
-        onSubmit={submit}
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label={
+          kind === "ai" ? t(editingId ? "编辑 AI 订阅" : "添加 AI 订阅") : t(KIND_LABEL[kind])
+        }
         data-shown={shown}
         className="anim-sheet relative z-10 max-h-[92vh] w-full max-w-lg overflow-y-auto rounded-t-2xl bg-card p-5 shadow-float sm:rounded-2xl"
       >
         <div className="mb-4 flex items-center justify-between">
           <h2 className="text-lg font-semibold tracking-tight">
-            {editingId ? t("编辑") : t("添加")}
-            {t(KIND_LABEL[kind])}
+            {kind === "ai" ? (
+              t(editingId ? "编辑 AI 订阅" : "添加 AI 订阅")
+            ) : (
+              <>
+                {editingId ? t("编辑") : t("添加")}
+                {t(KIND_LABEL[kind])}
+              </>
+            )}
           </h2>
           <Button type="button" variant="ghost" size="icon-sm" onClick={onClose}>
             <X className="size-4" />
           </Button>
         </div>
-        <div className="grid gap-3 sm:grid-cols-2">{fields(kind, form, set, editingId)}</div>
-        <div className="mt-5 flex justify-end gap-2">
-          <Button type="button" variant="ghost" onClick={onClose}>
-            {t("取消")}
-          </Button>
-          <Button type="submit">{editingId ? t("保存") : t("添加")}</Button>
-        </div>
-      </form>
+        {kind === "ai" && (
+          <div
+            role="tablist"
+            aria-label={t("添加方式")}
+            className="mb-5 grid grid-cols-2 gap-1 rounded-md bg-line p-1"
+          >
+            <Button
+              type="button"
+              role="tab"
+              aria-selected={aiMode === "login"}
+              variant={aiMode === "login" ? "outline" : "ghost"}
+              onClick={() => setAiMode("login")}
+            >
+              <LogIn className="size-4" />
+              {t("快速登录")}
+            </Button>
+            <Button
+              type="button"
+              role="tab"
+              aria-selected={aiMode === "manual"}
+              variant={aiMode === "manual" ? "outline" : "ghost"}
+              onClick={() => setAiMode("manual")}
+            >
+              <Pencil className="size-4" />
+              {t("手动填写")}
+            </Button>
+          </div>
+        )}
+        {kind === "ai" && aiMode === "login" ? (
+          <div role="tabpanel" aria-label={t("快速登录")}>
+            <AiAccountsPanel
+              standalone
+              assetId={editingId ?? undefined}
+              initialProvider={(existing as AiAsset | null)?.oauthProvider}
+            />
+            <div className="mt-5 flex justify-end">
+              <Button type="button" variant="outline" onClick={onClose}>
+                {t("完成")}
+              </Button>
+            </div>
+          </div>
+        ) : (
+          <form onSubmit={submit}>
+            <div className="mb-4">
+              <ImagePicker
+                key={`${kind}:${editingId ?? "new"}`}
+                value={form.imageDataUrl}
+                onChange={(value) => set("imageDataUrl", value)}
+                onBusyChange={setImageBusy}
+              />
+            </div>
+            <div className="grid gap-3 sm:grid-cols-2">{fields(kind, form, set, editingId)}</div>
+            <div className="mt-5 flex justify-end gap-2">
+              <Button type="button" variant="ghost" onClick={onClose}>
+                {t("取消")}
+              </Button>
+              <Button type="submit" disabled={imageBusy}>
+                {editingId ? t("保存") : t("添加")}
+              </Button>
+            </div>
+          </form>
+        )}
+      </div>
     </div>
   );
 }
@@ -180,7 +252,9 @@ function fields(
       }}
     />,
     ...kindFields(kind, form, set, editingId),
-    <AccountFields key="_account" assetId={editingId} kind={kind} form={form} set={set} />,
+    ...(kind === "ai" && form.oauthAccountId
+      ? []
+      : [<AccountFields key="_account" assetId={editingId} kind={kind} form={form} set={set} />]),
   ];
 }
 
@@ -254,6 +328,13 @@ function kindFields(
         F("notes", t("说明"), { span: true, area: true }),
       ];
     case "ai":
+      if (form.oauthAccountId)
+        return [
+          F("name", t("名称")),
+          F("monthlyUsd", t("月费 USD")),
+          F("tags", t("标签（逗号分隔）"), { span: true }),
+          F("notes", t("说明"), { span: true, area: true }),
+        ];
       return [
         F("name", t("名称")),
         F("provider", t("厂商")),
@@ -315,6 +396,7 @@ function defaults(kind: AssetKind, existing: unknown): Record<string, string> {
       if (Array.isArray(v)) out[k] = v.join(", ");
       else if (v != null) out[k] = String(v);
     }
+    if (kind === "ai" && o.monthlyUsdKnown === false) out.monthlyUsd = "";
     return out;
   }
   const today = new Date().toISOString().slice(0, 10);
@@ -376,6 +458,7 @@ function persist(kind: AssetKind, id: string, form: Record<string, string>, exis
       const prev = (existing as Server | null) ?? null;
       const item: Server = {
         id,
+        imageDataUrl: form.imageDataUrl || "",
         name: form.name || "unnamed",
         label: form.label || form.name,
         host: form.host,
@@ -405,6 +488,7 @@ function persist(kind: AssetKind, id: string, form: Record<string, string>, exis
     case "domain": {
       const item: Domain = {
         id,
+        imageDataUrl: form.imageDataUrl || "",
         name: form.name,
         registrar: form.registrar,
         expiresAt: form.expiresAt,
@@ -421,6 +505,7 @@ function persist(kind: AssetKind, id: string, form: Record<string, string>, exis
     case "mail": {
       const item: Mailbox = {
         id,
+        imageDataUrl: form.imageDataUrl || "",
         address: form.address,
         domain: form.domain,
         kind: (form.kind as Mailbox["kind"]) || "mailbox",
@@ -437,9 +522,23 @@ function persist(kind: AssetKind, id: string, form: Record<string, string>, exis
       break;
     }
     case "ai": {
+      const previous = existing as AiAsset | null;
+      if (previous?.oauthAccountId) {
+        s.upsertAi({
+          ...previous,
+          imageDataUrl: form.imageDataUrl || "",
+          name: form.name,
+          monthlyUsd: Number(form.monthlyUsd) || 0,
+          monthlyUsdKnown: form.monthlyUsd.trim() !== "",
+          tags: parseTags(form.tags ?? ""),
+          notes: form.notes,
+        });
+        break;
+      }
       const usage = Number(form.usagePct) || 0;
       const item: AiAsset = {
         id,
+        imageDataUrl: form.imageDataUrl || "",
         name: form.name,
         provider: form.provider,
         plan: form.plan,
@@ -457,6 +556,7 @@ function persist(kind: AssetKind, id: string, form: Record<string, string>, exis
     case "secret": {
       const item: Secret = {
         id,
+        imageDataUrl: form.imageDataUrl || "",
         name: form.name,
         kind: (form.kind as Secret["kind"]) || "api",
         hint: form.hint,
@@ -474,6 +574,7 @@ function persist(kind: AssetKind, id: string, form: Record<string, string>, exis
       const prev = (existing as Certificate | null) ?? null;
       const item: Certificate = {
         id,
+        imageDataUrl: form.imageDataUrl || "",
         cn: form.cn,
         issuer: form.issuer,
         expiresAt: form.expiresAt,

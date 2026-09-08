@@ -25,10 +25,12 @@ import { MetricsStore } from "./services/metrics.mjs";
 import { notificationCandidates, NotificationTracker } from "./services/notifications.mjs";
 import { AgentService } from "./services/agent-service.mjs";
 import { ProfileService } from "./services/profile.mjs";
+import { createImageNormalizer, normalizeSnapshotImages } from "./services/image-data.mjs";
 import { AiAccounts } from "./services/ai-accounts.mjs";
 import { mergeDemo, DEMO_KNOWLEDGE } from "./services/demo.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
+const normalizeImage = createImageNormalizer(nativeImage);
 
 // Launched as `electron electron/main.mjs` there is no package.json beside the
 // entry, so Electron would call itself "Electron" and put the user's assets in
@@ -237,10 +239,18 @@ function handle(channel, fn) {
 
 function registerIpc() {
   vault = new Vault(vaultPath(app.getPath("userData")));
-  const profile = new ProfileService(join(app.getPath("userData"), "profile.json"), vault);
+  const profile = new ProfileService(
+    join(app.getPath("userData"), "profile.json"),
+    vault,
+    normalizeImage,
+  );
   handle("profile:get", () => profile.get());
   handle("profile:save", (value) => profile.save(value));
-  aiAccounts = new AiAccounts({ vault, openExternal: (url) => shell.openExternal(url), fetchImpl: (...args) => net.fetch(...args) });
+  aiAccounts = new AiAccounts({
+    vault,
+    openExternal: (url) => shell.openExternal(url),
+    fetchImpl: (...args) => net.fetch(...args),
+  });
   handle("ai-accounts:list", () => aiAccounts.list());
   handle("ai-accounts:start", (provider) => aiAccounts.start(provider));
   handle("ai-accounts:status", (id) => aiAccounts.status(id));
@@ -348,14 +358,18 @@ function registerIpc() {
   // ---- assets on disk -----------------------------------------------------
   handle("store:load", async () => {
     try {
-      return JSON.parse(await readFile(dataFile(), "utf8"));
+      return normalizeSnapshotImages(JSON.parse(await readFile(dataFile(), "utf8")), {
+        strict: false,
+        normalize: normalizeImage,
+      });
     } catch {
       return null;
     }
   });
   handle("store:save", async (snapshot) => {
-    await writeJson(dataFile(), snapshot);
-    currentSnapshot = snapshot?.state ?? snapshot ?? {};
+    const normalized = normalizeSnapshotImages(snapshot, { normalize: normalizeImage });
+    await writeJson(dataFile(), normalized);
+    currentSnapshot = normalized?.state ?? normalized ?? {};
     notifyAttention();
     return true;
   });

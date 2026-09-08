@@ -15,6 +15,7 @@ import { useEffect, useRef, useState } from "react";
 import { Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { toast } from "sonner";
 import { Button } from "./ui/button";
+import { Select } from "./ui/input";
 import { desktop, type DesktopPreferences, type MetricSample, type SftpEntry } from "@/lib/desktop";
 import { t, intlLocale } from "@/lib/i18n";
 import {
@@ -104,19 +105,20 @@ export function AssetRelations({ asset }: { asset: AssetRef }) {
         })}
       </ul>
       <div className="mt-3 flex min-w-0 gap-2">
-        <select
-          className="tool-input min-w-0 flex-1"
+        <Select
+          className="min-w-0 flex-1 text-meta"
           aria-label={t("选择关联资产")}
           value={choices.some((x) => refKey(x) === selected) ? selected : ""}
-          onChange={(e) => setSelected(e.target.value)}
-        >
-          <option value="">{t("选择关联资产")}</option>
-          {choices.map((entry) => (
-            <option key={refKey(entry)} value={refKey(entry)}>
-              {t(KIND_LABEL[entry.kind])} · {entry.label}
-            </option>
-          ))}
-        </select>
+          onValueChange={setSelected}
+          options={[
+            { value: "", label: t("选择关联资产") },
+            ...choices.map((entry) => ({
+              value: refKey(entry),
+              label: entry.label,
+              description: t(KIND_LABEL[entry.kind]),
+            })),
+          ]}
+        />
         <Button
           variant="outline"
           size="icon-sm"

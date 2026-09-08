@@ -16,7 +16,11 @@ export function credentialFromForm(form: Record<string, string>): SshCredential 
   // A pasted ssh config gives a path rather than the key itself; the main
   // process reads it at connect time.
   if (form._privateKeyPath) {
-    return { kind, privateKeyPath: form._privateKeyPath, passphrase: form._passphrase || undefined };
+    return {
+      kind,
+      privateKeyPath: form._privateKeyPath,
+      passphrase: form._passphrase || undefined,
+    };
   }
   return form._privateKey
     ? { kind, privateKey: form._privateKey, passphrase: form._passphrase || undefined }
@@ -117,11 +121,16 @@ export function CredentialFields({
 
         <div className="grid gap-3 sm:grid-cols-2">
           <Field label={t("认证方式")}>
-            <Select value={kind} onChange={(e) => set("_authKind", e.target.value)}>
-              <option value="password">{t("密码")}</option>
-              <option value="key">{t("私钥")}</option>
-              <option value="agent">SSH Agent</option>
-            </Select>
+            <Select
+              aria-label={t("认证方式")}
+              value={kind}
+              onValueChange={(value) => set("_authKind", value)}
+              options={[
+                { value: "password", label: t("密码") },
+                { value: "key", label: t("私钥") },
+                { value: "agent", label: "SSH Agent" },
+              ]}
+            />
           </Field>
 
           {kind === "password" && (
@@ -166,7 +175,6 @@ export function CredentialFields({
 
           {kind === "agent" && (
             <p className="self-end pb-2 text-2xs text-muted sm:col-span-1">
-
               {t("使用系统 SSH agent（Windows 为 Pageant，其它平台读 SSH_AUTH_SOCK）。")}
             </p>
           )}
@@ -189,7 +197,6 @@ export function CredentialFields({
               size="sm"
               onClick={() => void requireVault(t("保存 SSH 凭据需要先解锁密钥库。"))}
             >
-
               {t("解锁密钥库")}
             </Button>
           )}
@@ -212,7 +219,6 @@ export function CredentialFields({
         </div>
 
         <p className="mt-3 text-2xs leading-relaxed text-subtle">
-
           {t("凭据用主密码派生的密钥加密后单独存放，不写入资产文件，导出 JSON 时也不会带出去。")}
         </p>
       </div>

@@ -61,8 +61,8 @@ export function assetRows(s: Snapshot): AssetRow[] {
     ...s.mailboxes.map((x) => row("mail", x, x.address, x.forwardTo || x.domain)),
     ...s.aiAssets.map((x) =>
       row("ai", x, x.name, `${x.provider} · ${x.plan}`, {
-        expires: x.renewsAt,
-        monthlyUsd: x.monthlyUsd,
+        expires: x.oauthAccountId ? (x.subscriptionExpiresAt ?? undefined) : x.renewsAt,
+        monthlyUsd: x.monthlyUsdKnown === false ? undefined : x.monthlyUsd,
       }),
     ),
     ...s.secrets.map((x) => row("secret", x, x.name, x.kind)),

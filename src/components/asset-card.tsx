@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { CardTag } from "./tag-bar";
+import { AssetImage } from "./image-picker";
 import { TimeAgo } from "./ui/time-ago";
 import { isDesktop } from "@/lib/desktop";
 import { useLive } from "@/lib/live";
@@ -58,9 +59,14 @@ export function ServerCard({ data, compact = true }: { data: ServerT; compact?: 
       onClick={compact ? (e) => openFromEvent(e, "server", data.id) : undefined}
     >
       <header className="flex items-start gap-3">
-        <div className="grid size-10 shrink-0 place-items-center rounded-md bg-line text-ink">
-          <Server className="size-4.5" strokeWidth={1.8} />
-        </div>
+        <AssetImage
+          value={data.imageDataUrl}
+          fallback={
+            <div className="grid size-10 shrink-0 place-items-center rounded-md bg-line text-ink">
+              <Server className="size-4.5" strokeWidth={1.8} />
+            </div>
+          }
+        />
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
             <h3 className="truncate font-semibold tracking-tight">{data.name}</h3>
@@ -215,9 +221,14 @@ export function DomainCard({ data, compact = true }: { data: Domain; compact?: b
       onClick={compact ? (e) => openFromEvent(e, "domain", data.id) : undefined}
     >
       <header className="flex items-start gap-3">
-        <div className="grid size-10 place-items-center rounded-md bg-line">
-          <Globe className="size-4.5" />
-        </div>
+        <AssetImage
+          value={data.imageDataUrl}
+          fallback={
+            <div className="grid size-10 shrink-0 place-items-center rounded-md bg-line">
+              <Globe className="size-4.5" />
+            </div>
+          }
+        />
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
             <h3 className="truncate font-semibold tracking-tight">{data.name}</h3>
@@ -272,9 +283,14 @@ export function MailCard({ data, compact = true }: { data: Mailbox; compact?: bo
       onClick={compact ? (e) => openFromEvent(e, "mail", data.id) : undefined}
     >
       <header className="flex items-start gap-3">
-        <div className="grid size-10 place-items-center rounded-md bg-line">
-          <Mail className="size-4.5" />
-        </div>
+        <AssetImage
+          value={data.imageDataUrl}
+          fallback={
+            <div className="grid size-10 shrink-0 place-items-center rounded-md bg-line">
+              <Mail className="size-4.5" />
+            </div>
+          }
+        />
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
             <h3 className="truncate font-semibold tracking-tight">{data.address}</h3>
@@ -318,34 +334,92 @@ export function AiCard({ data, compact = true }: { data: AiAsset; compact?: bool
       onClick={compact ? (e) => openFromEvent(e, "ai", data.id) : undefined}
     >
       <header className="flex items-start gap-3">
-        <div className="grid size-10 place-items-center rounded-md bg-ink text-2xs font-semibold text-card">
-          {data.provider.slice(0, 2)}
-        </div>
+        <AssetImage
+          value={data.imageDataUrl}
+          fallback={
+            <div className="grid size-10 shrink-0 place-items-center rounded-md bg-ink text-2xs font-semibold text-card">
+              {data.provider.slice(0, 2)}
+            </div>
+          }
+        />
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
             <h3 className="truncate font-semibold tracking-tight">{data.name}</h3>
           </div>
           <p className="mt-0.5 text-meta text-muted">
-            {data.provider} · {data.plan}
+            {data.provider} · {data.plan || t("未提供")}
           </p>
         </div>
-        <span className="text-body font-semibold tabular-nums">
-          {formatUsd(data.monthlyUsd)}
-          <span className="text-2xs font-normal text-subtle"> {t("/月")}</span>
+        <span className="shrink-0 text-right text-body font-semibold tabular-nums">
+          {data.monthlyUsdKnown === false ? (
+            <span className="text-2xs font-normal text-muted">{t("月费未记录")}</span>
+          ) : (
+            formatUsd(data.monthlyUsd)
+          )}
+          {data.monthlyUsdKnown !== false && (
+            <span className="text-2xs font-normal text-subtle"> {t("/月")}</span>
+          )}
         </span>
       </header>
       <div className="mt-4">
-        <Metric label={t("本月用量")} value={data.usagePct} />
+        {data.oauthAccountId && !data.usageAvailable ? (
+          <p className="break-words text-meta text-muted">
+            {data.usageSummary ? `${t("剩余")}: ${data.usageSummary}` : t("暂无可读取额度")}
+          </p>
+        ) : (
+          <Metric
+            label={t(data.oauthAccountId ? "最高额度用量" : "本月用量")}
+            value={data.usagePct}
+          />
+        )}
+        {data.usageScope && (
+          <p className="mt-2 text-2xs text-muted">
+            {t("额度来源")}:{" "}
+            {(
+              {
+                codex: "Codex",
+                claude: "Claude OAuth",
+                "grok-cli": "Grok CLI",
+                "code-assist": "Gemini Code Assist",
+              } as Record<string, string>
+            )[data.usageScope] || data.usageScope}
+          </p>
+        )}
+        {data.usageStale && (
+          <p className="mt-1 text-2xs text-warn">{t("更新失败，保留上次数据")}</p>
+        )}
       </div>
       <div className="mt-3 flex items-center justify-between text-2xs text-subtle">
-        <span className="font-mono">{data.keyHint}</span>
+        <span className="min-w-0 truncate">
+          {data.oauthAccountId ? t(data.oauthDisconnected ? "授权已断开" : "已授权") : data.keyHint}
+        </span>
         <span
           key={data.status}
           className={cn(chipClass(data.status), "status-feedback")}
           data-status={data.status}
         >
           <span className={dotClass(data.status)} />
-          {daysUntil(data.renewsAt)} {t("天后续费")}
+          {data.oauthAccountId ? (
+            data.subscriptionExpiresAt ? (
+              `${t("订阅到期")}: ${formatDate(data.subscriptionExpiresAt)}`
+            ) : (
+              t(
+                data.oauthDisconnected
+                  ? "授权已断开"
+                  : data.usageStale
+                    ? "需刷新"
+                    : data.usageAvailable || data.usageSummary
+                      ? "额度已同步"
+                      : "额度待查询",
+              )
+            )
+          ) : data.renewsAt ? (
+            <>
+              {daysUntil(data.renewsAt)} {t("天后续费")}
+            </>
+          ) : (
+            t("未提供")
+          )}
         </span>
       </div>
       <TagRow tags={tagsOf(data)} />
@@ -373,9 +447,14 @@ export function SecretCard({ data, compact = true }: { data: Secret; compact?: b
       onClick={compact ? (e) => openFromEvent(e, "secret", data.id) : undefined}
     >
       <header className="flex items-start gap-3">
-        <div className="grid size-10 place-items-center rounded-md bg-line">
-          <KeyRound className="size-4.5" />
-        </div>
+        <AssetImage
+          value={data.imageDataUrl}
+          fallback={
+            <div className="grid size-10 shrink-0 place-items-center rounded-md bg-line">
+              <KeyRound className="size-4.5" />
+            </div>
+          }
+        />
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
             <h3 className="truncate font-semibold tracking-tight">{data.name}</h3>
@@ -428,9 +507,14 @@ export function CertCard({ data, compact = true }: { data: Certificate; compact?
       onClick={compact ? (e) => openFromEvent(e, "cert", data.id) : undefined}
     >
       <header className="flex items-start gap-3">
-        <div className="grid size-10 place-items-center rounded-md bg-line">
-          <Shield className="size-4.5" />
-        </div>
+        <AssetImage
+          value={data.imageDataUrl}
+          fallback={
+            <div className="grid size-10 shrink-0 place-items-center rounded-md bg-line">
+              <Shield className="size-4.5" />
+            </div>
+          }
+        />
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
             <h3 className="truncate font-semibold tracking-tight">{data.cn}</h3>

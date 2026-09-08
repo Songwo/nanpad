@@ -37,6 +37,10 @@ const FIELDS = [
   "plan",
   "monthlyUsd",
   "usagePct",
+  "usageAvailable",
+  "usageCheckedAt",
+  "monthlyUsdKnown",
+  "subscriptionExpiresAt",
   "lastRotated",
   "demo",
   "tags",
@@ -71,8 +75,10 @@ export function assetDocuments(snapshot) {
       const fields = Object.fromEntries(
         FIELDS.filter(
           (key) =>
-            ["string", "number", "boolean"].includes(typeof asset[key]) ||
-            (key === "tags" && Array.isArray(asset[key])),
+            !(key === "monthlyUsd" && asset.monthlyUsdKnown === false) &&
+            !(key === "usagePct" && asset.usageAvailable === false) &&
+            (["string", "number", "boolean"].includes(typeof asset[key]) ||
+            (key === "tags" && Array.isArray(asset[key]))),
         ).map((key) => [
           key,
           typeof asset[key] === "string"

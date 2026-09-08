@@ -18,7 +18,7 @@ import { Button } from "./ui/button";
 import { CalendarExport, DesktopSettings } from "./operations-panel";
 import { AgentSettings } from "./agent-settings";
 import { ProfileForm } from "./onboarding";
-import { Field, Input } from "./ui/input";
+import { Field, Input, Select } from "./ui/input";
 import { RELEASES } from "@/lib/changelog";
 import { desktop, type AppInfo } from "@/lib/desktop";
 import { usePresence } from "@/lib/motion";
@@ -151,16 +151,17 @@ function Appearance() {
   return (
     <Section title={t("外观")}>
       <Row label={t("语言")}>
-        <select
-          className="tool-input"
+        <Select
+          className="w-36 text-meta"
           aria-label={t("语言")}
           value={language}
-          onChange={(e) => setLanguage(e.target.value as LocaleChoice)}
-        >
-          <option value="system">{t("跟随系统")}</option>
-          <option value="zh">简体中文</option>
-          <option value="en">English</option>
-        </select>
+          onValueChange={(value) => setLanguage(value as LocaleChoice)}
+          options={[
+            { value: "system", label: t("跟随系统") },
+            { value: "zh", label: "简体中文" },
+            { value: "en", label: "English" },
+          ]}
+        />
       </Row>
       <div className="grid grid-cols-3 gap-3">
         {THEMES.map((option) => {

@@ -4,7 +4,7 @@ import { desktop } from "@/lib/desktop";
 import type { ModelConfig, KnowledgeStatus } from "@/lib/agent-client";
 import { t } from "@/lib/i18n";
 import { Button } from "./ui/button";
-import { Field, Input } from "./ui/input";
+import { Field, Input, Select } from "./ui/input";
 import { AiAccountsPanel } from "./ai-accounts";
 
 export function AgentSettings({
@@ -73,29 +73,29 @@ export function AgentSettings({
         </p>
         <fieldset disabled={busy} className="mt-4 space-y-3">
           <Field label={t("模型服务商")}>
-            <select
+            <Select
               aria-label={t("模型服务商")}
-              className="h-10 w-full rounded-md border border-line bg-card px-3 text-meta"
               value=""
-              onChange={(event) => {
-                if (event.target.value) patch({ baseUrl: event.target.value, model: "" });
+              onValueChange={(value) => {
+                if (value) patch({ baseUrl: value, model: "" });
               }}
-            >
-              <option value="">{t("选择服务商预设")}</option>
-              <option value="https://api.openai.com/v1">OpenAI API</option>
-              <option value="https://api.x.ai/v1">xAI / Grok API</option>
-              <option value="https://generativelanguage.googleapis.com/v1beta/openai">
-                Google / Gemini API
-              </option>
-              <option value="https://api.deepseek.com/v1">DeepSeek</option>
-              <option value="https://dashscope.aliyuncs.com/compatible-mode/v1">
-                {t("阿里云 / 通义千问")}
-              </option>
-              <option value="https://ark.cn-beijing.volces.com/api/v3">
-                {t("火山方舟 / 豆包")}
-              </option>
-              <option value="https://znck.zle.ee/v1">znck.zle.ee</option>
-            </select>
+              options={[
+                { value: "", label: t("选择服务商预设") },
+                { value: "https://api.openai.com/v1", label: "OpenAI API" },
+                { value: "https://api.x.ai/v1", label: "xAI / Grok API" },
+                {
+                  value: "https://generativelanguage.googleapis.com/v1beta/openai",
+                  label: "Google / Gemini API",
+                },
+                { value: "https://api.deepseek.com/v1", label: "DeepSeek" },
+                {
+                  value: "https://dashscope.aliyuncs.com/compatible-mode/v1",
+                  label: t("阿里云 / 通义千问"),
+                },
+                { value: "https://ark.cn-beijing.volces.com/api/v3", label: t("火山方舟 / 豆包") },
+                { value: "https://znck.zle.ee/v1", label: "znck.zle.ee" },
+              ]}
+            />
           </Field>
           <Field label="API Base URL">
             <Input

@@ -17,6 +17,9 @@ import type {
 import { uid } from "./utils";
 import { t } from "./i18n.ts";
 import { normalizeLinks, refKey, type AssetRef, type AssetLink } from "./operations";
+import type { AiAccount } from "./ai-accounts";
+import { subscriptionFromAccount } from "./ai-subscriptions";
+import { normalizeSnapshotImages } from "../../electron/services/image-data.mjs";
 
 export interface ExpandState {
   kind: AssetKind;
@@ -73,6 +76,8 @@ export interface AppState extends Snapshot {
   upsertDomain: (s: Domain) => void;
   upsertMail: (s: Mailbox) => void;
   upsertAi: (s: AiAsset) => void;
+  syncAiAccount: (account: AiAccount, assetId?: string) => void;
+  disconnectAiAccount: (accountId: string) => void;
   upsertSecret: (s: Secret) => void;
   upsertCert: (s: Certificate) => void;
   remove: (kind: AssetKind, id: string) => void;
@@ -192,6 +197,20 @@ export const useAppStore = create<AppState>()(
       upsertDomain: (s) => set({ domains: upsert(get().domains, s) }),
       upsertMail: (s) => set({ mailboxes: upsert(get().mailboxes, s) }),
       upsertAi: (s) => set({ aiAssets: upsert(get().aiAssets, s) }),
+      syncAiAccount: (account, assetId) => {
+        const previous =
+          get().aiAssets.find((item) => item.oauthAccountId === account.id) ??
+          get().aiAssets.find((item) => item.id === assetId);
+        get().upsertAi(subscriptionFromAccount(account, previous));
+      },
+      disconnectAiAccount: (accountId) =>
+        set({
+          aiAssets: get().aiAssets.map((item) =>
+            item.oauthAccountId === accountId
+              ? { ...item, oauthDisconnected: true, status: "warning" }
+              : item,
+          ),
+        }),
       upsertSecret: (s) => set({ secrets: upsert(get().secrets, s) }),
       upsertCert: (s) => set({ certs: upsert(get().certs, s) }),
 
@@ -235,7 +254,8 @@ export const useAppStore = create<AppState>()(
           ...emptyUi,
         }),
 
-      importSnapshot: (snap) =>
+      importSnapshot: (input) => {
+        const snap = normalizeSnapshotImages(input);
         set({
           links: normalizeLinks(snap.links, snap),
           servers: snap.servers ?? [],
@@ -244,7 +264,8 @@ export const useAppStore = create<AppState>()(
           aiAssets: snap.aiAssets ?? [],
           secrets: snap.secrets ?? [],
           certs: snap.certs ?? [],
-        }),
+        });
+      },
     }),
     {
       name: "sinan-assets-v1",
@@ -253,7 +274,9 @@ export const useAppStore = create<AppState>()(
       // Records written before tags existed have no `tags` array, and every
       // reader treats it as required. Normalise once, on the way in.
       merge: (persisted, current) => {
-        const saved = (persisted ?? {}) as Partial<AppState>;
+        const saved = normalizeSnapshotImages((persisted ?? {}) as Partial<AppState>, {
+          strict: false,
+        });
         return {
           ...current,
           ...saved,

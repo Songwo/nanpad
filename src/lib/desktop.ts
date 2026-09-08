@@ -150,7 +150,11 @@ export interface DesktopBridge {
   aiAccounts: import("./ai-accounts").AiAccountBridge;
   profile: {
     get(): Promise<import("./profile").Profile>;
-    save(value: { name: string; password?: string }): Promise<import("./profile").Profile>;
+    save(value: {
+      name: string;
+      password?: string;
+      avatarDataUrl?: string;
+    }): Promise<import("./profile").Profile>;
   };
   agent: import("./agent-client").AgentBridge;
   preferences: {

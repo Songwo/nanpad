@@ -106,9 +106,8 @@ try {
   await page.locator('[data-asset-id="qa-host"]').click();
   await page.locator(".metric-history .recharts-line-curve").first().waitFor();
   assert.equal(await page.locator(".metric-history .recharts-line-curve").count(), 3);
-  await page
-    .getByRole("combobox", { name: "选择关联资产" })
-    .selectOption(JSON.stringify(["domain", "qa-domain"]));
+  await page.getByRole("combobox", { name: "选择关联资产" }).click();
+  await page.getByRole("option").filter({ has: page.getByText("qa.example.test", { exact: true }) }).click();
   await page.getByRole("button", { name: "添加关联", exact: true }).click();
   await page.getByRole("button", { name: "解除关联", exact: true }).waitFor();
   await page

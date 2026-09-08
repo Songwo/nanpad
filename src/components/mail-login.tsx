@@ -95,7 +95,6 @@ export function MailLogin({
           <LogIn className="size-4" strokeWidth={1.9} />
           <span className="font-medium">{t("快捷登录")}</span>
           <span className="text-2xs text-subtle">
-
             {t("登录一次，地址 / 容量 / 服务器设置自动填好")}
           </span>
         </button>
@@ -109,7 +108,6 @@ export function MailLogin({
               className="ml-auto text-2xs text-subtle hover:text-ink"
               onClick={() => setOpen(false)}
             >
-
               {t("收起")}
             </button>
           </div>
@@ -125,14 +123,18 @@ export function MailLogin({
               />
             </Field>
             <Field label={t("服务商")}>
-              <Select value={provider} onChange={(e) => setProvider(e.target.value)}>
-                <option value="">{t("自动识别 / 自定义")}</option>
-                {Object.entries(providers).map(([id, p]) => (
-                  <option key={id} value={id}>
-                    {p.label}
-                  </option>
-                ))}
-              </Select>
+              <Select
+                aria-label={t("服务商")}
+                value={provider}
+                onValueChange={setProvider}
+                options={[
+                  { value: "", label: t("自动识别 / 自定义") },
+                  ...Object.entries(providers).map(([id, provider]) => ({
+                    value: id,
+                    label: provider.label,
+                  })),
+                ]}
+              />
             </Field>
             <div className="sm:col-span-2">
               <Field label={t("密码 / 授权码")}>
@@ -176,9 +178,7 @@ export function MailLogin({
               <span className="flex items-center gap-1.5 text-2xs text-ok">
                 <CheckCircle2 className="size-3.5" />
                 {state.result.providerLabel} {t("· 收件箱 {0} 封", state.result.messages)}
-                {state.result.quotaMb
-                  ? ` · ${state.result.usedMb}/${state.result.quotaMb} MB`
-                  : ""}
+                {state.result.quotaMb ? ` · ${state.result.usedMb}/${state.result.quotaMb} MB` : ""}
               </span>
             )}
             {state.kind === "fail" && (
@@ -190,7 +190,6 @@ export function MailLogin({
           </div>
 
           <p className="mt-3 text-2xs leading-relaxed text-subtle">
-
             {t("登录直接连服务商的 IMAP，凭据校验通过后才会存进加密库；不经过任何中间服务。")}
           </p>
 

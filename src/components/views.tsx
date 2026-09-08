@@ -666,6 +666,7 @@ function MailView() {
 function AiView() {
   const list = useAppStore((s) => s.aiAssets);
   const spend = list.reduce((a, x) => a + x.monthlyUsd, 0);
+  const missingPrice = list.filter((item) => item.monthlyUsdKnown === false).length;
   const items = useListFilter(list, (s) => [s.name, s.provider, s.plan, tagsOf(s).join(" ")]);
   return (
     <div>
@@ -674,6 +675,9 @@ function AiView() {
         <p className="text-xl font-semibold tabular-nums">
           <CountUp value={spend} format={formatUsd} />
         </p>
+        {missingPrice > 0 && (
+          <p className="mt-1 text-2xs text-muted">{t("另有 {0} 个订阅未提供月费", missingPrice)}</p>
+        )}
       </div>
       <AssetList
         items={items}

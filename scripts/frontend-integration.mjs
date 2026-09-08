@@ -97,7 +97,8 @@ try {
   assert.equal(await page.locator(".asset-table tbody tr").count(), 25);
   await page.getByRole("button", { name: "下一页", exact: true }).click();
   assert.equal(await page.locator(".asset-table tbody tr").count(), 7);
-  await page.getByRole("combobox", { name: "每页条数" }).selectOption("50");
+  await page.getByRole("combobox", { name: "每页条数" }).click();
+  await page.getByRole("option", { name: "每页 50 项", exact: true }).click();
   await page.getByRole("button", { name: "CPU", exact: true }).click();
   const values = await page.locator(".asset-table tbody tr td:nth-child(5)").allTextContents();
   const numbers = values.filter((value) => value !== "-").map((value) => Number.parseFloat(value));
@@ -179,7 +180,8 @@ try {
   await page.getByRole("button", { name: "更多操作", exact: true }).click();
   await page.getByRole("button", { name: "设置…", exact: true }).click();
   await page.getByRole("button", { name: "深色", exact: true }).click();
-  await page.getByRole("combobox", { name: "语言", exact: true }).selectOption("en");
+  await page.getByRole("combobox", { name: "语言", exact: true }).click();
+  await page.getByRole("option", { name: "English", exact: true }).click();
   await page
     .getByRole("dialog", { name: "Settings", exact: true })
     .getByRole("button", { name: "Close", exact: true })
