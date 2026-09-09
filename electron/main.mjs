@@ -19,6 +19,8 @@ import { fileURLToPath } from "node:url";
 import { SshManager } from "./services/ssh.mjs";
 import { probeCertificate, probeDomain } from "./services/net-probe.mjs";
 import { MAIL_PROVIDERS, providerForAddress, testMailbox } from "./services/mail.mjs";
+import { MailboxService, validateMailboxConnection } from "./services/mailbox-service.mjs";
+import { MailPushService } from "./services/mail-push.mjs";
 import { OAUTH_PROVIDERS, signIn as oauthSignIn } from "./services/oauth.mjs";
 import { Vault, vaultPath } from "./services/vault.mjs";
 import { MetricsStore } from "./services/metrics.mjs";
@@ -67,14 +69,37 @@ let ssh = null;
 let metrics;
 let agent;
 let aiAccounts;
+let mailboxes;
+let mailPush;
 let tray = null;
 let quitting = false;
 let notificationTimer;
+let mailPushTimer;
 let currentSnapshot = {};
 let preferences = { closeToTray: true, notifications: true, locale: "zh" };
 const tracker = new NotificationTracker();
 const writes = new Map();
 let preferenceWrites = Promise.resolve();
+
+function stopPrivateTasks() {
+  mailPush?.stop();
+  mailboxes?.stop();
+  agent?.close();
+}
+
+function lockVault() {
+  stopPrivateTasks();
+  const result = vault?.lock();
+  emit("vault:changed", {});
+  return result;
+}
+
+function assertPublicVaultRecord(id) {
+  if (typeof id !== "string" || !id) throw new Error("凭据标识不正确。");
+  if (id === "notification:mail-push") {
+    throw new Error("请通过邮件推送设置管理此凭据。");
+  }
+}
 
 function showWindow() {
   if (!win || win.isDestroyed()) return;
@@ -114,10 +139,7 @@ function updateTray() {
       { label: en ? "Open Nanpad" : "打开司南", click: showWindow },
       {
         label: en ? "Lock vault" : "锁定密钥库",
-        click: () => {
-          vault?.lock();
-          emit("vault:changed", {});
-        },
+        click: lockVault,
       },
       { type: "separator" },
       { label: en ? "Quit" : "退出", click: () => app.quit() },
@@ -261,10 +283,27 @@ function registerIpc() {
   app.once("before-quit", () => aiAccounts.stop());
   ssh = new SshManager(emit);
   metrics = new MetricsStore(join(app.getPath("userData"), "metrics.json"));
+  mailboxes = new MailboxService({
+    directory: app.getPath("userData"),
+    vault,
+    getSnapshot: () => currentSnapshot,
+  });
+  mailPush = new MailPushService({
+    vault,
+    getSnapshot: () => currentSnapshot,
+    checkMailbox: (id, options) => mailboxes.check(id, options),
+    fetchImpl: (...args) => net.fetch(...args),
+  });
+  handle("mailboxes:check", (id) => mailboxes.check(id));
+  handle("mailboxes:validate", (connection) => validateMailboxConnection(connection));
+  handle("mail-push:config", () => mailPush.config());
+  handle("mail-push:save", (input) => mailPush.save(input));
+  handle("mail-push:test", () => mailPush.test());
   agent = new AgentService({
     directory: app.getPath("userData"),
     secureStorage: safeStorage,
     getSnapshot: () => currentSnapshot,
+    checkMailbox: (id, options) => mailboxes.check(id, options),
     emit: (event) => emit("agent:event", event),
   });
   handle("agent:config", () => agent.config());
@@ -368,8 +407,12 @@ function registerIpc() {
   });
   handle("store:save", async (snapshot) => {
     const normalized = normalizeSnapshotImages(snapshot, { normalize: normalizeImage });
+    const next = normalized?.state ?? normalized ?? {};
+    for (const mailbox of next.mailboxes ?? []) {
+      if (mailbox.imap) mailbox.imap = validateMailboxConnection(mailbox.imap);
+    }
     await writeJson(dataFile(), normalized);
-    currentSnapshot = normalized?.state ?? normalized ?? {};
+    currentSnapshot = next;
     notifyAttention();
     return true;
   });
@@ -386,13 +429,22 @@ function registerIpc() {
   handle("vault:status", () => vault.status());
   handle("vault:create", (master) => vault.create(master));
   handle("vault:unlock", (master) => vault.unlock(master));
-  handle("vault:lock", () => vault.lock());
+  handle("vault:lock", lockVault);
   handle("vault:change-password", (oldMaster, newMaster) =>
     vault.changePassword(oldMaster, newMaster),
   );
-  handle("vault:set", (id, secret) => vault.set(id, secret));
-  handle("vault:get", (id) => vault.get(id));
-  handle("vault:remove", (id) => vault.remove(id));
+  handle("vault:set", (id, secret) => {
+    assertPublicVaultRecord(id);
+    return vault.set(id, secret);
+  });
+  handle("vault:get", (id) => {
+    assertPublicVaultRecord(id);
+    return vault.get(id);
+  });
+  handle("vault:remove", (id) => {
+    assertPublicVaultRecord(id);
+    return vault.remove(id);
+  });
   handle("vault:list", () => vault.list());
 
   // ---- ssh ----------------------------------------------------------------
@@ -609,6 +661,7 @@ if (!app.requestSingleInstanceLock()) {
     }
     await createWindow();
     notificationTimer = setInterval(notifyAttention, 60_000);
+    mailPushTimer = setInterval(() => void mailPush.tick(), 60_000);
     notifyAttention();
     app.on("activate", () => {
       if (BrowserWindow.getAllWindows().length === 0) createWindow();
@@ -622,9 +675,10 @@ if (!app.requestSingleInstanceLock()) {
   });
 
   app.on("before-quit", () => {
-    agent?.close();
+    stopPrivateTasks();
     quitting = true;
     clearInterval(notificationTimer);
+    clearInterval(mailPushTimer);
     ssh?.closeAll();
     tray?.destroy();
     tray = null;
@@ -641,10 +695,7 @@ function buildMenu() {
       submenu: [
         {
           label: label("锁定密钥库", "Lock vault"),
-          click: () => {
-            vault?.lock();
-            emit("vault:changed", {});
-          },
+          click: lockVault,
         },
         { type: "separator" },
         isMac

@@ -70,6 +70,8 @@ export interface Domain extends ProbeMeta, Taggable {
 }
 
 export interface Mailbox extends Taggable {
+  imap?: import("./mailbox").MailboxConnection;
+  mailStatus?: import("./mailbox").MailboxStatus;
   id: string;
   address: string;
   domain: string;

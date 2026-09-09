@@ -35,6 +35,8 @@ export function MailLogin({
   const [provider, setProvider] = useState<string>("");
   const [address, setAddress] = useState(form.address ?? "");
   const [password, setPassword] = useState("");
+  const [host, setHost] = useState(form._imapHost ?? "");
+  const [port, setPort] = useState(form._imapPort ?? "993");
   const [state, setState] = useState<State>({ kind: "idle" });
 
   useEffect(() => {
@@ -63,8 +65,9 @@ export function MailLogin({
       const result = await bridge!.mail.test({
         address,
         password,
-        host: picked?.imap.host,
-        port: picked?.imap.port,
+        host: picked?.imap.host ?? host,
+        port: picked?.imap.port ?? Number(port),
+        secure: true,
       });
       setState({ kind: "ok", result });
 
@@ -74,6 +77,9 @@ export function MailLogin({
       set("kind", "mailbox");
       set("_username", result.address);
       set("_password", password);
+      set("_imapHost", result.imap.host);
+      set("_imapPort", String(result.imap.port));
+      set("_imapSecure", "true");
       if (result.usedMb !== undefined) set("usedMb", String(result.usedMb));
       if (result.quotaMb !== undefined) set("quotaMb", String(result.quotaMb));
       const lines = [
@@ -146,6 +152,29 @@ export function MailLogin({
                 />
               </Field>
             </div>
+            {!picked && (
+              <>
+                <Field label={t("IMAP 服务器")}>
+                  <Input
+                    aria-label={t("IMAP 服务器")}
+                    value={host}
+                    placeholder="imap.example.com"
+                    autoComplete="off"
+                    onChange={(event) => setHost(event.target.value)}
+                  />
+                </Field>
+                <Field label={t("TLS 端口")}>
+                  <Input
+                    aria-label={t("TLS 端口")}
+                    type="number"
+                    min={1}
+                    max={65535}
+                    value={port}
+                    onChange={(event) => setPort(event.target.value)}
+                  />
+                </Field>
+              </>
+            )}
           </div>
 
           {picked && (

@@ -38,6 +38,8 @@ export function AgentView() {
   const [draft, setDraft] = useState("");
   const [configOpen, setConfigOpen] = useState(false);
   const [model, setModel] = useState("");
+  const [allowMailboxChecks, setAllowMailboxChecks] = useState(false);
+  const requireVault = useVault((state) => state.require);
   const [running, setRunning] = useState<{
     id: string;
     conversationId: string;
@@ -91,6 +93,10 @@ export function AgentView() {
       setError(t("请先配置真实模型地址、API Key 和模型名。"));
       return;
     }
+    const checkMailboxes = allowMailboxChecks;
+    if (checkMailboxes && !(await requireVault(t("本次允许查询邮箱")))) return;
+    if (runRef.current) return;
+    setAllowMailboxChecks(false);
     const conversationId = activeId ?? start();
     const history = messages
       .filter(
@@ -133,13 +139,19 @@ export function AgentView() {
       );
     });
     try {
-      const result = await api.run({ id, question, history });
+      const result = await api.run({ id, question, history, allowMailboxChecks: checkMailboxes });
       append(
         "agent",
         [
           { type: "text", text: result.text },
           { type: "sources", sources: result.sourceItems },
-          { type: "run", model: result.model, steps: result.steps, tools: result.tools, status: "success" },
+          {
+            type: "run",
+            model: result.model,
+            steps: result.steps,
+            tools: result.tools,
+            status: "success",
+          },
         ],
         conversationId,
       );
@@ -263,6 +275,16 @@ export function AgentView() {
                 </button>
               )}
             </div>
+            <label className="mt-2 flex min-h-10 items-center gap-2 px-1 text-meta text-muted">
+              <input
+                type="checkbox"
+                className="size-4 accent-ink"
+                checked={allowMailboxChecks}
+                disabled={Boolean(running) || !api}
+                onChange={(event) => setAllowMailboxChecks(event.target.checked)}
+              />
+              {t("本次允许查询邮箱")}
+            </label>
             <p className="mt-2 px-1 text-2xs text-subtle">
               {t("本地检索，真实模型生成。问题和命中片段发送至所选模型；凭据不进入检索。")}
             </p>
@@ -330,11 +352,12 @@ function BlockView({ block }: { block: Block }) {
   const setExpanded = useAppStore((s) => s.setExpanded);
   const openSsh = useAppStore((s) => s.openSsh);
 
-  const reveal = (assetId: string, kind: AssetKind) => {
+  const reveal = (assetId: string, kind: AssetKind, focus?: "account") => {
     const w = Math.min(560, window.innerWidth - 48);
     setExpanded({
       kind,
       id: assetId,
+      focus,
       origin: { x: (window.innerWidth - w) / 2, y: window.innerHeight * 0.3, w, h: 180 },
     });
   };
@@ -353,9 +376,12 @@ function BlockView({ block }: { block: Block }) {
                   <button
                     type="button"
                     className="text-left text-meta font-medium"
-                    onClick={() => reveal(source.assetId!, source.kind!)}
+                    onClick={() => reveal(source.assetId!, source.kind!, source.focus)}
                   >
                     [{source.citation}] {source.title}
+                    {source.focus === "account" && (
+                      <span className="ml-2 text-muted">{t("打开凭据位置")}</span>
+                    )}
                   </button>
                 ) : (
                   <span className="text-meta font-medium">

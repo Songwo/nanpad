@@ -24,6 +24,15 @@ function on(channel, handler) {
 
 contextBridge.exposeInMainWorld("sinan", {
   isDesktop: true,
+  mailboxes: {
+    check: (id) => unwrap(ipcRenderer.invoke("mailboxes:check", id)),
+    validate: (connection) => unwrap(ipcRenderer.invoke("mailboxes:validate", connection)),
+  },
+  mailPush: {
+    config: () => unwrap(ipcRenderer.invoke("mail-push:config")),
+    save: (input) => unwrap(ipcRenderer.invoke("mail-push:save", input)),
+    test: () => unwrap(ipcRenderer.invoke("mail-push:test")),
+  },
   aiAccounts: {
     list: () => unwrap(ipcRenderer.invoke("ai-accounts:list")),
     start: (provider) => unwrap(ipcRenderer.invoke("ai-accounts:start", provider)),

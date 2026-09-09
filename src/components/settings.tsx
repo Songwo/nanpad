@@ -17,6 +17,7 @@ import { toast } from "sonner";
 import { Button } from "./ui/button";
 import { CalendarExport, DesktopSettings } from "./operations-panel";
 import { AgentSettings } from "./agent-settings";
+import { MailPushSettings } from "./mail-push-settings";
 import { ProfileForm } from "./onboarding";
 import { Field, Input, Select } from "./ui/input";
 import { RELEASES } from "@/lib/changelog";
@@ -28,7 +29,8 @@ import { cn, downloadJson } from "@/lib/utils";
 import { useVault } from "@/lib/vault-state";
 import { t, type LocaleChoice } from "@/lib/i18n";
 
-type Tab = "profile" | "appearance" | "vault" | "data" | "agent" | "about" | "changelog";
+type Tab =
+  "profile" | "appearance" | "vault" | "data" | "agent" | "mail-push" | "about" | "changelog";
 
 const TABS: Array<{ id: Tab; label: string }> = [
   { id: "profile", label: "个人资料" },
@@ -36,6 +38,7 @@ const TABS: Array<{ id: Tab; label: string }> = [
   { id: "vault", label: "密钥库" },
   { id: "data", label: "数据" },
   { id: "agent", label: "模型与知识库" },
+  { id: "mail-push", label: "邮件推送" },
   { id: "about", label: "关于" },
   { id: "changelog", label: "更新日志" },
 ];
@@ -104,6 +107,7 @@ export function Settings() {
             {tab === "vault" && <VaultSection />}
             {tab === "data" && <DataSection />}
             {tab === "agent" && <AgentSettings />}
+            {tab === "mail-push" && <MailPushSettings />}
             {tab === "about" && <About />}
             {tab === "changelog" && <Changelog />}
           </div>

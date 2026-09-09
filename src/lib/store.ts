@@ -24,6 +24,7 @@ import { normalizeSnapshotImages } from "../../electron/services/image-data.mjs"
 export interface ExpandState {
   kind: AssetKind;
   id: string;
+  focus?: "account";
   origin: {
     x: number;
     y: number;

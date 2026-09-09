@@ -8,7 +8,7 @@ import { SmartPaste } from "./smart-paste";
 import { AiAccountsPanel } from "./ai-accounts";
 import { ImagePicker } from "./image-picker";
 import { Button } from "./ui/button";
-import { Field, Input, Textarea } from "./ui/input";
+import { Field, Input, Select, Textarea } from "./ui/input";
 import { accountId, credentialId, desktop, isDesktop } from "@/lib/desktop";
 import { usePresence } from "@/lib/motion";
 import { KIND_LABEL } from "@/lib/status";
@@ -114,6 +114,7 @@ function ComposerBody({
         const unlocked = await useVault.getState().require(t("保存账号与凭据需要先解锁密钥库。"));
         if (!unlocked) {
           toast(t("密钥库未解锁，凭据未保存"));
+          return;
         } else {
           try {
             const vault = desktop()!.vault;
@@ -121,6 +122,7 @@ function ComposerBody({
             if (account) await vault.set(accountId(id), account);
           } catch (err) {
             toast(err instanceof Error ? err.message : t("凭据保存失败"));
+            return;
           }
         }
       }
@@ -349,7 +351,19 @@ function kindFields(
     case "secret":
       return [
         F("name", t("名称")),
-        F("kind", t("类型 api/ssh/password/token")),
+        <Field key="kind" label={t("类型")}>
+          <Select
+            aria-label={t("类型")}
+            value={form.kind || "api"}
+            onValueChange={(value) => set("kind", value)}
+            options={[
+              { value: "password", label: t("网站账号 / 密码") },
+              { value: "api", label: "API Key" },
+              { value: "ssh", label: t("SSH 私钥") },
+              { value: "token", label: "Token" },
+            ]}
+          />
+        </Field>,
         F("hint", t("提示")),
         F("tags", t("标签（逗号分隔）"), { span: true }),
         F("notes", t("说明"), { span: true, area: true }),
@@ -503,6 +517,7 @@ function persist(kind: AssetKind, id: string, form: Record<string, string>, exis
       break;
     }
     case "mail": {
+      const previous = existing as Mailbox | null;
       const item: Mailbox = {
         id,
         imageDataUrl: form.imageDataUrl || "",
@@ -517,6 +532,17 @@ function persist(kind: AssetKind, id: string, form: Record<string, string>, exis
         tags: parseTags(form.tags ?? ""),
         status: "online",
         notes: form.notes,
+        ...(form._imapHost?.trim()
+          ? {
+              imap: {
+                host: form._imapHost.trim(),
+                port: Number(form._imapPort) || 993,
+                secure: form._imapSecure === "true",
+              },
+            }
+          : previous?.imap
+            ? { imap: previous.imap }
+            : {}),
       };
       s.upsertMail(item);
       break;

@@ -2,6 +2,7 @@ import { Pencil, Trash2, X } from "lucide-react";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { AiCard, CertCard, DomainCard, MailCard, SecretCard, ServerCard } from "./asset-card";
 import { AccountPanel } from "./account-panel";
+import { MailStatus } from "./mail-status";
 import { AiAccountsPanel } from "./ai-accounts";
 import { AssetRelations, MetricHistory, SftpBrowser } from "./operations-panel";
 import { RefreshOneButton } from "./refresh-button";
@@ -31,6 +32,7 @@ export function ExpandLayer() {
   const [visible, setVisible] = useState<ExpandState | null>(null);
   const [shown, setShown] = useState(false);
   const panel = useRef<HTMLDivElement>(null);
+  const accountSection = useRef<HTMLDivElement>(null);
   const closing = useRef(false);
   const exitTimer = useRef(0);
 
@@ -77,6 +79,18 @@ export function ExpandLayer() {
   }, [visible]);
 
   useEffect(() => () => window.clearTimeout(exitTimer.current), []);
+
+  useEffect(() => {
+    if (visible?.focus !== "account") return;
+    const timer = window.setTimeout(
+      () => {
+        accountSection.current?.scrollIntoView({ block: "nearest" });
+        accountSection.current?.focus({ preventScroll: true });
+      },
+      reduceMotion() ? 0 : ENTER_MS,
+    );
+    return () => window.clearTimeout(timer);
+  }, [visible]);
 
   const close = useCallback(() => setExpanded(null), [setExpanded]);
 
@@ -145,7 +159,13 @@ export function ExpandLayer() {
           <AssetRelations key={`links:${visible.kind}:${visible.id}`} asset={visible} />
           {(visible.kind !== "ai" ||
             !aiAssets.find((item) => item.id === visible.id)?.oauthAccountId) && (
-            <AccountPanel assetId={visible.id} kind={visible.kind} />
+            <div ref={accountSection} tabIndex={-1} aria-label={t("凭据位置")}>
+              <AccountPanel
+                key={`${visible.kind}:${visible.id}`}
+                assetId={visible.id}
+                kind={visible.kind}
+              />
+            </div>
           )}
         </div>
       </div>
@@ -172,7 +192,16 @@ function ExpandedBody({ kind, id }: { kind: AssetKind; id: string }) {
     }
     case "mail": {
       const d = mailboxes.find((x) => x.id === id);
-      return d ? <MailCard data={d} compact={false} /> : <Missing />;
+      return d ? (
+        <>
+          <MailCard data={d} compact={false} />
+          <div className="px-4">
+            <MailStatus key={d.id} mailbox={d} />
+          </div>
+        </>
+      ) : (
+        <Missing />
+      );
     }
     case "ai": {
       const d = aiAssets.find((x) => x.id === id);

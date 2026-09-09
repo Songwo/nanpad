@@ -17,6 +17,7 @@ export interface Source {
   title: string;
   kind?: AssetKind;
   assetId?: string;
+  focus?: "account";
   excerpt: string;
 }
 export interface AgentEvent {
@@ -47,8 +48,16 @@ export interface AgentBridge {
   run(request: {
     id: string;
     question: string;
+    allowMailboxChecks?: boolean;
     history: Array<{ role: "user" | "assistant"; content: string }>;
-  }): Promise<{ model: string; sources: number; steps: number; text: string; sourceItems: Source[]; tools: string[] }>;
+  }): Promise<{
+    model: string;
+    sources: number;
+    steps: number;
+    text: string;
+    sourceItems: Source[];
+    tools: string[];
+  }>;
   cancel(id: string): Promise<boolean>;
   onEvent(handler: (event: AgentEvent) => void): () => void;
 }

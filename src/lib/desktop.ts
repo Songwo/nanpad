@@ -114,7 +114,7 @@ export interface MailLogin {
   address: string;
   provider: string | null;
   providerLabel: string;
-  imap: { host: string; port: number };
+  imap: import("./mailbox").MailboxConnection;
   smtp: { host: string; port: number } | null;
   messages: number;
   unseen: number;
@@ -147,6 +147,8 @@ export interface PersistedFile extends Snapshot {
 }
 
 export interface DesktopBridge {
+  mailboxes: import("./mailbox").MailboxesBridge;
+  mailPush: import("./mail-push").MailPushBridge;
   aiAccounts: import("./ai-accounts").AiAccountBridge;
   profile: {
     get(): Promise<import("./profile").Profile>;
@@ -226,6 +228,7 @@ export interface DesktopBridge {
       password: string;
       host?: string;
       port?: number;
+      secure?: boolean;
     }): Promise<MailLogin>;
     oauthProviders(): Promise<Record<string, OAuthProvider>>;
     oauthSignIn(options: {

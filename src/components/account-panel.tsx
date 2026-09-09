@@ -1,7 +1,7 @@
 import { Copy, ExternalLink, Eye, EyeOff, KeyRound, Lock, UserRound } from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
 import { toast } from "sonner";
-import { ACCOUNT_COPY } from "./account-fields";
+import { ACCOUNT_COPY, WEBSITE_ACCOUNT_COPY } from "./account-fields";
 import { Button } from "./ui/button";
 import { TimeAgo } from "./ui/time-ago";
 import { accountId, desktop, type AccountCredential } from "@/lib/desktop";
@@ -25,7 +25,9 @@ export function AccountPanel({ assetId, kind }: { assetId: string; kind: AssetKi
   const [record, setRecord] = useState<AccountCredential | null>(null);
   const [checked, setChecked] = useState(false);
   const [reveal, setReveal] = useState(false);
-  const copy = ACCOUNT_COPY[kind];
+  const secretKind = useAppStore((s) => s.secrets.find((item) => item.id === assetId)?.kind);
+  const copy =
+    kind === "secret" && secretKind === "password" ? WEBSITE_ACCOUNT_COPY : ACCOUNT_COPY[kind];
 
   useEffect(() => {
     let alive = true;
@@ -90,7 +92,9 @@ export function AccountPanel({ assetId, kind }: { assetId: string; kind: AssetKi
               <button
                 type="button"
                 className="truncate text-left text-meta text-ink underline decoration-line-strong underline-offset-2 hover:decoration-ink"
-                onClick={() => bridge.openExternal(record.url!).catch(() => toast(t("无法打开链接")))}
+                onClick={() =>
+                  bridge.openExternal(record.url!).catch(() => toast(t("无法打开链接")))
+                }
               >
                 {record.url}
               </button>
@@ -112,7 +116,10 @@ export function AccountPanel({ assetId, kind }: { assetId: string; kind: AssetKi
               <span className="truncate font-mono text-meta">
                 {reveal ? record.password : "•".repeat(Math.min(18, record.password.length))}
               </span>
-              <IconAction label={reveal ? t("隐藏") : t("显示")} onClick={() => setReveal((v) => !v)}>
+              <IconAction
+                label={reveal ? t("隐藏") : t("显示")}
+                onClick={() => setReveal((v) => !v)}
+              >
                 {reveal ? <EyeOff className="size-3.5" /> : <Eye className="size-3.5" />}
               </IconAction>
               <CopyAction value={record.password} what={t(copy.password)} />
@@ -131,7 +138,6 @@ export function AccountPanel({ assetId, kind }: { assetId: string; kind: AssetKi
           )}
 
           <p className="pt-1 text-2xs text-subtle">
-
             {t("更新于")} <TimeAgo iso={record.updatedAt} />
           </p>
         </dl>

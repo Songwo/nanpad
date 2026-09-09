@@ -19,7 +19,7 @@ const sse = (response, chunks) => {
   for (const chunk of chunks) response.write(`data: ${JSON.stringify({ choices: [chunk] })}\n\n`);
   response.end("data: [DONE]\n\n");
 };
-async function fixture(t, handler) {
+async function fixture(t, handler, options = {}) {
   const directory = await mkdtemp(join(tmpdir(), "nanpad-agent-test-"));
   const requests = [],
     events = [];
@@ -42,6 +42,7 @@ async function fixture(t, handler) {
     secureStorage,
     getSnapshot: () => snapshot,
     emit: (event) => events.push(event),
+    checkMailbox: options.checkMailbox,
   });
   await service.saveConfig({
     ...DEFAULT_CONFIG,
@@ -297,4 +298,338 @@ test("模型捏造的来源标记不能作为成功答案交付", async (t) => {
   );
   await assert.rejects(f.service.run({ id: "citation", question: "API" }), /不存在的来源/);
   assert.equal(f.events.at(-1).type, "error");
+});
+
+const liveMail = {
+  id: "saved-mail",
+  address: "fixture@example.com",
+  kind: "mailbox",
+  status: "online",
+  notes: "private-note-must-not-be-sent",
+  imap: { host: "imap.example.com", port: 993, secure: true },
+  mailStatus: { password: "private-cache-must-not-be-sent" },
+};
+function callTool(response, name, args) {
+  sse(response, [
+    {
+      delta: {
+        tool_calls: [
+          { index: 0, id: "test-tool", function: { name, arguments: JSON.stringify(args) } },
+        ],
+      },
+      finish_reason: "tool_calls",
+    },
+  ]);
+}
+
+test("凭据定位只返回独立的本地位置引用，不读取或确认密码", async (t) => {
+  const f = await fixture(t, (_req, res, body, requests) => {
+    if (requests.length === 1)
+      callTool(res, "locate_credential", { sourceId: "asset:mail:saved-mail" });
+    else {
+      const result = JSON.parse(body.messages.at(-1).content);
+      assert.equal(result.assetId, liveMail.id);
+      assert.equal(result.credentialState, "not_checked");
+      assert.equal(result.location, "资产详情 > 账号与凭据");
+      assert.match(result.sources[0].sourceId, /^credential-location:/);
+      sse(res, [
+        {
+          delta: { content: `请在本机凭据面板中查看 [${result.sources[0].citation}]。` },
+          finish_reason: "stop",
+        },
+      ]);
+    }
+  });
+  f.setSnapshot({ mailboxes: [liveMail] });
+  const result = await f.service.run({
+    id: "locate",
+    question: "fixture@example.com 的密码在哪里",
+  });
+  assert.ok(
+    result.sourceItems.some(
+      (source) => source.assetId === liveMail.id && source.focus === "account",
+    ),
+  );
+  assert.equal(JSON.stringify(f.requests).includes("private-note-must-not-be-sent"), false);
+  assert.equal(JSON.stringify(f.requests).includes("private-cache-must-not-be-sent"), false);
+  assert.equal(JSON.stringify(f.requests).includes("imap.example.com"), false);
+});
+
+test("凭据定位拒绝演示资产、导入文档和额外参数", async (t) => {
+  for (const args of [
+    { sourceId: "doc:fake:0" },
+    { sourceId: "asset:mail:demo" },
+    { sourceId: "asset:mail:saved-mail", password: "model-injected" },
+  ]) {
+    const f = await fixture(t, (_req, res, body, requests) => {
+      if (requests.length === 1) callTool(res, "locate_credential", args);
+      else {
+        assert.equal(JSON.parse(body.messages.at(-1).content).error, "Saved real asset not found");
+        sse(res, [{ delta: { content: "未找到可定位的真实资产。" }, finish_reason: "stop" }]);
+      }
+    });
+    f.setSnapshot({ mailboxes: [liveMail, { ...liveMail, id: "demo", demo: true }] });
+    const result = await f.service.run({ id: "bad-locate", question: "密码位置" });
+    assert.equal(
+      result.sourceItems.some((source) => source.focus === "account"),
+      false,
+    );
+  }
+});
+
+test("网页登录绑定的 AI 订阅不会定位到不存在的普通凭据面板", async (t) => {
+  const f = await fixture(t, (_req, res, body, requests) => {
+    if (requests.length === 1)
+      callTool(res, "locate_credential", { sourceId: "asset:ai:linked-ai" });
+    else {
+      const result = JSON.parse(body.messages.at(-1).content);
+      assert.match(result.error, /web authorization/);
+      assert.equal(result.sources, undefined);
+      sse(res, [
+        {
+          delta: { content: "此订阅通过网页登录关联，请在授权详情中管理。" },
+          finish_reason: "stop",
+        },
+      ]);
+    }
+  });
+  f.setSnapshot({
+    aiAssets: [{ id: "linked-ai", name: "测试订阅", oauthAccountId: "private-account-reference" }],
+  });
+  const result = await f.service.run({ id: "linked-credential", question: "测试订阅密码在哪里" });
+  assert.equal(
+    result.sourceItems.some((source) => source.focus === "account"),
+    false,
+  );
+  assert.equal(JSON.stringify(f.requests).includes("private-account-reference"), false);
+});
+
+test("实时邮箱必须明确授权，模型自己调用也不能绕过开关", async (t) => {
+  for (const allowMailboxChecks of [undefined, false, "true"]) {
+    let mailboxCalls = 0;
+    const f = await fixture(
+      t,
+      (_req, res, body, requests) => {
+        assert.equal(
+          body.tools.some((entry) => entry.function.name === "check_mailbox"),
+          false,
+        );
+        if (requests.length === 1) callTool(res, "check_mailbox", { assetId: liveMail.id });
+        else {
+          assert.match(JSON.parse(body.messages.at(-1).content).error, /disabled/);
+          sse(res, [{ delta: { content: "实时查询未启用。" }, finish_reason: "stop" }]);
+        }
+      },
+      {
+        checkMailbox: async () => {
+          mailboxCalls += 1;
+          throw new Error("must not connect");
+        },
+      },
+    );
+    f.setSnapshot({ mailboxes: [liveMail] });
+    await f.service.run({ id: "mail-disabled", question: "帮我查新邮件", allowMailboxChecks });
+    assert.equal(mailboxCalls, 0);
+  }
+});
+
+test("实时邮箱只把白名单计数发给模型，并与原资产快照分开引用", async (t) => {
+  const seen = [];
+  const f = await fixture(
+    t,
+    (_req, res, body, requests) => {
+      if (requests.length === 1) {
+        assert.equal(
+          body.tools.some((entry) => entry.function.name === "check_mailbox"),
+          true,
+        );
+        callTool(res, "check_mailbox", { assetId: liveMail.id });
+      } else {
+        const result = JSON.parse(body.messages.at(-1).content);
+        assert.deepEqual(Object.keys(result).sort(), [
+          "assetId",
+          "checkedAt",
+          "messages",
+          "newMessages",
+          "quotaMb",
+          "sources",
+          "unseen",
+          "usedMb",
+        ]);
+        assert.equal(result.assetId, liveMail.id);
+        assert.equal(result.newMessages, null);
+        assert.match(result.sources[0].sourceId, /^live-mailbox:/);
+        sse(res, [
+          {
+            delta: { content: `未读 3 封，首次检查暂不统计新增 [${result.sources[0].citation}]。` },
+            finish_reason: "stop",
+          },
+        ]);
+      }
+    },
+    {
+      checkMailbox: async (assetId, options) => {
+        seen.push({ assetId, options });
+        return {
+          assetId: "forged-id",
+          address: "private-address",
+          messages: 12,
+          unseen: 3,
+          newMessages: null,
+          checkedAt: "2026-09-09T00:00:00.000Z",
+          usedMb: 5,
+          quotaMb: 10,
+          password: "private-imap-password",
+          subject: "private-mail-subject",
+          body: "private-mail-body",
+        };
+      },
+    },
+  );
+  f.setSnapshot({ mailboxes: [liveMail] });
+  const result = await f.service.run({
+    id: "mail-live",
+    question: "fixture@example.com 有没有新邮件",
+    allowMailboxChecks: true,
+  });
+  assert.equal(seen.length, 1);
+  assert.equal(seen[0].assetId, liveMail.id);
+  assert.ok(seen[0].options.signal instanceof AbortSignal);
+  assert.ok(result.sourceItems.some((source) => source.id === "asset:mail:saved-mail"));
+  assert.ok(result.sourceItems.some((source) => source.id.startsWith("live-mailbox:")));
+  const sent = JSON.stringify(f.requests);
+  for (const value of [
+    "private-imap-password",
+    "private-mail-subject",
+    "private-mail-body",
+    "private-address",
+    "forged-id",
+  ])
+    assert.equal(sent.includes(value), false);
+});
+
+test("实时邮箱不能连接未知资产、演示邮箱、别名或模型提供的主机", async (t) => {
+  for (const args of [
+    { assetId: "missing" },
+    { assetId: "demo" },
+    { assetId: "alias" },
+    { assetId: "server" },
+    { assetId: liveMail.id, host: "model-supplied.example" },
+  ]) {
+    let mailboxCalls = 0;
+    const f = await fixture(
+      t,
+      (_req, res, body, requests) => {
+        if (requests.length === 1) callTool(res, "check_mailbox", args);
+        else {
+          assert.match(JSON.parse(body.messages.at(-1).content).error, /Saved real mailbox/);
+          sse(res, [{ delta: { content: "未找到可以查询的邮箱。" }, finish_reason: "stop" }]);
+        }
+      },
+      {
+        checkMailbox: async () => {
+          mailboxCalls += 1;
+          throw new Error("must not connect");
+        },
+      },
+    );
+    f.setSnapshot({
+      mailboxes: [
+        liveMail,
+        { ...liveMail, id: "demo", demo: true },
+        { ...liveMail, id: "alias", kind: "alias" },
+      ],
+      servers: [{ id: "server", name: "host" }],
+    });
+    await f.service.run({ id: "invalid-mail", question: "查询邮件", allowMailboxChecks: true });
+    assert.equal(mailboxCalls, 0);
+  }
+});
+
+test("实时邮箱错误正文不能出现在模型请求或界面事件中", async (t) => {
+  const f = await fixture(
+    t,
+    (_req, res, body, requests) => {
+      if (requests.length === 1) callTool(res, "check_mailbox", { assetId: liveMail.id });
+      else {
+        assert.match(JSON.parse(body.messages.at(-1).content).error, /^Mailbox check failed/);
+        sse(res, [
+          { delta: { content: "查询失败，请在本机查看邮箱设置。" }, finish_reason: "stop" },
+        ]);
+      }
+    },
+    {
+      checkMailbox: async () => {
+        throw new Error("upstream-secret-body api-key-fixture");
+      },
+    },
+  );
+  f.setSnapshot({ mailboxes: [liveMail] });
+  await f.service.run({ id: "mail-failed", question: "检查邮箱", allowMailboxChecks: true });
+  assert.equal(JSON.stringify([f.events, f.requests]).includes("upstream-secret-body"), false);
+});
+
+test("取消 Agent 会传递到正在执行的邮箱查询", async (t) => {
+  let entered;
+  const started = new Promise((resolve) => {
+    entered = resolve;
+  });
+  const f = await fixture(
+    t,
+    (_req, res) => callTool(res, "check_mailbox", { assetId: liveMail.id }),
+    {
+      checkMailbox: (_id, { signal }) =>
+        new Promise((_, reject) => {
+          entered();
+          signal.addEventListener("abort", () => reject(new Error("private-abort")), {
+            once: true,
+          });
+        }),
+    },
+  );
+  f.setSnapshot({ mailboxes: [liveMail] });
+  const pending = f.service.run({
+    id: "cancel-mail",
+    question: "检查邮箱",
+    allowMailboxChecks: true,
+  });
+  await started;
+  const rejected = assert.rejects(pending, /已停止生成/);
+  assert.equal(f.service.cancel("cancel-mail"), true);
+  await rejected;
+  assert.equal(f.requests.length, 1);
+  assert.equal(JSON.stringify(f.events).includes("private-abort"), false);
+});
+
+test("无效实时统计不会变成零计数或有效来源", async (t) => {
+  const f = await fixture(
+    t,
+    (_req, res, body, requests) => {
+      if (requests.length === 1) callTool(res, "check_mailbox", { assetId: liveMail.id });
+      else {
+        const result = JSON.parse(body.messages.at(-1).content);
+        assert.match(result.error, /invalid statistics/);
+        assert.equal("messages" in result, false);
+        sse(res, [{ delta: { content: "没有有效的实时统计。" }, finish_reason: "stop" }]);
+      }
+    },
+    {
+      checkMailbox: async () => ({
+        messages: undefined,
+        unseen: 0,
+        newMessages: null,
+        checkedAt: "2026-09-09T00:00:00.000Z",
+      }),
+    },
+  );
+  f.setSnapshot({ mailboxes: [liveMail] });
+  const result = await f.service.run({
+    id: "invalid-counts",
+    question: "检查邮箱",
+    allowMailboxChecks: true,
+  });
+  assert.equal(
+    result.sourceItems.some((source) => source.id.startsWith("live-mailbox:")),
+    false,
+  );
 });

@@ -23,3 +23,9 @@ Thumbs.db
 .claude/
 dist-desktop/
 release/
+
+# 含个人资料的旧截图仅保留在本机，不再进入公开仓库。
+/attachments/image.png
+/screenshots/oauth-panel.png
+/screenshots/agent-final.png
+/screenshots/mail-login.png

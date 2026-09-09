@@ -12,16 +12,43 @@ import { t } from "@/lib/i18n";
 export const ACCOUNT_KEYS = ["_url", "_username", "_password", "_note"] as const;
 
 /** Written by the OAuth flow, read back on save. */
-export const OAUTH_KEYS = ["_oauthProvider", "_oauthRefresh", "_oauthExpires", "_oauthScope"] as const;
+export const OAUTH_KEYS = [
+  "_oauthProvider",
+  "_oauthRefresh",
+  "_oauthExpires",
+  "_oauthScope",
+] as const;
 
 /** The wording changes per kind, but the fields do not. */
 export const ACCOUNT_COPY: Record<AssetKind, { title: string; password: string; hint: string }> = {
-  server: { title: "面板 / 控制台账号", password: "密码", hint: "云厂商控制台或管理面板的登录信息，与上面的 SSH 凭据分开保存。" },
-  domain: { title: "注册商账号", password: "密码", hint: "注册商后台的登录信息，续费时不用再翻密码本。" },
-  mail: { title: "邮箱账号", password: "密码 / 授权码", hint: "IMAP/SMTP 授权码通常与登录密码不同，可写在备注里。" },
+  server: {
+    title: "面板 / 控制台账号",
+    password: "密码",
+    hint: "云厂商控制台或管理面板的登录信息，与上面的 SSH 凭据分开保存。",
+  },
+  domain: {
+    title: "注册商账号",
+    password: "密码",
+    hint: "注册商后台的登录信息，续费时不用再翻密码本。",
+  },
+  mail: {
+    title: "邮箱账号",
+    password: "密码 / 授权码",
+    hint: "IMAP/SMTP 授权码通常与登录密码不同，可写在备注里。",
+  },
   ai: { title: "服务商账号", password: "密码", hint: "订阅账号、API Key 与恢复码都可以放这里。" },
-  secret: { title: "密钥内容", password: "完整值", hint: "完整值只存在加密库中，资产文件里只留提示片段。" },
+  secret: {
+    title: "密钥内容",
+    password: "完整值",
+    hint: "完整值只存在加密库中，资产文件里只留提示片段。",
+  },
   cert: { title: "签发平台账号", password: "密码", hint: "签发或托管平台的登录信息。" },
+};
+
+export const WEBSITE_ACCOUNT_COPY = {
+  title: "网站登录账号",
+  password: "密码",
+  hint: "登录地址、账号和密码保存在加密库中，可在资产详情关联注册邮箱。",
 };
 
 export function accountFromForm(form: Record<string, string>): AccountCredential | null {
@@ -74,7 +101,8 @@ export function AccountFields({
   const [reveal, setReveal] = useState(false);
   const [loaded, setLoaded] = useState(false);
   const [stored, setStored] = useState(false);
-  const copy = ACCOUNT_COPY[kind];
+  const website = kind === "secret" && form.kind === "password";
+  const copy = website ? WEBSITE_ACCOUNT_COPY : ACCOUNT_COPY[kind];
 
   // Prefill once per open, and only from an unlocked vault.
   useEffect(() => {
@@ -127,15 +155,18 @@ export function AccountFields({
 
               {t("解锁密钥库")}
             </Button>
-            <span className="text-2xs text-muted">{t("解锁后可读取已保存的账号，或录入新的。")}</span>
+            <span className="text-2xs text-muted">
+              {t("解锁后可读取已保存的账号，或录入新的。")}
+            </span>
           </div>
         ) : (
           <div className="grid gap-3 sm:grid-cols-2">
-            {kind !== "secret" && (
+            {(kind !== "secret" || website) && (
               <>
                 <Field label={t("登录地址")}>
                   <Input
                     name="account-url"
+                    aria-label={t("登录地址")}
                     value={form._url ?? ""}
                     placeholder="https://…"
                     autoComplete="off"
@@ -145,6 +176,7 @@ export function AccountFields({
                 <Field label={t("账号")}>
                   <Input
                     name="account-username"
+                    aria-label={t("账号")}
                     value={form._username ?? ""}
                     autoComplete="off"
                     onChange={(e) => set("_username", e.target.value)}
@@ -153,12 +185,13 @@ export function AccountFields({
               </>
             )}
 
-            <div className={kind === "secret" ? "sm:col-span-2" : "sm:col-span-2"}>
+            <div className="sm:col-span-2">
               <Field label={t(copy.password)}>
                 <div className="relative">
                   <Input
                     type={reveal ? "text" : "password"}
                     name="account-password"
+                    aria-label={t(copy.password)}
                     value={form._password ?? ""}
                     autoComplete="off"
                     spellCheck={false}

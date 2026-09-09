@@ -40,7 +40,8 @@ const KEY_SIGNATURES: Array<{
   { test: /^AIza[\w-]{30,}$/, provider: "Google", kind: "api", name: "Google API" },
 ];
 
-const PRIVATE_KEY = /-----BEGIN ((?:RSA |EC |OPENSSH |DSA )?PRIVATE KEY)-----[\s\S]+?-----END \1-----/;
+const PRIVATE_KEY =
+  /-----BEGIN ((?:RSA |EC |OPENSSH |DSA )?PRIVATE KEY)-----[\s\S]+?-----END \1-----/;
 const CERTIFICATE = /-----BEGIN CERTIFICATE-----[\s\S]+?-----END CERTIFICATE-----/;
 
 /**
@@ -68,8 +69,8 @@ export const PASTE_HINTS: Record<AssetKind, { detectors: string[]; hint: string 
     hint: "API Key · 控制台网址",
   },
   secret: {
-    detectors: ["api-key", "private-key"],
-    hint: "API Key · Token · 私钥",
+    detectors: ["api-key", "private-key", "url"],
+    hint: "网站登录网址 · API Key · Token · 私钥",
   },
   cert: {
     detectors: ["certificate", "url", "host-port"],
@@ -121,25 +122,25 @@ export function parsePaste(raw: string, kind?: AssetKind): PasteMatch[] {
     });
   }
 
-  const key = matchApiKey(text);
+  // URL 参数可能携带临时凭据，不让其他检测器把它们识别成公开资产信息。
+  const withoutUrls = text.replace(/https?:\/\/[^\s"'<>]+/gi, "");
+  const key = matchApiKey(withoutUrls);
   if (key) out.push(key);
 
-  const mailbox = matchMailbox(text);
+  const mailbox = matchMailbox(withoutUrls);
   if (mailbox) out.push(mailbox);
 
-  const url = matchUrl(text);
+  const url = matchUrl(text, kind);
   if (url) out.push(url);
 
   const endpoint = matchHostPort(text);
   if (endpoint) out.push(endpoint);
 
-  const mailSettings = matchMailSettings(text);
+  const mailSettings = matchMailSettings(withoutUrls);
   if (mailSettings) out.push(mailSettings);
 
   const allowed = kind ? new Set(PASTE_HINTS[kind].detectors) : null;
-  return out
-    .filter((m) => !allowed || allowed.has(m.id))
-    .sort((a, b) => b.score - a.score);
+  return out.filter((m) => !allowed || allowed.has(m.id)).sort((a, b) => b.score - a.score);
 }
 
 /** An IMAP/SMTP block copied out of a provider's help page or a mail client. */
@@ -164,7 +165,20 @@ function matchMailSettings(text: string): PasteMatch | null {
 }
 
 /** Flags that swallow the next token, so it is never mistaken for the host. */
-const SSH_VALUE_FLAGS = new Set(["-p", "-i", "-l", "-o", "-J", "-F", "-b", "-c", "-D", "-L", "-R", "-w"]);
+const SSH_VALUE_FLAGS = new Set([
+  "-p",
+  "-i",
+  "-l",
+  "-o",
+  "-J",
+  "-F",
+  "-b",
+  "-c",
+  "-D",
+  "-L",
+  "-R",
+  "-w",
+]);
 
 /** `ssh -p 2222 ubuntu@10.0.0.1`, `ssh -i key.pem host -l user`, and friends. */
 function matchSshCommand(text: string): PasteMatch | null {
@@ -229,8 +243,7 @@ function matchSshCommand(text: string): PasteMatch | null {
 /** A `Host …` stanza copied out of `~/.ssh/config`. */
 function matchSshConfig(text: string): PasteMatch | null {
   if (!/^\s*Host\s+\S+/im.test(text)) return null;
-  const pick = (key: string) =>
-    new RegExp(`^\\s*${key}\\s+(.+)$`, "im").exec(text)?.[1]?.trim();
+  const pick = (key: string) => new RegExp(`^\\s*${key}\\s+(.+)$`, "im").exec(text)?.[1]?.trim();
 
   const alias = pick("Host");
   const host = pick("HostName") ?? pick("Hostname");
@@ -244,7 +257,11 @@ function matchSshConfig(text: string): PasteMatch | null {
     id: "ssh-config",
     kind: "server",
     label: t("SSH config 片段"),
-    detail: [alias && t("别名 {0}", alias), t("主机 {0}", host), username && t("用户 {0}", username)]
+    detail: [
+      alias && t("别名 {0}", alias),
+      t("主机 {0}", host),
+      username && t("用户 {0}", username),
+    ]
       .filter(Boolean)
       .join(" · "),
     fields: {
@@ -304,25 +321,35 @@ function matchMailbox(text: string): PasteMatch | null {
   };
 }
 
-function matchUrl(text: string): PasteMatch | null {
-  const raw = /https?:\/\/[^\s"'<>]+/.exec(text)?.[0];
+function matchUrl(text: string, kind?: AssetKind): PasteMatch | null {
+  const raw = /https?:\/\/[^\s"'<>]+/i.exec(text)?.[0];
   if (!raw) return null;
-  let host: string;
+  let url: URL;
   try {
-    host = new URL(raw).hostname;
+    url = new URL(raw);
   } catch {
     return null;
   }
+  const host = url.hostname;
+  url.username = "";
+  url.password = "";
+  url.search = "";
+  url.hash = "";
   // Strip one level of subdomain noise for the registrable name.
   const parts = host.split(".");
   const registrable = parts.length > 2 ? parts.slice(-2).join(".") : host;
+  const website = kind === "secret";
 
   return {
     id: "url",
-    kind: "domain",
-    label: t("网址"),
-    detail: t("域名 {0} · 登录地址 {1}", registrable, raw),
-    fields: { name: registrable, _url: raw },
+    kind: website ? "secret" : "domain",
+    label: website ? t("网站登录账号") : t("网址"),
+    detail: host,
+    fields: {
+      name: website ? host : registrable,
+      _url: url.toString(),
+      ...(website ? { kind: "password" } : {}),
+    },
     score: 60,
   };
 }
