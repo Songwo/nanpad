@@ -5,7 +5,7 @@ import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { AgentService, DEFAULT_CONFIG, normalizeBaseUrl } from "./agent-service.mjs";
-import { LocalIndex, assetDocuments, knowledgeChunks } from "./rag.mjs";
+import { LocalIndex, assetDocuments, hash, knowledgeChunks } from "./rag.mjs";
 import { demoSnapshot, mergeDemo } from "./demo.mjs";
 import { notificationCandidates } from "./notifications.mjs";
 
@@ -632,4 +632,289 @@ test("无效实时统计不会变成零计数或有效来源", async (t) => {
     result.sourceItems.some((source) => source.id.startsWith("live-mailbox:")),
     false,
   );
+});
+
+const groupedMail = () => ({
+  mailFolders: [
+    { id: "work", name: "研发工作邮箱", color: "blue", secret: "private-folder-secret" },
+    { id: "personal", name: "生活邮箱", color: "green" },
+    { id: "archive", name: "归档备用", color: "rose" },
+  ],
+  mailboxes: [
+    {
+      ...liveMail,
+      folderId: "work",
+      imageDataUrl: "private-avatar-image",
+      password: "private-mail-password",
+      smtp: { host: "private-smtp-host" },
+      body: "private-mail-body",
+      draft: { text: "private-mail-draft" },
+    },
+    { id: "alias", address: "alias@example.test", folderId: "work", kind: "alias", demo: true },
+    {
+      id: "personal-mail",
+      address: "personal@example.test",
+      folderId: "personal",
+      kind: "mailbox",
+    },
+    { id: "unfiled", address: "unfiled@example.test", kind: "mailbox" },
+    { id: "orphan", address: "orphan@example.test", folderId: "removed", kind: "mailbox" },
+  ],
+});
+
+test("邮箱 RAG 包含真实收纳归属、空组及未分组，排除私密字段", () => {
+  const snapshot = groupedMail();
+  const index = new LocalIndex(snapshot, []);
+  const saved = index.byId.get("asset:mail:saved-mail");
+  assert.equal(saved.fields.folderId, "work");
+  assert.equal(saved.fields.folderName, "研发工作邮箱");
+  assert.equal(index.byId.get("asset:mail:orphan").fields.folderId, "");
+  assert.equal(index.byId.get("asset:mail:orphan").fields.folderName, "未分组");
+  assert.equal(index.summary().counts.mail, 5);
+  assert.equal(index.summary().total, 5);
+  assert.equal(index.mailFolders.find((folder) => folder.id === "archive").count, 0);
+  assert.deepEqual(
+    index.mailFolders.find((folder) => folder.id === "work"),
+    {
+      id: "work",
+      name: "研发工作邮箱",
+      count: 2,
+      mailboxCount: 1,
+      aliasCount: 1,
+      demoCount: 1,
+    },
+  );
+  assert.equal(index.mailFolders.find((folder) => folder.id === "").count, 2);
+  assert.ok(index.search("归档备用").some((doc) => doc.id === "mail-folder:saved:archive"));
+  assert.ok(index.search("研发工作邮箱", 20).some((doc) => doc.id === saved.id));
+  const serialized = JSON.stringify(index.docs);
+  for (const secret of [
+    "private-folder-secret",
+    "private-avatar-image",
+    "private-mail-password",
+    "private-smtp-host",
+    "private-mail-body",
+    "private-mail-draft",
+    "private-note-must-not-be-sent",
+    "private-cache-must-not-be-sent",
+  ])
+    assert.equal(serialized.includes(secret), false, secret);
+});
+
+test("邮箱分组索引兼容默认目录、删除全部分组及无效导入", () => {
+  const defaults = new LocalIndex({}, []);
+  assert.deepEqual(
+    defaults.mailFolders.map((folder) => folder.id),
+    ["work", "personal", ""],
+  );
+  const empty = new LocalIndex({ mailFolders: [] }, []);
+  assert.deepEqual(
+    empty.mailFolders.map((folder) => folder.id),
+    [""],
+  );
+  const index = new LocalIndex(
+    {
+      mailFolders: [
+        null,
+        { id: "a", name: " 工作 " },
+        { id: "a", name: "别名" },
+        { id: "b", name: "工作" },
+        { id: "c", name: "" },
+        { id: "d", name: { password: "private-invalid-name" } },
+      ],
+    },
+    [],
+  );
+  assert.deepEqual(
+    index.mailFolders.map(({ id, name }) => ({ id, name })),
+    [
+      { id: "a", name: "工作" },
+      { id: "", name: "未分组" },
+    ],
+  );
+  assert.equal(JSON.stringify(index.docs).includes("private-invalid-name"), false);
+});
+
+test("按分组分页查询返回完整归属，不把无匹配误报为未知分组", () => {
+  const index = new LocalIndex(groupedMail(), []);
+  const first = index.listMailboxes({ folderId: "work", limit: 1 });
+  assert.equal(first.total, 2);
+  assert.equal(first.nextOffset, 1);
+  assert.equal(first.mailboxes[0].folderName, "研发工作邮箱");
+  const second = index.listMailboxes({ folderId: "work", limit: 1, offset: first.nextOffset });
+  assert.equal(second.nextOffset, null);
+  assert.equal(second.mailboxes[0].assetId, "alias");
+  assert.equal(second.mailboxes[0].demo, true);
+  assert.equal(index.listMailboxes({ folderId: "" }).total, 2);
+  assert.equal(index.listMailboxes({ query: "ALIAS@EXAMPLE.TEST" }).mailboxes[0].assetId, "alias");
+  assert.equal(index.listMailboxes({ query: "研发工作" }).total, 2);
+  assert.equal(index.listMailboxes({ folderId: "archive" }).total, 0);
+});
+
+test("真实 SDK 通过分组目录与账号工具回答归属，移动重命名后下一轮即时更新", async (t) => {
+  let moved = false;
+  const f = await fixture(t, (_req, res, body) => {
+    const tools = body.messages.filter((message) => message.role === "tool");
+    if (tools.length === 0) {
+      assert.ok(body.tools.some((entry) => entry.function.name === "list_mail_folders"));
+      assert.ok(body.tools.some((entry) => entry.function.name === "list_mailboxes"));
+      assert.match(body.messages[0].content, /not IMAP message folders/);
+      callTool(res, "list_mail_folders", {});
+    } else if (tools.length === 1) {
+      const result = JSON.parse(tools[0].content);
+      assert.equal(result.scope, "local_mailbox_groups");
+      assert.equal(result.folders.find((folder) => folder.id === "archive").count, 0);
+      assert.equal(result.folders.find((folder) => folder.id === "").count, 2);
+      assert.equal(result.folders.find((folder) => folder.id === "work").count, moved ? 1 : 2);
+      assert.equal(
+        result.folders.find((folder) => folder.id === "work").name,
+        moved ? "项目协作" : "研发工作邮箱",
+      );
+      callTool(res, "list_mailboxes", {
+        folderId: moved ? "personal" : "work",
+        query: liveMail.address,
+      });
+    } else {
+      const result = JSON.parse(tools.at(-1).content);
+      assert.equal(result.total, 1);
+      assert.equal(result.mailboxes[0].assetId, liveMail.id);
+      assert.equal(result.mailboxes[0].folderName, moved ? "生活邮箱" : "研发工作邮箱");
+      assert.equal(result.nextOffset, null);
+      sse(res, [
+        {
+          delta: {
+            content: `邮箱位于${result.mailboxes[0].folderName} [${result.sources[0].citation}]。`,
+          },
+          finish_reason: "stop",
+        },
+      ]);
+    }
+  });
+  const snapshot = groupedMail();
+  f.setSnapshot(snapshot);
+  const first = await f.service.run({
+    id: "mail-groups",
+    question: "邮箱文件夹有哪些，fixture@example.com 在哪个分组",
+  });
+  assert.ok(first.sourceItems.some((source) => source.id === "mail-folders:catalog"));
+  assert.match(first.text, /研发工作邮箱/);
+  moved = true;
+  snapshot.mailFolders[0].name = "项目协作";
+  snapshot.mailboxes[0].folderId = "personal";
+  const next = await f.service.run({
+    id: "mail-groups-moved",
+    question: "当前邮箱分组和 fixture@example.com 归属",
+  });
+  assert.match(next.text, /生活邮箱/);
+  assert.equal(JSON.stringify(f.requests.slice(3)).includes("研发工作邮箱"), false);
+  assert.equal((await f.service.knowledge()).assets, 5);
+  assert.equal(JSON.stringify(f.requests).includes("private-"), false);
+});
+
+test("邮箱分组工具校验筛选参数，不接受模型注入的额外数据", async (t) => {
+  for (const [name, args, pattern] of [
+    ["list_mail_folders", { password: "private-injected" }, /Unknown tool or invalid arguments/],
+    ["list_mailboxes", { folderId: "missing" }, /Local mailbox group not found/],
+    ["list_mailboxes", { folderId: null }, /Unknown tool or invalid arguments/],
+    ["list_mailboxes", { limit: 0 }, /Unknown tool or invalid arguments/],
+    ["list_mailboxes", { limit: 51 }, /Unknown tool or invalid arguments/],
+    ["list_mailboxes", { offset: -1 }, /Unknown tool or invalid arguments/],
+    ["list_mailboxes", { query: {} }, /Unknown tool or invalid arguments/],
+    ["list_mailboxes", { host: "private-imap-host" }, /Unknown tool or invalid arguments/],
+  ]) {
+    const f = await fixture(t, (_req, res, body, requests) => {
+      if (requests.length === 1) callTool(res, name, args);
+      else {
+        const result = JSON.parse(body.messages.at(-1).content);
+        assert.match(result.error, pattern);
+        assert.equal(result.mailboxes, undefined);
+        sse(res, [{ delta: { content: "筛选条件无效。" }, finish_reason: "stop" }]);
+      }
+    });
+    f.setSnapshot(groupedMail());
+    await f.service.run({ id: "invalid-mail-groups", question: "查询分组" });
+  }
+});
+
+test("本地向量检索在分组重命名、移动和删除后更新缓存，旧名称不再召回", async (t) => {
+  const f = await fixture(t, (_req, res, body) => {
+    if (body.input) {
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(
+        JSON.stringify({
+          data: body.input.map((_text, index) => ({ index, embedding: [1, 0.25] })),
+        }),
+      );
+    } else sse(res, [{ delta: { content: "OK" }, finish_reason: "stop" }]);
+  });
+  const snapshot = groupedMail();
+  f.setSnapshot(snapshot);
+  const config = await f.service.config();
+  await f.service.saveConfig({
+    ...config,
+    embeddingEnabled: true,
+    embeddingBaseUrl: config.baseUrl,
+    embeddingModel: "mail-group-embedding",
+  });
+  await f.service.run({ id: "group-vectors-before", question: "邮箱分组" });
+  const before = f.requests.length;
+  snapshot.mailFolders[0].name = "协作账户";
+  snapshot.mailboxes[0].folderId = "personal";
+  snapshot.mailFolders = snapshot.mailFolders.filter((folder) => folder.id !== "archive");
+  await f.service.run({ id: "group-vectors-after", question: "邮箱分组" });
+  const subsequent = f.requests.slice(before);
+  assert.ok(
+    subsequent.some(
+      (request) =>
+        request.path === "/v1/embeddings" &&
+        request.body.input.some((text) => text.includes("协作账户")),
+    ),
+  );
+  assert.equal(JSON.stringify(subsequent).includes("研发工作邮箱"), false);
+  assert.equal(JSON.stringify(subsequent).includes("归档备用"), false);
+  const cached = JSON.parse(await readFile(join(f.directory, "rag-vectors.json"), "utf8"));
+  assert.deepEqual(
+    Object.keys(cached.vectors).sort(),
+    new LocalIndex(snapshot, []).docs.map((doc) => hash(doc.text)).sort(),
+  );
+  assert.equal(JSON.stringify(f.requests).includes("private-"), false);
+});
+
+test("真实 SDK 连续读取分组账号分页，每页引用独立且账号不重不漏", async (t) => {
+  const f = await fixture(t, (_req, res, body) => {
+    const pages = body.messages
+      .filter((message) => message.role === "tool")
+      .map((message) => JSON.parse(message.content));
+    if (!pages.length) callTool(res, "list_mailboxes", { folderId: "work", limit: 1 });
+    else if (pages.length === 1) {
+      assert.equal(pages[0].nextOffset, 1);
+      callTool(res, "list_mailboxes", { folderId: "work", limit: 1, offset: pages[0].nextOffset });
+    } else {
+      assert.equal(pages[1].nextOffset, null);
+      assert.deepEqual(
+        pages.flatMap((page) => page.mailboxes.map((mailbox) => mailbox.assetId)),
+        [liveMail.id, "alias"],
+      );
+      assert.notEqual(pages[0].sources[0].citation, pages[1].sources[0].citation);
+      assert.notEqual(pages[0].sources[0].sourceId, pages[1].sources[0].sourceId);
+      sse(res, [
+        {
+          delta: {
+            content: `两项账号 [${pages[0].sources[0].citation}] [${pages[1].sources[0].citation}]。`,
+          },
+          finish_reason: "stop",
+        },
+      ]);
+    }
+  });
+  f.setSnapshot(groupedMail());
+  const result = await f.service.run({
+    id: "group-pagination",
+    question: "列出研发工作邮箱中的所有账号",
+  });
+  assert.equal(
+    result.sourceItems.filter((source) => source.id.startsWith("mailbox-list:")).length,
+    2,
+  );
+  assert.equal(result.steps, 3);
 });

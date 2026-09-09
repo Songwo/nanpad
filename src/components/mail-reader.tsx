@@ -7,6 +7,7 @@ import {
   Download,
   FileText,
   Forward,
+  Folder,
   Inbox,
   Loader2,
   Mail,
@@ -25,7 +26,8 @@ import { toast } from "sonner";
 import { desktop } from "@/lib/desktop";
 import { useAppStore } from "@/lib/store";
 import { useVault } from "@/lib/vault-state";
-import { t } from "@/lib/i18n";
+import { intlLocale, t } from "@/lib/i18n";
+import { mailFolderId, normalizeMailFolders } from "@/lib/mail-folders";
 import type {
   MailDraft,
   MailFolderRemote,
@@ -38,6 +40,8 @@ import type { Mailbox } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { Button } from "./ui/button";
 import { Field, Input, Select, Textarea } from "./ui/input";
+import { MailAvatar, MailAppearanceEditor } from "./mail-avatar";
+import { MailContent } from "./mail-content";
 
 const emptyDraft = (): MailDraft => ({
   to: "",
@@ -64,6 +68,58 @@ const folderLabel = (folder: MailFolderRemote) => {
       : folder.name;
 };
 
+function compactMailDate(value: string | null) {
+  if (!value) return "--";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "--";
+  const today = new Date();
+  return new Intl.DateTimeFormat(
+    intlLocale(),
+    date.toDateString() === today.toDateString()
+      ? { hour: "2-digit", minute: "2-digit" }
+      : {
+          month: "short",
+          day: "numeric",
+          ...(date.getFullYear() !== today.getFullYear() ? { year: "numeric" as const } : {}),
+        },
+  ).format(date);
+}
+
+function MailSkeleton({ reading = false }: { reading?: boolean }) {
+  return (
+    <div
+      role="status"
+      aria-label={t("正在读取邮件")}
+      className={reading ? "py-7" : "divide-y divide-line"}
+    >
+      <span className="sr-only">{t("正在读取邮件")}</span>
+      {Array.from({ length: reading ? 1 : 6 }, (_, index) => (
+        <div key={index} className={reading ? "" : "flex gap-3 p-4"} aria-hidden="true">
+          {!reading && <span className="mail-skeleton size-10 shrink-0 rounded-full" />}
+          <div className="min-w-0 flex-1 space-y-3">
+            <div
+              className={cn("mail-skeleton rounded", reading ? "mb-7 h-6 w-3/4" : "h-3 w-2/5")}
+            />
+            <div className="mail-skeleton h-3 w-full rounded" />
+            <div className="mail-skeleton h-3 w-4/5 rounded" />
+            {reading && (
+              <>
+                <div className="h-5" />
+                {Array.from({ length: 9 }, (_, row) => (
+                  <div
+                    key={row}
+                    className={cn("mail-skeleton h-3 rounded", row % 3 === 2 ? "w-3/5" : "w-full")}
+                  />
+                ))}
+              </>
+            )}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export function MailReader({ mailboxId, close }: { mailboxId: string; close: () => void }) {
   const mailbox = useAppStore((state) => state.mailboxes.find((item) => item.id === mailboxId));
   const unlocked = useVault((state) => state.unlocked);
@@ -73,6 +129,17 @@ export function MailReader({ mailboxId, close }: { mailboxId: string; close: () 
 }
 
 function ReaderBody({ mailbox, close }: { mailbox: Mailbox; close: () => void }) {
+  const localFolders = useAppStore((state) => state.mailFolders);
+  const accounts = useAppStore((state) => state.mailboxes);
+  const groups = normalizeMailFolders(localFolders);
+  const groupName =
+    groups.find((item) => item.id === mailFolderId(mailbox, groups))?.name ?? "未分组";
+  const [appearance, setAppearance] = useState<
+    "account" | { name: string; address: string } | null
+  >(null);
+  const senderImage = (address: string) =>
+    mailbox.senderAvatars?.find((item) => item.address === address.toLowerCase())?.imageDataUrl ??
+    accounts.find((item) => item.address.toLowerCase() === address.toLowerCase())?.imageDataUrl;
   const bridge = desktop()!;
   const api = bridge.mailClient;
   const [folders, setFolders] = useState<MailFolderRemote[]>([]);
@@ -85,7 +152,7 @@ function ReaderBody({ mailbox, close }: { mailbox: Mailbox; close: () => void })
   const [messages, setMessages] = useState<MailPage | null>(null);
   const [selected, setSelected] = useState<MailSelection | null>(null);
   const [message, setMessage] = useState<MailMessage | null>(null);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(Boolean(mailbox.imap));
   const [reading, setReading] = useState(false);
   const [error, setError] = useState("");
   const [compose, setCompose] = useState(false);
@@ -96,6 +163,10 @@ function ReaderBody({ mailbox, close }: { mailbox: Mailbox; close: () => void })
   const [busy, setBusy] = useState(false);
   const [settings, setSettings] = useState(!mailbox.smtp || !mailbox.imap);
   const alive = useRef(true);
+  const readingPane = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    readingPane.current?.scrollTo({ top: 0, behavior: "instant" });
+  }, [selected]);
   useEffect(() => {
     alive.current = true;
     return () => {
@@ -250,10 +321,29 @@ function ReaderBody({ mailbox, close }: { mailbox: Mailbox; close: () => void })
           className="mail-reader fixed inset-3 z-50 mx-auto flex max-w-6xl flex-col overflow-hidden rounded-lg bg-card text-ink shadow-float sm:inset-6"
         >
           <header className="flex flex-wrap items-center gap-2 border-b border-line px-4 py-3">
-            <Mail className="size-5 shrink-0 text-muted" />
-            <Dialog.Title className="min-w-0 flex-1 truncate text-base font-semibold">
-              {mailbox.address}
-            </Dialog.Title>
+            <button
+              title={t("邮箱头像与分组")}
+              aria-label={t("邮箱头像与分组")}
+              className="shrink-0 rounded-full"
+              disabled={busy}
+              onClick={() => setAppearance("account")}
+            >
+              <MailAvatar address={mailbox.address} image={mailbox.imageDataUrl} />
+            </button>
+            <div className="min-w-0 flex-1">
+              <Dialog.Title className="truncate text-body font-semibold">
+                {mailbox.address}
+              </Dialog.Title>
+              <button
+                className="mt-1 flex max-w-full items-center gap-1 text-2xs text-muted hover:text-ink"
+                disabled={busy}
+                title={t("邮箱头像与分组")}
+                onClick={() => setAppearance("account")}
+              >
+                <Folder className="size-3 shrink-0" />
+                <span className="truncate">{t(groupName)}</span>
+              </button>
+            </div>
             <Button
               variant="ghost"
               size="icon-sm"
@@ -564,28 +654,30 @@ function ReaderBody({ mailbox, close }: { mailbox: Mailbox; close: () => void })
                   <RefreshCw className={cn("size-4", loading && "animate-spin")} />
                 </Button>
               </div>
-              <div className="mail-reader-split grid min-h-0 flex-1 md:grid-cols-[minmax(240px,0.8fr)_minmax(0,1.6fr)]">
+              <div className="mail-reader-split grid min-h-0 flex-1 md:grid-cols-[minmax(260px,0.8fr)_minmax(0,1.6fr)]">
                 <div
                   className={cn(
                     "flex min-h-0 flex-col border-r border-line",
                     selected && "hidden md:flex",
                   )}
                 >
-                  <div className="min-h-0 flex-1 overflow-y-auto" aria-label={t("邮件列表")}>
+                  <div
+                    className="min-h-0 flex-1 overflow-y-auto"
+                    aria-label={t("邮件列表")}
+                    aria-busy={loading}
+                  >
                     {loading ? (
-                      <p className="flex items-center gap-2 p-5 text-meta text-muted">
-                        <Loader2 className="size-4 animate-spin" />
-                        {t("正在读取邮件")}
-                      </p>
+                      <MailSkeleton />
                     ) : (
                       messages?.items.map((item) => (
                         <button
                           key={item.uid}
                           disabled={busy}
                           className={cn(
-                            "w-full border-b border-line p-4 text-left transition-colors hover:bg-canvas",
-                            selected?.uid === item.uid && "bg-canvas",
+                            "mail-message-row w-full border-b border-line p-4 text-left hover:bg-canvas",
+                            selected?.uid === item.uid && "mail-message-selected",
                           )}
+                          aria-current={selected?.uid === item.uid ? "true" : undefined}
                           aria-label={t("查看邮件 {0}", item.subject || t("无主题"))}
                           onClick={() => {
                             setSelected({
@@ -596,30 +688,60 @@ function ReaderBody({ mailbox, close }: { mailbox: Mailbox; close: () => void })
                             setError("");
                           }}
                         >
-                          <div className="flex items-center gap-2">
-                            <span
-                              className={cn(
-                                "size-1.5 shrink-0 rounded-full",
-                                item.seen ? "bg-transparent" : "bg-link",
-                              )}
+                          <div className="flex items-start gap-3">
+                            <MailAvatar
+                              address={item.from[0]?.address ?? ""}
+                              name={item.from[0]?.name}
+                              image={senderImage(item.from[0]?.address ?? "")}
                             />
-                            <span className="truncate text-meta text-muted">
-                              {item.from[0]?.name || item.from[0]?.address || t("未知发件人")}
-                            </span>
+                            <div className="min-w-0 flex-1">
+                              <div className="flex items-center gap-2">
+                                <span
+                                  className={cn(
+                                    "min-w-0 flex-1 truncate text-meta",
+                                    item.seen ? "text-muted" : "font-semibold",
+                                  )}
+                                >
+                                  {item.from[0]?.name || item.from[0]?.address || t("未知发件人")}
+                                </span>
+                                <time
+                                  className="shrink-0 text-2xs text-muted"
+                                  title={
+                                    item.date
+                                      ? new Date(item.date).toLocaleString(intlLocale())
+                                      : ""
+                                  }
+                                >
+                                  {compactMailDate(item.date)}
+                                </time>
+                              </div>
+                              <p
+                                className={cn(
+                                  "mt-1.5 line-clamp-2 break-words text-body leading-snug",
+                                  !item.seen && "font-semibold",
+                                )}
+                              >
+                                {item.subject || t("无主题")}
+                              </p>
+                              <div className="mt-2 flex items-center gap-1.5 text-2xs text-muted">
+                                <span
+                                  className={cn(
+                                    "size-1.5 shrink-0 rounded-full",
+                                    item.seen ? "bg-transparent" : "bg-link",
+                                  )}
+                                />
+                                <span>{t(item.seen ? "已读" : "未读")}</span>
+                              </div>
+                            </div>
                           </div>
-                          <p
-                            className={cn("mt-2 truncate text-body", !item.seen && "font-semibold")}
-                          >
-                            {item.subject || t("无主题")}
-                          </p>
-                          <p className="mt-2 text-2xs text-muted">
-                            {item.date ? new Date(item.date).toLocaleString() : "--"}
-                          </p>
                         </button>
                       ))
                     )}
                     {!loading && messages?.items.length === 0 && (
-                      <p className="p-6 text-meta text-muted">{t("没有匹配的邮件")}</p>
+                      <div className="grid min-h-64 place-content-center gap-3 p-6 text-center text-muted">
+                        <Inbox className="mx-auto size-9" strokeWidth={1.3} />
+                        <p className="text-meta">{t("没有匹配的邮件")}</p>
+                      </div>
                     )}
                   </div>
                   <div className="flex items-center justify-between border-t border-line p-2">
@@ -647,12 +769,17 @@ function ReaderBody({ mailbox, close }: { mailbox: Mailbox; close: () => void })
                   </div>
                 </div>
                 <div
-                  className={cn("min-h-0 overflow-y-auto p-5", !selected && "hidden md:block")}
+                  className={cn(
+                    "mail-reading-pane min-h-0 overflow-y-auto px-4 pb-6 sm:px-6",
+                    !selected && "hidden md:block",
+                  )}
+                  ref={readingPane}
                   aria-label={t("邮件阅读区")}
+                  aria-busy={reading}
                 >
                   {selected && (
                     <Button
-                      className="mb-3 md:hidden"
+                      className="mb-2 mt-3 md:hidden"
                       disabled={busy}
                       variant="ghost"
                       size="sm"
@@ -663,10 +790,10 @@ function ReaderBody({ mailbox, close }: { mailbox: Mailbox; close: () => void })
                     </Button>
                   )}
                   {reading ? (
-                    <Loader2 className="size-5 animate-spin text-muted" />
+                    <MailSkeleton reading />
                   ) : message ? (
                     <>
-                      <div className="mb-4 flex flex-wrap gap-2">
+                      <div className="sticky top-0 z-10 -mx-4 mb-5 flex flex-wrap gap-1 border-b border-line bg-card px-4 py-3 sm:-mx-6 sm:px-6">
                         <Button
                           variant="outline"
                           size="sm"
@@ -721,22 +848,51 @@ function ReaderBody({ mailbox, close }: { mailbox: Mailbox; close: () => void })
                           {t(message.seen ? "标为未读" : "标为已读")}
                         </Button>
                       </div>
-                      <h2 className="break-words text-xl font-semibold">
+                      <h2 className="break-words text-xl font-semibold leading-snug">
                         {message.subject || t("无主题")}
                       </h2>
-                      <p className="mt-3 break-words text-meta text-muted">
-                        {t("发件人")}：
-                        {message.from.map((item) => `${item.name} <${item.address}>`).join(", ")}
-                      </p>
-                      <p className="mt-1 break-words text-meta text-muted">
-                        {t("收件人")}：{message.to.map((item) => item.address).join(", ")}
-                      </p>
-                      <p className="mt-1 text-2xs text-muted">
-                        {message.date ? new Date(message.date).toLocaleString() : "--"}
-                      </p>
-                      <p className="mt-5 whitespace-pre-wrap break-words border-t border-line pt-5 text-body leading-relaxed">
-                        {message.text || t("邮件没有可显示的文本正文")}
-                      </p>
+                      <div className="mt-5 flex items-start gap-3">
+                        <button
+                          className="shrink-0 rounded-full"
+                          title={t("编辑发件人头像")}
+                          aria-label={t("编辑发件人头像")}
+                          disabled={busy || !message.from[0]?.address}
+                          onClick={() => setAppearance(message.from[0])}
+                        >
+                          <MailAvatar
+                            address={message.from[0]?.address ?? ""}
+                            name={message.from[0]?.name}
+                            image={senderImage(message.from[0]?.address ?? "")}
+                          />
+                        </button>
+                        <div className="min-w-0 flex-1 text-meta">
+                          <p className="break-words font-medium">
+                            {message.from.map((item) => item.name || item.address).join(", ")}
+                          </p>
+                          <p className="mt-0.5 break-all text-2xs text-muted">
+                            {message.from.map((item) => item.address).join(", ")}
+                          </p>
+                          <p className="mt-2 break-words text-2xs text-muted">
+                            {t("收件人")}：{message.to.map((item) => item.address).join(", ")}
+                          </p>
+                          {!!message.cc.length && (
+                            <p className="mt-1 break-words text-2xs text-muted">
+                              {t("抄送")}：{message.cc.map((item) => item.address).join(", ")}
+                            </p>
+                          )}
+                          <p className="mt-1 text-2xs text-muted">
+                            {message.date
+                              ? new Date(message.date).toLocaleString(intlLocale())
+                              : "--"}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="mail-body-enter mt-5 border-t border-line pt-5">
+                        <MailContent
+                          key={`${mailbox.id}:${selected?.folder}:${selected?.uidValidity}:${message.uid}`}
+                          message={message}
+                        />
+                      </div>
                       {message.attachments.length > 0 && (
                         <div className="mt-6 border-t border-line pt-4">
                           <h3 className="mb-2 text-meta font-semibold">{t("附件")}</h3>
@@ -768,20 +924,29 @@ function ReaderBody({ mailbox, close }: { mailbox: Mailbox; close: () => void })
                       )}
                     </>
                   ) : (
-                    <div className="grid min-h-64 place-content-center text-center text-muted">
-                      <Inbox className="mx-auto mb-3 size-10" strokeWidth={1} />
+                    <div className="grid h-full min-h-64 place-content-center text-center text-muted">
+                      <span className="mx-auto mb-5 grid size-20 place-items-center rounded-full bg-canvas">
+                        <MailOpen className="size-9" strokeWidth={1.2} />
+                      </span>
                       <p className="text-meta">{t("选择一封邮件")}</p>
                     </div>
                   )}
                 </div>
               </div>
               <p className="border-t border-line px-4 py-2 text-2xs text-muted">
-                {t("正文在本机查看，不加载远程图片，不发送给 AI。")}
+                {t("正文仅在本机显示，不发送给 AI。远程图片默认屏蔽。")}
               </p>
             </div>
           )}
         </Dialog.Content>
       </Dialog.Portal>
+      {appearance && (
+        <MailAppearanceEditor
+          mailbox={mailbox}
+          sender={appearance === "account" ? undefined : appearance}
+          close={() => setAppearance(null)}
+        />
+      )}
     </Dialog.Root>
   );
 }

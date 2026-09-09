@@ -82,6 +82,7 @@
     "react-resizable-panels": "^4.6.5",
     "recharts": "^2.13.0",
     "remark-gfm": "^4.0.1",
+    "sanitize-html": "^2.17.7",
     "sonner": "^2.0.7",
     "ssh2": "^1.17.0",
     "tailwind-merge": "^3.5.0",
@@ -116,7 +117,7 @@
     "vite": "^8.2.0"
   },
   "productName": "司南 Nanpad",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "author": "Songwo",
   "homepage": "https://github.com/Songwo/nanpad",
   "repository": {

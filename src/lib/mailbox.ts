@@ -56,6 +56,7 @@ export interface MailPage {
   folder: string;
 }
 export interface MailMessage extends MailSummary {
+  html?: string;
   text: string;
   cc: MailContact[];
   replyTo: MailContact[];

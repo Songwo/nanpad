@@ -10,9 +10,16 @@ const manifest = JSON.parse(await readFile(join(root, "package.json"), "utf8"));
 const lock = JSON.parse(await readFile(join(root, "package-lock.json"), "utf8"));
 // React 界面已经被 Vite 打包，暂存区只安装主进程运行依赖及其传递依赖。
 const dependencies = Object.fromEntries(
-  ["ssh2", "imapflow", "openai", "minisearch", "nodemailer", "mailparser", "html-to-text"].map(
-    (name) => [name, lock.packages[`node_modules/${name}`].version],
-  ),
+  [
+    "ssh2",
+    "imapflow",
+    "openai",
+    "minisearch",
+    "nodemailer",
+    "mailparser",
+    "html-to-text",
+    "sanitize-html",
+  ].map((name) => [name, lock.packages[`node_modules/${name}`].version]),
 );
 const appManifest = {
   name: manifest.name,

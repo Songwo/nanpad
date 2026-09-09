@@ -3,6 +3,7 @@ import nodemailer from "nodemailer";
 import { simpleParser } from "mailparser";
 import { convert as htmlToText } from "html-to-text";
 import { validateMailboxConnection } from "./mail.mjs";
+import { sanitizeMailHtml } from "./mail-content.mjs";
 
 const MAX_MESSAGE = 12 * 1024 * 1024;
 const MAX_ATTACHMENTS = 8 * 1024 * 1024;
@@ -326,6 +327,7 @@ export class MailClient {
       return {
         ...summary(item),
         text: text.slice(0, 500000),
+        html: sanitizeMailHtml(parsed.html, parsed.attachments),
         cc: contacts(parsed.cc?.value),
         replyTo: contacts(parsed.replyTo?.value ?? parsed.from?.value),
         messageId: /^<[^<>\s]{1,500}>$/.test(parsed.messageId ?? "") ? parsed.messageId : null,

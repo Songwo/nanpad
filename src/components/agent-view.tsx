@@ -29,6 +29,19 @@ import { cn, copyText } from "@/lib/utils";
 import { useVault } from "@/lib/vault-state";
 import { t } from "@/lib/i18n";
 
+const toolLabel = (name: string) =>
+  t(
+    {
+      search_knowledge: "本地检索",
+      get_asset: "查询资产",
+      locate_credential: "定位凭据",
+      check_mailbox: "检查邮箱",
+      list_mail_folders: "查询邮箱分组",
+      list_mailboxes: "查询邮箱账号",
+      asset_summary: "资产统计",
+    }[name] ?? name,
+  );
+
 /** 本机负责检索和只读工具执行，模型请求由桌面主进程发送。 */
 export function AgentView() {
   const conversations = useConversations((s) => s.conversations);
@@ -218,7 +231,7 @@ export function AgentView() {
                     </p>
                     {running.tools.length > 0 && (
                       <p className="my-2 break-words font-mono text-2xs text-subtle">
-                        {running.tools.join(" → ")}
+                        {running.tools.map(toolLabel).join(" → ")}
                       </p>
                     )}
                     <Markdown>{running.text}</Markdown>
@@ -406,7 +419,7 @@ function BlockView({ block }: { block: Block }) {
                 : "生成失败",
           )}{" "}
           · {block.steps} {t("轮")}
-          {block.tools.length ? ` · ${block.tools.join(", ")}` : ""}
+          {block.tools.length ? ` · ${block.tools.map(toolLabel).join(", ")}` : ""}
         </p>
       );
     case "text":

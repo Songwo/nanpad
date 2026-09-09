@@ -139,12 +139,43 @@ export function normalizeSnapshotImages(
   for (const key of ["servers", "domains", "mailboxes", "aiAssets", "secrets", "certs"]) {
     if (!Array.isArray(state[key])) continue;
     result[key] = state[key].map((asset) => {
-      if (!asset || typeof asset !== "object" || !("imageDataUrl" in asset)) return asset;
+      if (!asset || typeof asset !== "object") return asset;
+      const next = { ...asset };
+      if (key === "mailboxes" && "senderAvatars" in asset) {
+        /** @type {{ address: string, imageDataUrl: string }[]} */
+        const avatars = [];
+        let totalBytes = 0;
+        if (strict && (!Array.isArray(asset.senderAvatars) || asset.senderAvatars.length > 32))
+          throw new Error("每个邮箱最多保存 32 个发件人头像。");
+        for (const entry of (Array.isArray(asset.senderAvatars) ? asset.senderAvatars : []).slice(
+          0,
+          32,
+        )) {
+          try {
+            if (
+              !entry ||
+              typeof entry.address !== "string" ||
+              !/^[^\s@<>]+@[^\s@<>]+$/.test(entry.address) ||
+              entry.address.length > 254
+            )
+              throw new Error("发件人邮箱地址无效。");
+            const address = entry.address.toLowerCase();
+            const imageDataUrl = normalize(entry.imageDataUrl);
+            if (!imageDataUrl || avatars.some((avatar) => avatar.address === address)) continue;
+            totalBytes += imageDataUrl.length;
+            if (totalBytes > 8 * 1024 * 1024) throw new Error("发件人头像总大小不能超过 8 MiB。");
+            avatars.push({ address, imageDataUrl });
+          } catch (error) {
+            if (strict) throw error;
+          }
+        }
+        next.senderAvatars = avatars;
+      }
+      if (!("imageDataUrl" in asset)) return next;
       try {
-        return { ...asset, imageDataUrl: normalize(asset.imageDataUrl) };
+        return { ...next, imageDataUrl: normalize(asset.imageDataUrl) };
       } catch (error) {
         if (strict) throw error;
-        const next = { ...asset };
         delete next.imageDataUrl;
         return next;
       }

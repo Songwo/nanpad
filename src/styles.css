@@ -29,6 +29,28 @@
 .mail-folder:focus-visible { outline: 2px solid var(--color-ink); outline-offset: 4px; }
 .mail-folder-swatch { width: 32px; height: 32px; border-radius: 50%; background: var(--mail-folder-color); }
 .mail-reader { max-height: calc(100dvh - 24px); }
+.mail-avatar { display: inline-grid; flex-shrink: 0; place-items: center; overflow: hidden; border-radius: 50%; font-weight: 600; }
+.mail-avatar-sm { width: 28px; height: 28px; font-size: 12px; }
+.mail-avatar-md { width: 40px; height: 40px; font-size: 16px; }
+.mail-avatar-lg { width: 48px; height: 48px; font-size: 18px; }
+.mail-avatar-0 { color: var(--color-link); background: color-mix(in srgb, var(--color-link) 12%, var(--color-card)); }
+.mail-avatar-1 { color: #168363; background: color-mix(in srgb, var(--color-ok) 12%, var(--color-card)); }
+.mail-avatar-2 { color: #b2577d; background: color-mix(in srgb, #c46489 12%, var(--color-card)); }
+.mail-avatar-3 { color: #9c6d16; background: color-mix(in srgb, var(--color-warn) 14%, var(--color-card)); }
+.mail-message-row { min-height: 108px; transition: background 160ms ease; border-left: 3px solid transparent; }
+.mail-message-row.mail-message-selected { border-left-color: var(--color-link); background: color-mix(in srgb, var(--color-link) 7%, var(--color-card)); }
+.mail-skeleton { display: block; background: color-mix(in srgb, var(--color-muted) 13%, var(--color-card)); animation: mail-loading 1.5s ease-in-out infinite; }
+.mail-body-enter { animation: mail-arrive 180ms ease-out; }
+.mail-reading-pane { scroll-behavior: smooth; }
+.mail-reading-pane .markdown-body { line-height: 1.85; }
+.mail-reading-pane .markdown-body img { max-width: 100%; height: auto; border-radius: 4px; }
+@keyframes mail-loading { 50% { opacity: 0.4; } }
+@keyframes mail-arrive { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
+@media (prefers-reduced-motion: reduce) {
+  .mail-skeleton, .mail-body-enter { animation: none; }
+  .mail-message-row { transition: none; }
+  .mail-reading-pane { scroll-behavior: auto; }
+}
 @media (prefers-reduced-motion: reduce) { .mail-folder { transition: none; } .mail-folder:hover { transform: none; } }
 
 .markdown-body { min-width: 0; font-size: 14px; line-height: 1.65; overflow-wrap: anywhere; }

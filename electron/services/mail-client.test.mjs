@@ -194,7 +194,7 @@ test("正文由 MIME 解析为纯文本，不自动标已读", async () => {
   );
   assert.ok(f.calls.some((call) => call.options?.readOnly));
 });
-test("HTML 邮件转纯文本，附件单独获取且不暴露路径", async () => {
+test("HTML 邮件保留安全排版及纯文本，附件单独获取且不暴露路径", async () => {
   const mime = await nodemailer.createTransport({ streamTransport: true, buffer: true }).sendMail({
     from: "sender@example.test",
     to: "owner@example.test",
@@ -212,11 +212,43 @@ test("HTML 邮件转纯文本，附件单独获取且不暴露路径", async () 
   });
   const read = await f.service.read("mail-1", selected);
   assert.match(read.text, /Visible body/);
-  assert.equal(read.html, undefined);
+  assert.match(read.html, /<p>Visible body<\/p>/);
+  assert.match(read.html, /data-mail-remote-src="https:\/\/tracking\.example\.test\/pixel"/);
+  assert.doesNotMatch(read.html, /\ssrc=/);
   assert.equal(read.attachments[0].name, "report.txt");
   assert.equal(read.attachments[0].content, undefined);
   const attachment = await f.service.attachment("mail-1", selected, 0);
   assert.equal(attachment.content.toString(), "attachment content");
+});
+
+test("真实 MIME 的 CID 图片内联，危险 HTML 不跨越邮件读取 IPC", async () => {
+  const png = Buffer.from(
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
+    "base64",
+  );
+  const mime = await nodemailer.createTransport({ streamTransport: true, buffer: true }).sendMail({
+    from: "sender@example.test",
+    to: "owner@example.test",
+    subject: "inline",
+    text: "图片报告",
+    html: '<h2>图片报告</h2><img src="cid:report@example.test"><script>private script</script><a href="file:///private">不安全链接</a>',
+    attachments: [{ filename: "report.png", content: png, cid: "report@example.test" }],
+  });
+  const f = fixture({
+    imap: {
+      fetchOne: async (_uid, fields) =>
+        fields.source
+          ? { uid: 10, source: mime.message, envelope: {}, flags: new Set() }
+          : { size: mime.message.length },
+    },
+  });
+  const read = await f.service.read("mail-1", selected);
+  assert.equal(read.text, "图片报告");
+  assert.match(read.html, /<h2>图片报告<\/h2>/);
+  assert.match(read.html, /src="data:image\/png;base64,/);
+  assert.doesNotMatch(read.html, /private|script|file:/);
+  assert.equal(read.attachments[0].name, "report.png");
+  assert.equal(read.attachments[0].content, undefined);
 });
 test("UIDVALIDITY 变化与大邮件阻止读取正文", async () => {
   const f = fixture();

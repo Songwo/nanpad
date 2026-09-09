@@ -12,6 +12,65 @@ const png =
   "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGP4z8DwHwAFAAH/iZk9HQAAAABJRU5ErkJggg==";
 const bytes = () => Buffer.from(png.split(",")[1], "base64");
 
+test("发件人头像在快照导入、保存与恢复时验证，不影响账号原数据", () => {
+  const mailbox = {
+    id: "mail",
+    folderId: "work",
+    senderAvatars: [
+      { address: "Team@example.test", imageDataUrl: png },
+      { address: "bad@example.test", imageDataUrl: "https://tracker.example.test/pixel" },
+    ],
+  };
+  assert.throws(() => normalizeSnapshotImages({ mailboxes: [mailbox] }));
+  assert.deepEqual(
+    normalizeSnapshotImages({ mailboxes: [mailbox] }, { strict: false }).mailboxes[0],
+    {
+      id: "mail",
+      folderId: "work",
+      senderAvatars: [{ address: "team@example.test", imageDataUrl: png }],
+    },
+  );
+  const crowded = {
+    mailboxes: [
+      {
+        senderAvatars: Array.from({ length: 33 }, (_, index) => ({
+          address: `member${index}@example.test`,
+          imageDataUrl: png,
+        })),
+      },
+    ],
+  };
+  assert.throws(() => normalizeSnapshotImages(crowded), /32/);
+  assert.equal(
+    normalizeSnapshotImages(crowded, { strict: false }).mailboxes[0].senderAvatars.length,
+    32,
+  );
+  assert.throws(
+    () =>
+      normalizeSnapshotImages({
+        mailboxes: [{ senderAvatars: [{ address: "invalid", imageDataUrl: png }] }],
+      }),
+    /地址/,
+  );
+});
+
+test("发件人头像总预算使用规范化后的图片计算", () => {
+  const avatars = Array.from({ length: 9 }, (_, index) => ({
+    address: `member${index}@example.test`,
+    imageDataUrl: png,
+  }));
+  assert.throws(
+    () =>
+      normalizeSnapshotImages(
+        { mailboxes: [{ senderAvatars: avatars }] },
+        {
+          normalize: () => "x".repeat(1024 * 1024),
+        },
+      ),
+    /8 MiB/,
+  );
+});
+
 test("图片校验兼容已有无图资产，接受小尺寸 PNG", () => {
   assert.equal(validateImageDataUrl(undefined), "");
   assert.equal(validateImageDataUrl(""), "");

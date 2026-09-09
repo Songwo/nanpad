@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "司南 Nanpad - 保存网站账号",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "description": "将当前网站发送到本机司南，确认后保存账号并关联邮箱。",
   "permissions": ["activeTab"],
   "action": { "default_popup": "popup.html", "default_title": "保存到司南" },

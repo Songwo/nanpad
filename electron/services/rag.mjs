@@ -66,7 +66,33 @@ export function tokenize(text) {
   return result;
 }
 
-export function assetDocuments(snapshot) {
+function normalizedMailFolders(value) {
+  if (!Array.isArray(value))
+    return [
+      { id: "work", name: "工作邮箱" },
+      { id: "personal", name: "生活邮箱" },
+    ];
+  const folders = [];
+  for (const folder of value.slice(0, 100)) {
+    if (
+      !folder ||
+      typeof folder.id !== "string" ||
+      !folder.id ||
+      folder.id.length > 128 ||
+      typeof folder.name !== "string"
+    )
+      continue;
+    const name = folder.name.trim().slice(0, 40);
+    if (!name || folders.some((saved) => saved.id === folder.id || saved.name === name)) continue;
+    folders.push({ id: folder.id, name });
+  }
+  return folders;
+}
+
+export function assetDocuments(
+  snapshot,
+  mailFolders = normalizedMailFolders(snapshot.mailFolders),
+) {
   const docs = [];
   for (const [kind, collection] of Object.entries(COLLECTIONS)) {
     for (const asset of snapshot[collection] ?? []) {
@@ -78,7 +104,7 @@ export function assetDocuments(snapshot) {
             !(key === "monthlyUsd" && asset.monthlyUsdKnown === false) &&
             !(key === "usagePct" && asset.usageAvailable === false) &&
             (["string", "number", "boolean"].includes(typeof asset[key]) ||
-            (key === "tags" && Array.isArray(asset[key]))),
+              (key === "tags" && Array.isArray(asset[key]))),
         ).map((key) => [
           key,
           typeof asset[key] === "string"
@@ -91,6 +117,11 @@ export function assetDocuments(snapshot) {
               : asset[key],
         ]),
       );
+      if (kind === "mail") {
+        const folder = mailFolders.find((entry) => entry.id === asset.folderId);
+        fields.folderId = folder?.id ?? "";
+        fields.folderName = folder?.name ?? "未分组";
+      }
       const id = `asset:${kind}:${asset.id}`;
       const title = String(asset.name ?? asset.cn ?? asset.address ?? asset.id);
       docs.push({
@@ -140,7 +171,25 @@ export function knowledgeChunks(documents) {
 
 export class LocalIndex {
   constructor(snapshot, documents) {
-    this.docs = [...assetDocuments(snapshot), ...knowledgeChunks(documents)];
+    const folders = normalizedMailFolders(snapshot.mailFolders);
+    const assets = assetDocuments(snapshot, folders);
+    const mailboxes = assets.filter((doc) => doc.kind === "mail");
+    this.mailFolders = [...folders, { id: "", name: "未分组" }].map((folder) => {
+      const members = mailboxes.filter((doc) => doc.fields.folderId === folder.id);
+      return {
+        ...folder,
+        count: members.length,
+        mailboxCount: members.filter((doc) => doc.fields.kind !== "alias").length,
+        aliasCount: members.filter((doc) => doc.fields.kind === "alias").length,
+        demoCount: members.filter((doc) => doc.fields.demo === true).length,
+      };
+    });
+    const folderDocs = this.mailFolders.map((folder) => ({
+      id: `mail-folder:${folder.id ? `saved:${folder.id}` : "unfiled"}`,
+      title: `${folder.name} / 邮箱收纳组`,
+      text: `本地邮箱文件夹 收纳组 分组；不是 IMAP 服务端的收件箱、已发送等邮件目录。\n${JSON.stringify(folder)}`,
+    }));
+    this.docs = [...assets, ...folderDocs, ...knowledgeChunks(documents)];
     if (this.docs.length > 6000) throw new Error("本地索引超过 6000 个片段，请减少导入文档。");
     this.byId = new Map(this.docs.map((doc) => [doc.id, doc]));
     this.searcher = new MiniSearch({ fields: ["title", "text"], storeFields: [], tokenize });
@@ -151,6 +200,37 @@ export class LocalIndex {
       .search(query, { boost: { title: 3 }, prefix: true, combineWith: "OR" })
       .slice(0, limit)
       .map((row) => ({ ...this.byId.get(row.id), score: row.score }));
+  }
+  listMailboxes({ folderId, query = "", offset = 0, limit = 25 } = {}) {
+    const term = query.trim().toLocaleLowerCase();
+    const matches = this.docs.filter(
+      (doc) =>
+        doc.kind === "mail" &&
+        doc.assetId &&
+        (folderId === undefined || doc.fields.folderId === folderId) &&
+        (!term ||
+          [doc.title, doc.fields.address, doc.fields.domain, doc.fields.folderName].some((value) =>
+            String(value ?? "")
+              .toLocaleLowerCase()
+              .includes(term),
+          )),
+    );
+    return {
+      scope: "local_mailbox_groups",
+      total: matches.length,
+      offset,
+      nextOffset: offset + limit < matches.length ? offset + limit : null,
+      mailboxes: matches.slice(offset, offset + limit).map((doc) => ({
+        sourceId: doc.id,
+        assetId: doc.assetId,
+        address: doc.fields.address ?? doc.title,
+        kind: doc.fields.kind ?? "mailbox",
+        status: doc.fields.status ?? null,
+        folderId: doc.fields.folderId,
+        folderName: doc.fields.folderName,
+        demo: doc.fields.demo === true,
+      })),
+    };
   }
   summary() {
     const assets = this.docs.filter((x) => x.assetId);

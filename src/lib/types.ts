@@ -70,6 +70,7 @@ export interface Domain extends ProbeMeta, Taggable {
 }
 
 export interface Mailbox extends Taggable {
+  senderAvatars?: { address: string; imageDataUrl: string }[];
   folderId?: string;
   smtp?: import("./mailbox").SmtpConnection;
   imap?: import("./mailbox").MailboxConnection;

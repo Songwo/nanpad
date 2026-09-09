@@ -27,19 +27,21 @@ export function ImagePicker({
   avatar = false,
   disabled = false,
   onBusyChange,
+  label: customLabel,
 }: {
   value?: string;
   onChange: (value: string) => void;
   avatar?: boolean;
   disabled?: boolean;
   onBusyChange?: (busy: boolean) => void;
+  label?: string;
 }) {
   const input = useRef<HTMLInputElement>(null);
   const alive = useRef(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const image = useMemo(() => safeImageDataUrl(value), [value]);
-  const label = t(avatar ? "个人头像" : "资产图片");
+  const label = customLabel ?? t(avatar ? "个人头像" : "资产图片");
   useEffect(() => {
     alive.current = true;
     return () => {
@@ -97,8 +99,8 @@ export function ImagePicker({
           variant="outline"
           disabled={busy || disabled}
           onClick={() => input.current?.click()}
-          title={t("上传图片")}
-          aria-label={t("上传图片")}
+          title={t(image ? "更换图片" : "上传图片")}
+          aria-label={t(image ? "更换图片" : "上传图片")}
         >
           {busy ? <Loader2 className="size-4 animate-spin" /> : <ImagePlus className="size-4" />}
           {t(image ? "更换图片" : "上传图片")}

@@ -29,6 +29,7 @@ import { Button } from "./ui/button";
 import { Field, Input, Select } from "./ui/input";
 import { openFromEvent } from "./asset-card";
 import { MailReader } from "./mail-reader";
+import { MailAvatar, MailAppearanceEditor } from "./mail-avatar";
 
 export function MailWorkspace() {
   const state = useAppStore();
@@ -37,11 +38,12 @@ export function MailWorkspace() {
   const [selected, setSelected] = useState<string[]>([]);
   const [editor, setEditor] = useState<MailFolder | "new" | null>(null);
   const [reader, setReader] = useState<string | null>(null);
+  const [appearance, setAppearance] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const query = state.query.trim().toLocaleLowerCase();
   const matching = state.mailboxes.filter(
     (mailbox) =>
-      `${mailbox.address} ${mailbox.domain} ${mailbox.notes} ${mailbox.tags.join(" ")}`
+      `${mailbox.address} ${mailbox.domain} ${mailbox.notes} ${mailbox.tags.join(" ")} ${t(folders.find((item) => item.id === mailFolderId(mailbox, folders))?.name ?? "未分组")}`
         .toLocaleLowerCase()
         .includes(query) &&
       matchesTags(mailbox, state.tagFilter) &&
@@ -123,48 +125,57 @@ export function MailWorkspace() {
       </div>
       {active === null ? (
         <div className="grid gap-x-4 gap-y-6 sm:grid-cols-2 2xl:grid-cols-3">
-          {allFolders.map((item) => {
-            const mailboxes = matching.filter(
-              (mailbox) => mailFolderId(mailbox, folders) === item.id,
-            );
-            return (
-              <button
-                key={item.id}
-                className={cn("mail-folder group text-left", `mail-folder-${item.color}`)}
-                onClick={() => {
-                  setActive(item.id);
-                  setSelected([]);
-                }}
-                aria-label={t("打开文件夹 {0}", t(item.name))}
-              >
-                <div className="mail-folder-tab" />
-                <div className="flex items-center justify-between">
-                  <Folder className="size-7" />
-                  <span className="font-mono text-meta text-muted">{mailboxes.length}</span>
-                </div>
-                <h3 className="mt-4 truncate text-base font-semibold text-ink">{t(item.name)}</h3>
-                <div className="mt-4 flex min-h-8 items-center gap-2 text-muted">
-                  {mailboxes
-                    .slice(0, 3)
-                    .map((mailbox) =>
-                      mailbox.imageDataUrl ? (
-                        <img
-                          key={mailbox.id}
-                          src={mailbox.imageDataUrl}
-                          className="size-7 rounded-full object-cover"
-                          alt=""
-                        />
-                      ) : (
-                        <Mail key={mailbox.id} className="size-6" strokeWidth={1.4} />
-                      ),
-                    )}
-                  <span className="ml-auto text-2xs">
-                    {mailboxes.length ? t("{0} 个账号", mailboxes.length) : t("空文件夹")}
-                  </span>
-                </div>
-              </button>
-            );
-          })}
+          {query &&
+            !matching.length &&
+            !allFolders.some((item) => t(item.name).toLocaleLowerCase().includes(query)) && (
+              <div className="col-span-full py-16 text-center text-muted">
+                <FolderOpen className="mx-auto mb-3 size-10" strokeWidth={1} />
+                <p>{t("没有匹配的邮箱。")}</p>
+              </div>
+            )}
+          {allFolders
+            .filter(
+              (item) =>
+                !query ||
+                t(item.name).toLocaleLowerCase().includes(query) ||
+                matching.some((mailbox) => mailFolderId(mailbox, folders) === item.id),
+            )
+            .map((item) => {
+              const mailboxes = matching.filter(
+                (mailbox) => mailFolderId(mailbox, folders) === item.id,
+              );
+              return (
+                <button
+                  key={item.id}
+                  className={cn("mail-folder group text-left", `mail-folder-${item.color}`)}
+                  onClick={() => {
+                    setActive(item.id);
+                    setSelected([]);
+                  }}
+                  aria-label={t("打开文件夹 {0}", t(item.name))}
+                >
+                  <div className="mail-folder-tab" />
+                  <div className="flex items-center justify-between">
+                    <Folder className="size-7" />
+                    <span className="font-mono text-meta text-muted">{mailboxes.length}</span>
+                  </div>
+                  <h3 className="mt-4 truncate text-base font-semibold text-ink">{t(item.name)}</h3>
+                  <div className="mt-4 flex min-h-8 items-center gap-2 text-muted">
+                    {mailboxes.slice(0, 3).map((mailbox) => (
+                      <MailAvatar
+                        key={mailbox.id}
+                        address={mailbox.address}
+                        image={mailbox.imageDataUrl}
+                        size="sm"
+                      />
+                    ))}
+                    <span className="ml-auto text-2xs">
+                      {mailboxes.length ? t("{0} 个账号", mailboxes.length) : t("空文件夹")}
+                    </span>
+                  </div>
+                </button>
+              );
+            })}
         </div>
       ) : (
         <>
@@ -224,17 +235,13 @@ export function MailWorkspace() {
                     )
                   }
                 />
-                {mailbox.imageDataUrl ? (
-                  <img
-                    src={mailbox.imageDataUrl}
-                    alt=""
-                    className="size-10 shrink-0 rounded-full object-cover"
-                  />
-                ) : (
-                  <span className="grid size-10 shrink-0 place-items-center rounded-md bg-line">
-                    <Mail className="size-5 text-muted" />
-                  </span>
-                )}
+                <button
+                  title={t("邮箱头像与分组")}
+                  aria-label={t("编辑 {0} 的头像与分组", mailbox.address)}
+                  onClick={() => setAppearance(mailbox.id)}
+                >
+                  <MailAvatar address={mailbox.address} image={mailbox.imageDataUrl} />
+                </button>
                 <button
                   className="min-w-0 flex-1 text-left"
                   onClick={() => void openReader(mailbox.id)}
@@ -243,6 +250,7 @@ export function MailWorkspace() {
                   <span className="block truncate font-medium">{mailbox.address}</span>
                   <span className="mt-1 block truncate text-meta text-muted">
                     {mailbox.domain}
+                    {` · ${t(folder?.name ?? "未分组")}`}
                     {mailbox.mailStatus ? ` · ${t("未读 {0}", mailbox.mailStatus.unseen)}` : ""}
                   </span>
                 </button>
@@ -278,6 +286,12 @@ export function MailWorkspace() {
         />
       )}
       {reader && <MailReader mailboxId={reader} close={() => setReader(null)} />}
+      {appearance && state.mailboxes.find((item) => item.id === appearance) && (
+        <MailAppearanceEditor
+          mailbox={state.mailboxes.find((item) => item.id === appearance)!}
+          close={() => setAppearance(null)}
+        />
+      )}
     </section>
   );
 }
