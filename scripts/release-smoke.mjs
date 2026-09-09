@@ -15,7 +15,7 @@ try {
   delete env.NANPAD_TEST_DATA_DIR;
   instance = await electron.launch({
     executablePath: resolve(process.argv[2] ?? "release/win-unpacked/Nanpad.exe"),
-    args: [`--user-data-dir=${directory}`],
+    args: [`--user-data-dir=${directory}`, "nanpad://capture?url=https%3A%2F%2Frelease.example.test%2Flogin%3Ftoken%3Dprivate&title=Release"],
     env,
     timeout: 45000,
   });
@@ -31,6 +31,8 @@ try {
   const errors = [];
   page.on("pageerror", (error) => errors.push(error.message));
   await completeOnboarding(page);
+  assert.equal((await page.evaluate(() => window.sinan.capture.list()))[0].url, "https://release.example.test/");
+  await page.getByRole("button", { name: "忽略网站", exact: true }).click();
   await page.getByText("桌面验证用户", { exact: true }).waitFor();
   await page.getByRole("button", { name: "问答", exact: true }).click();
   await page.getByRole("button", { name: "模型与知识库", exact: true }).click();

@@ -52,6 +52,7 @@ export interface AppState extends Snapshot {
   composerOpen: boolean;
   composerKind: AssetKind;
   editingId: string | null;
+  composerPreset: Record<string, string> | null;
   mobileNav: boolean;
   hydrated: boolean;
 
@@ -68,7 +69,12 @@ export interface AppState extends Snapshot {
   closeSsh: () => void;
   setCommandOpen: (v: boolean) => void;
   setSettingsOpen: (v: boolean) => void;
-  openComposer: (kind: AssetKind, editingId?: string | null) => void;
+  openComposer: (
+    kind: AssetKind,
+    editingId?: string | null,
+    preset?: Record<string, string>,
+  ) => void;
+  linkAssetsMany: (from: AssetRef, targets: AssetRef[]) => void;
   closeComposer: () => void;
   setMobileNav: (v: boolean) => void;
   setHydrated: (v: boolean) => void;
@@ -108,6 +114,7 @@ const emptyUi = {
   composerOpen: false,
   composerKind: "server" as AssetKind,
   editingId: null,
+  composerPreset: null,
   mobileNav: false,
 };
 
@@ -151,6 +158,10 @@ export const useAppStore = create<AppState>()(
       links: [],
       linkAssets: (from, to) =>
         set({ links: normalizeLinks([...get().links, { from, to }], get()) }),
+      linkAssetsMany: (from, targets) =>
+        set({
+          links: normalizeLinks([...get().links, ...targets.map((to) => ({ from, to }))], get()),
+        }),
       unlinkAssets: (from, to) =>
         set({
           links: get().links.filter(
@@ -185,9 +196,15 @@ export const useAppStore = create<AppState>()(
       closeSsh: () => set({ sshServerId: null }),
       setCommandOpen: (commandOpen) => set({ commandOpen }),
       setSettingsOpen: (settingsOpen) => set({ settingsOpen, commandOpen: false }),
-      openComposer: (composerKind, editingId = null) =>
-        set({ composerOpen: true, composerKind, editingId, expanded: null }),
-      closeComposer: () => set({ composerOpen: false, editingId: null }),
+      openComposer: (composerKind, editingId = null, preset) =>
+        set({
+          composerOpen: true,
+          composerKind,
+          editingId,
+          composerPreset: preset ?? null,
+          expanded: null,
+        }),
+      closeComposer: () => set({ composerOpen: false, editingId: null, composerPreset: null }),
       setMobileNav: (mobileNav) => set({ mobileNav }),
       setHydrated: (hydrated) => set({ hydrated }),
 

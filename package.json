@@ -7,6 +7,7 @@
     "nf3": "0.3.17"
   },
   "scripts": {
+    "extension:build": "node scripts/build-extension.mjs",
     "dev": "node scripts/with-app-env.mjs node node_modules/vite/bin/vite.js dev --host 0.0.0.0 --port 8080",
     "build": "node scripts/with-app-env.mjs node node_modules/vite/bin/vite.js build && npm run db:migrate",
     "db:migrate": "node scripts/migrate.mjs",
@@ -112,7 +113,7 @@
     "vite": "^8.2.0"
   },
   "productName": "司南 Nanpad",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "author": "Songwo",
   "homepage": "https://github.com/Songwo/nanpad",
   "repository": {
@@ -122,6 +123,14 @@
   "description": "司南 Nanpad — 个人数字资产指挥台",
   "main": "electron/main.mjs",
   "build": {
+    "protocols": [
+      {
+        "name": "Nanpad website capture",
+        "schemes": [
+          "nanpad"
+        ]
+      }
+    ],
     "extraResources": [
       {
         "from": "build/icon.png",

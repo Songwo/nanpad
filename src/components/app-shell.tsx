@@ -3,6 +3,7 @@ import { useEffect, useSyncExternalStore } from "react";
 import { Toaster, toast } from "sonner";
 import { CommandPalette } from "./command-palette";
 import { Composer } from "./composer";
+import { CaptureInbox } from "./capture-inbox";
 import { ExpandLayer } from "./expand-layer";
 import { LogoMark } from "./logo";
 import { RightRail } from "./right-rail";
@@ -212,6 +213,7 @@ export function AppShell() {
       <SshTerminal />
       <Settings />
       <Composer />
+      <CaptureInbox />
       <CommandPalette />
       <VaultGate />
       <Onboarding />

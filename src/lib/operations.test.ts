@@ -1,6 +1,12 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { normalizeLinks, createCalendar, calendarItems, type AssetRef } from "./operations.ts";
+import {
+  normalizeLinks,
+  createCalendar,
+  calendarItems,
+  updateAssetTags,
+  type AssetRef,
+} from "./operations.ts";
 import type { Snapshot } from "./types.ts";
 
 const empty: Snapshot = {
@@ -11,6 +17,23 @@ const empty: Snapshot = {
   aiAssets: [],
   secrets: [],
 };
+test("批量标签只修改选中资产，保留其他字段与未选中记录，不污染原快照", () => {
+  const snapshot = {
+    ...empty,
+    servers: [{ id: "same", name: "host", tags: ["生产"], host: "example.test" }],
+    domains: [{ id: "same", name: "site", tags: ["域名"] }],
+  } as Snapshot;
+  const refs: AssetRef[] = [
+    { kind: "server", id: "same" },
+    { kind: "cert", id: "missing" },
+  ];
+  const added = updateAssetTags(snapshot, refs, "生产，项目 A;重点", "add");
+  assert.deepEqual(added.servers[0].tags, ["生产", "项目 A", "重点"]);
+  assert.equal(added.servers[0].host, "example.test");
+  assert.equal(added.domains[0], snapshot.domains[0]);
+  assert.deepEqual(snapshot.servers[0].tags, ["生产"]);
+  assert.deepEqual(updateAssetTags(added, refs, "生产;重点", "remove").servers[0].tags, ["项目 A"]);
+});
 test("关联去重、自关联和悬空引用被清除，同 ID 不同种类不混淆", () => {
   const from: AssetRef = { kind: "server", id: "same" },
     to: AssetRef = { kind: "domain", id: "same" };

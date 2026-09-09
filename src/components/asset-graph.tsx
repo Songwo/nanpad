@@ -5,6 +5,7 @@ import {
   Handle,
   Position,
   useNodesState,
+  useNodesInitialized,
   useReactFlow,
   useUpdateNodeInternals,
   type Node,
@@ -21,6 +22,7 @@ import {
   Minus,
   Plus,
   RotateCcw,
+  Link2,
 } from "lucide-react";
 import "@xyflow/react/dist/style.css";
 import { assetGraph, type AssetRow } from "@/lib/asset-view";
@@ -32,6 +34,8 @@ import { useSettings } from "@/lib/settings";
 import { openFromEvent } from "./asset-card";
 import { StatusBadge } from "./ui/status-badge";
 import { Button } from "./ui/button";
+import { useAppStore } from "@/lib/store";
+import { refKey } from "@/lib/operations";
 
 type AssetNode = Node<{ asset: AssetRow; vertical: boolean }, "asset">;
 const ICONS = {
@@ -42,7 +46,7 @@ const ICONS = {
   ai: Sparkles,
   secret: KeyRound,
 };
-function GraphNode({ id, data }: NodeProps<AssetNode>) {
+function GraphNode({ id, data, isConnectable }: NodeProps<AssetNode>) {
   const updateNodeInternals = useUpdateNodeInternals();
   useEffect(() => updateNodeInternals(id), [id, data.vertical, updateNodeInternals]);
   const asset = data.asset;
@@ -52,7 +56,7 @@ function GraphNode({ id, data }: NodeProps<AssetNode>) {
       <Handle
         type="target"
         position={data.vertical ? Position.Top : Position.Left}
-        isConnectable={false}
+        isConnectable={isConnectable}
       />
       <div className="graph-node-meta">
         <span>
@@ -72,7 +76,7 @@ function GraphNode({ id, data }: NodeProps<AssetNode>) {
       <Handle
         type="source"
         position={data.vertical ? Position.Bottom : Position.Right}
-        isConnectable={false}
+        isConnectable={isConnectable}
       />
     </div>
   );
@@ -90,6 +94,9 @@ export default function AssetGraph(props: { rows: AssetRow[]; links: AssetLink[]
 function GraphCanvas({ rows, links }: { rows: AssetRow[]; links: AssetLink[] }) {
   const container = useRef<HTMLDivElement>(null);
   const [vertical, setVertical] = useState(false);
+  const [frameSize, setFrameSize] = useState("");
+  const nodesInitialized = useNodesInitialized();
+  const [linkMode, setLinkMode] = useState(false);
   const graph = useMemo(() => assetGraph(rows, links, vertical), [rows, links, vertical]);
   const [nodes, setNodes, onNodesChange] = useNodesState<AssetNode>(graph.nodes);
   const { fitView, zoomIn, zoomOut } = useReactFlow();
@@ -100,7 +107,10 @@ function GraphCanvas({ rows, links }: { rows: AssetRow[]; links: AssetLink[] }) 
   useEffect(() => {
     const element = container.current;
     if (!element) return;
-    const resize = () => setVertical(element.clientWidth < 600);
+    const resize = () => {
+      setVertical(element.clientWidth < 600);
+      setFrameSize(`${element.clientWidth}:${element.clientHeight}`);
+    };
     resize();
     const observer = new ResizeObserver(resize);
     observer.observe(element);
@@ -119,11 +129,12 @@ function GraphCanvas({ rows, links }: { rows: AssetRow[]; links: AssetLink[] }) 
     );
   }, [graph.nodes, setNodes, topology]);
   useEffect(() => {
+    if (!nodesInitialized) return;
     const frame = requestAnimationFrame(() => {
       void fitView({ padding: 0.2, duration: 0 });
     });
     return () => cancelAnimationFrame(frame);
-  }, [topology, fitView]);
+  }, [topology, fitView, nodesInitialized, frameSize]);
   return (
     <div ref={container} className="asset-graph" role="region" aria-label={t("资产关系图")}>
       <ReactFlow
@@ -134,7 +145,13 @@ function GraphCanvas({ rows, links }: { rows: AssetRow[]; links: AssetLink[] }) 
         fitView
         minZoom={0.1}
         maxZoom={1.8}
-        nodesConnectable={false}
+        nodesConnectable={linkMode}
+        onConnect={({ source, target }) => {
+          if (!linkMode) return;
+          const from = rows.find((row) => encodeURIComponent(refKey(row)) === source);
+          const to = rows.find((row) => encodeURIComponent(refKey(row)) === target);
+          if (from && to) useAppStore.getState().linkAssets(from, to);
+        }}
         edgesFocusable={false}
         deleteKeyCode={null}
         colorMode={theme}
@@ -146,6 +163,16 @@ function GraphCanvas({ rows, links }: { rows: AssetRow[]; links: AssetLink[] }) 
       <div className="graph-toolbar">
         <span className="graph-count">{t("{0} 条关联", graph.edges.length)}</span>
         <div className="graph-controls">
+          <Button
+            size="icon-sm"
+            variant={linkMode ? "solid" : "ghost"}
+            aria-pressed={linkMode}
+            title={t("连接资产")}
+            aria-label={t("连接资产")}
+            onClick={() => setLinkMode(!linkMode)}
+          >
+            <Link2 className="size-4" />
+          </Button>
           <Button
             size="icon-sm"
             variant="ghost"

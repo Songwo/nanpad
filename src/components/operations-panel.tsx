@@ -16,6 +16,7 @@ import { Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "rec
 import { toast } from "sonner";
 import { Button } from "./ui/button";
 import { Select } from "./ui/input";
+import { AssetPicker } from "./asset-picker";
 import { desktop, type DesktopPreferences, type MetricSample, type SftpEntry } from "@/lib/desktop";
 import { t, intlLocale } from "@/lib/i18n";
 import {
@@ -57,6 +58,8 @@ export function CalendarExport() {
 export function AssetRelations({ asset }: { asset: AssetRef }) {
   const state = useAppStore();
   const [selected, setSelected] = useState("");
+  const [multiple, setMultiple] = useState<string[]>([]);
+  const [batch, setBatch] = useState(false);
   const entries = assetEntries(state);
   const self = refKey(asset);
   const related = state.links.flatMap((link) =>
@@ -136,6 +139,37 @@ export function AssetRelations({ asset }: { asset: AssetRef }) {
           <Plus className="size-4" />
         </Button>
       </div>
+      <Button
+        variant="ghost"
+        className="mt-2"
+        aria-expanded={batch}
+        onClick={() => setBatch(!batch)}
+      >
+        {t("搜索与多选关联")}
+      </Button>
+      {batch && (
+        <div className="mt-2 space-y-3">
+          <AssetPicker
+            label={t("选择多个关联资产")}
+            entries={choices}
+            selected={multiple}
+            onChange={setMultiple}
+          />
+          <Button
+            disabled={!choices.some((entry) => multiple.includes(refKey(entry)))}
+            onClick={() => {
+              state.linkAssetsMany(
+                asset,
+                choices.filter((entry) => multiple.includes(refKey(entry))),
+              );
+              setMultiple([]);
+            }}
+          >
+            <Plus className="mr-2 size-4" />
+            {t("添加所选关联")}
+          </Button>
+        </div>
+      )}
     </section>
   );
 }

@@ -1,5 +1,6 @@
 import type { AssetKind, Snapshot } from "./types.ts";
 import { t } from "./i18n.ts";
+import { parseTags } from "./tags.ts";
 
 export interface AssetRef {
   kind: AssetKind;
@@ -11,6 +12,37 @@ export interface AssetLink {
 }
 export interface AssetEntry extends AssetRef {
   label: string;
+}
+
+export function updateAssetTags(
+  snapshot: Snapshot,
+  refs: AssetRef[],
+  raw: string,
+  mode: "add" | "remove",
+): Snapshot {
+  const selected = new Set(refs.map(refKey));
+  const tags = parseTags(raw);
+  const update = <T extends { id: string; tags: string[] }>(kind: AssetKind, items: T[]): T[] =>
+    items.map((item) =>
+      !selected.has(refKey({ kind, id: item.id }))
+        ? item
+        : {
+            ...item,
+            tags:
+              mode === "add"
+                ? [...new Set([...(item.tags ?? []), ...tags])]
+                : (item.tags ?? []).filter((tag) => !tags.includes(tag)),
+          },
+    );
+  return {
+    ...snapshot,
+    servers: update("server", snapshot.servers),
+    domains: update("domain", snapshot.domains),
+    mailboxes: update("mail", snapshot.mailboxes),
+    aiAssets: update("ai", snapshot.aiAssets),
+    secrets: update("secret", snapshot.secrets),
+    certs: update("cert", snapshot.certs),
+  };
 }
 
 export function assetEntries(s: Snapshot): AssetEntry[] {

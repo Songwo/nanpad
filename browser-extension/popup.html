@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>保存到司南</title>
+    <link rel="stylesheet" href="popup.css" />
+  </head>
+  <body>
+    <header>
+      <img src="icon.png" width="32" height="32" alt="" />
+      <h1>司南 Nanpad</h1>
+    </header>
+    <form id="capture">
+      <label for="title">网站名称</label><input id="title" maxlength="120" required />
+      <label for="url">站点地址</label><input id="url" type="url" required readonly />
+      <button type="submit" id="send" disabled>保存到司南</button>
+    </form>
+    <p id="status" role="status" aria-live="polite"></p>
+    <a href="https://github.com/Songwo/nanpad/releases/latest" target="_blank" rel="noreferrer"
+      >下载桌面端</a
+    >
+    <script type="module" src="popup.mjs"></script>
+  </body>
+</html>

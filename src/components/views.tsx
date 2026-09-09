@@ -11,6 +11,7 @@ import {
   Network,
 } from "lucide-react";
 import { AssetWorkspace } from "./asset-workspace";
+import { AssetOrganizer } from "./asset-organizer";
 import { useSettings } from "@/lib/settings";
 import { Area, AreaChart, ResponsiveContainer, Tooltip, XAxis } from "recharts";
 import { AiCard, CertCard, DomainCard, MailCard, SecretCard, ServerCard } from "./asset-card";
@@ -191,6 +192,7 @@ function ListHeader() {
               <Icon className="size-4" />
             </button>
           ))}
+          <AssetOrganizer />
         </div>
       )}
       <TagBar />

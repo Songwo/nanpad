@@ -76,17 +76,21 @@ function ComposerBody({
     secrets,
     certs,
   });
-  const [form, setForm] = useState<Record<string, string>>(() => defaults(kind, existing));
+  const preset = useAppStore((s) => s.composerPreset);
+  const [form, setForm] = useState<Record<string, string>>(() => ({
+    ...defaults(kind, existing),
+    ...preset,
+  }));
   const [aiMode, setAiMode] = useState<"login" | "manual">(editingId ? "manual" : "login");
   const [imageBusy, setImageBusy] = useState(false);
 
   // Reset only when the form changes *subject*. Keying on `existing` would
   // wipe half-typed input every time a background probe rewrote the record.
   useEffect(() => {
-    setForm(defaults(kind, findAsset(kind, editingId, useAppStore.getState())));
+    setForm({ ...defaults(kind, findAsset(kind, editingId, useAppStore.getState())), ...preset });
     setAiMode(editingId ? "manual" : "login");
     setImageBusy(false);
-  }, [kind, editingId]);
+  }, [kind, editingId, preset]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -129,6 +133,9 @@ function ComposerBody({
     }
 
     persist(kind, id, form, existing);
+    if (kind === "secret" && form.kind === "password" && form._mailboxId) {
+      useAppStore.getState().linkAssets({ kind, id }, { kind: "mail", id: form._mailboxId });
+    }
     useAppStore
       .getState()
       .log(
@@ -224,6 +231,21 @@ function ComposerBody({
               />
             </div>
             <div className="grid gap-3 sm:grid-cols-2">{fields(kind, form, set, editingId)}</div>
+            {kind === "secret" && form.kind === "password" && (
+              <div className="mt-3">
+                <Field label={t("注册邮箱")}>
+                  <Select
+                    aria-label={t("注册邮箱")}
+                    value={form._mailboxId ?? ""}
+                    onValueChange={(value) => set("_mailboxId", value)}
+                    options={[
+                      { value: "", label: t("暂不关联") },
+                      ...mailboxes.map((mail) => ({ value: mail.id, label: mail.address })),
+                    ]}
+                  />
+                </Field>
+              </div>
+            )}
             <div className="mt-5 flex justify-end gap-2">
               <Button type="button" variant="ghost" onClick={onClose}>
                 {t("取消")}

@@ -147,6 +147,11 @@ export interface PersistedFile extends Snapshot {
 }
 
 export interface DesktopBridge {
+  capture: {
+    list(): Promise<Array<{ id: string; url: string; title: string }>>;
+    discard(id: string): Promise<void>;
+    onChanged(handler: () => void): () => void;
+  };
   mailboxes: import("./mailbox").MailboxesBridge;
   mailPush: import("./mail-push").MailPushBridge;
   aiAccounts: import("./ai-accounts").AiAccountBridge;

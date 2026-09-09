@@ -12,6 +12,7 @@ import {
   safeStorage,
 } from "electron";
 import { X509Certificate } from "node:crypto";
+import { CaptureQueue } from "./services/browser-capture.mjs";
 import { readFileSync } from "node:fs";
 import { readFile, writeFile, rename, mkdir } from "node:fs/promises";
 import { dirname, join, posix } from "node:path";
@@ -79,6 +80,18 @@ let currentSnapshot = {};
 let preferences = { closeToTray: true, notifications: true, locale: "zh" };
 const tracker = new NotificationTracker();
 const writes = new Map();
+const captures = new CaptureQueue();
+function acceptCapture(argv) {
+  for (const value of argv) {
+    if (captures.add(value)) emit("capture:changed", {});
+  }
+}
+acceptCapture(process.argv);
+app.on("open-url", (event, url) => {
+  event.preventDefault();
+  acceptCapture([url]);
+  showWindow();
+});
 let preferenceWrites = Promise.resolve();
 
 function stopPrivateTasks() {
@@ -260,6 +273,10 @@ function handle(channel, fn) {
 }
 
 function registerIpc() {
+  handle("capture:list", () => captures.list());
+  handle("capture:discard", (id) => {
+    captures.discard(id);
+  });
   vault = new Vault(vaultPath(app.getPath("userData")));
   const profile = new ProfileService(
     join(app.getPath("userData"), "profile.json"),
@@ -624,11 +641,14 @@ function compareVersions(a, b) {
 if (!app.requestSingleInstanceLock()) {
   app.quit();
 } else {
-  app.on("second-instance", () => {
+  app.on("second-instance", (_event, argv) => {
+    acceptCapture(argv);
     showWindow();
   });
 
   app.whenReady().then(async () => {
+    if (app.isPackaged && !process.argv.some((arg) => arg.startsWith("--user-data-dir=")))
+      app.setAsDefaultProtocolClient("nanpad");
     app.setAppUserModelId("dev.songwo.nanpad");
     try {
       const saved = JSON.parse(

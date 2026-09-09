@@ -23,6 +23,11 @@ function on(channel, handler) {
 }
 
 contextBridge.exposeInMainWorld("sinan", {
+  capture: {
+    list: () => unwrap(ipcRenderer.invoke("capture:list")),
+    discard: (id) => unwrap(ipcRenderer.invoke("capture:discard", id)),
+    onChanged: (handler) => on("capture:changed", handler),
+  },
   isDesktop: true,
   mailboxes: {
     check: (id) => unwrap(ipcRenderer.invoke("mailboxes:check", id)),
