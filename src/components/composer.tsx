@@ -541,6 +541,18 @@ function persist(kind: AssetKind, id: string, form: Record<string, string>, exis
     case "mail": {
       const previous = existing as Mailbox | null;
       const item: Mailbox = {
+        ...previous,
+        folderId: form.folderId ?? previous?.folderId,
+        ...(form._smtpHost
+          ? {
+              smtp: {
+                host: form._smtpHost,
+                port: Number(form._smtpPort) || 465,
+                security:
+                  form._smtpSecurity === "starttls" ? ("starttls" as const) : ("tls" as const),
+              },
+            }
+          : {}),
         id,
         imageDataUrl: form.imageDataUrl || "",
         address: form.address,

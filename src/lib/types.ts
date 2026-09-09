@@ -70,6 +70,8 @@ export interface Domain extends ProbeMeta, Taggable {
 }
 
 export interface Mailbox extends Taggable {
+  folderId?: string;
+  smtp?: import("./mailbox").SmtpConnection;
   imap?: import("./mailbox").MailboxConnection;
   mailStatus?: import("./mailbox").MailboxStatus;
   id: string;
@@ -150,6 +152,7 @@ export type AnyAsset =
   | { kind: "cert"; data: Certificate };
 
 export interface Snapshot {
+  mailFolders?: import("./mail-folders").MailFolder[];
   links?: import("./operations").AssetLink[];
   servers: Server[];
   domains: Domain[];

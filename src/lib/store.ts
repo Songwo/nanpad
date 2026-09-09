@@ -20,6 +20,7 @@ import { normalizeLinks, refKey, type AssetRef, type AssetLink } from "./operati
 import type { AiAccount } from "./ai-accounts";
 import { subscriptionFromAccount } from "./ai-subscriptions";
 import { normalizeSnapshotImages } from "../../electron/services/image-data.mjs";
+import { normalizeMailFolders } from "./mail-folders";
 
 export interface ExpandState {
   kind: AssetKind;
@@ -154,6 +155,7 @@ export const useAppStore = create<AppState>()(
   persist(
     (set, get) => ({
       ...initialSnapshot(),
+      mailFolders: normalizeMailFolders(undefined),
       ...emptyUi,
       links: [],
       linkAssets: (from, to) =>
@@ -279,6 +281,7 @@ export const useAppStore = create<AppState>()(
           servers: snap.servers ?? [],
           domains: snap.domains ?? [],
           mailboxes: snap.mailboxes ?? [],
+          mailFolders: normalizeMailFolders(snap.mailFolders),
           aiAssets: snap.aiAssets ?? [],
           secrets: snap.secrets ?? [],
           certs: snap.certs ?? [],
@@ -301,6 +304,7 @@ export const useAppStore = create<AppState>()(
           servers: withTags(saved.servers),
           domains: withTags(saved.domains),
           mailboxes: withTags(saved.mailboxes),
+          mailFolders: normalizeMailFolders(saved.mailFolders),
           aiAssets: withTags(saved.aiAssets),
           secrets: withTags(saved.secrets),
           certs: withTags(saved.certs),
@@ -319,6 +323,7 @@ export const useAppStore = create<AppState>()(
         servers: s.servers,
         domains: s.domains,
         mailboxes: s.mailboxes,
+        mailFolders: s.mailFolders,
         aiAssets: s.aiAssets,
         secrets: s.secrets,
         certs: s.certs,
@@ -340,7 +345,7 @@ function upsert<T extends { id: string }>(list: T[], item: T): T[] {
   return next;
 }
 
-function collectionKey(kind: AssetKind): Exclude<keyof Snapshot, "links"> {
+function collectionKey(kind: AssetKind): Exclude<keyof Snapshot, "links" | "mailFolders"> {
   switch (kind) {
     case "server":
       return "servers";
@@ -363,6 +368,7 @@ export function snapshotOf(s: Snapshot): Snapshot {
     servers: s.servers,
     domains: s.domains,
     mailboxes: s.mailboxes,
+    mailFolders: s.mailFolders,
     aiAssets: s.aiAssets,
     secrets: s.secrets,
     certs: s.certs,

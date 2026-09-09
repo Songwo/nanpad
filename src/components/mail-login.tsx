@@ -80,6 +80,11 @@ export function MailLogin({
       set("_imapHost", result.imap.host);
       set("_imapPort", String(result.imap.port));
       set("_imapSecure", "true");
+      if (result.smtp) {
+        set("_smtpHost", result.smtp.host);
+        set("_smtpPort", String(result.smtp.port));
+        set("_smtpSecurity", result.smtp.port === 465 ? "tls" : "starttls");
+      }
       if (result.usedMb !== undefined) set("usedMb", String(result.usedMb));
       if (result.quotaMb !== undefined) set("quotaMb", String(result.quotaMb));
       const lines = [

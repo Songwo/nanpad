@@ -14,7 +14,7 @@ import {
 import { X509Certificate } from "node:crypto";
 import { CaptureQueue } from "./services/browser-capture.mjs";
 import { readFileSync } from "node:fs";
-import { readFile, writeFile, rename, mkdir } from "node:fs/promises";
+import { readFile, writeFile, rename, mkdir, stat } from "node:fs/promises";
 import { dirname, join, posix } from "node:path";
 import { fileURLToPath } from "node:url";
 import { SshManager } from "./services/ssh.mjs";
@@ -22,6 +22,7 @@ import { probeCertificate, probeDomain } from "./services/net-probe.mjs";
 import { MAIL_PROVIDERS, providerForAddress, testMailbox } from "./services/mail.mjs";
 import { MailboxService, validateMailboxConnection } from "./services/mailbox-service.mjs";
 import { MailPushService } from "./services/mail-push.mjs";
+import { MailClient, validateSmtp } from "./services/mail-client.mjs";
 import { OAUTH_PROVIDERS, signIn as oauthSignIn } from "./services/oauth.mjs";
 import { Vault, vaultPath } from "./services/vault.mjs";
 import { MetricsStore } from "./services/metrics.mjs";
@@ -71,6 +72,7 @@ let metrics;
 let agent;
 let aiAccounts;
 let mailboxes;
+let mailClient;
 let mailPush;
 let tray = null;
 let quitting = false;
@@ -97,6 +99,7 @@ let preferenceWrites = Promise.resolve();
 function stopPrivateTasks() {
   mailPush?.stop();
   mailboxes?.stop();
+  mailClient?.stop();
   agent?.close();
 }
 
@@ -112,6 +115,7 @@ function assertPublicVaultRecord(id) {
   if (id === "notification:mail-push") {
     throw new Error("请通过邮件推送设置管理此凭据。");
   }
+  if (id.startsWith("mail-draft:")) throw new Error("请通过写信窗口管理邮件草稿。");
 }
 
 function showWindow() {
@@ -313,6 +317,44 @@ function registerIpc() {
   });
   handle("mailboxes:check", (id) => mailboxes.check(id));
   handle("mailboxes:validate", (connection) => validateMailboxConnection(connection));
+  mailClient = new MailClient({ vault, getSnapshot: () => currentSnapshot });
+  handle("mail-client:folders", (id) => mailClient.folders(id));
+  handle("mail-client:messages", (id, options) => mailClient.messages(id, options));
+  handle("mail-client:read", (id, selection) => mailClient.read(id, selection));
+  handle("mail-client:seen", (id, selection, seen) => mailClient.seen(id, selection, seen));
+  handle("mail-client:send", (id, draft) => mailClient.send(id, draft));
+  handle("mail-client:draft", (id) => mailClient.draft(id));
+  handle("mail-client:save-draft", (id, draft) => mailClient.saveDraft(id, draft));
+  handle("mail-client:validate-smtp", (value) => validateSmtp(value));
+  handle("mail-client:pick-attachments", async () => {
+    if (!vault.unlocked) throw new Error("请先解锁密钥库");
+    const selected = await dialog.showOpenDialog(win, {
+      properties: ["openFile", "multiSelections"],
+    });
+    if (selected.canceled) return [];
+    if (selected.filePaths.length > 5) throw new Error("最多添加 5 个附件");
+    const items = [];
+    let total = 0;
+    for (const path of selected.filePaths) {
+      const metadata = await stat(path);
+      total += metadata.size;
+      if (!metadata.isFile() || total > 8 * 1024 * 1024)
+        throw new Error("附件总大小不能超过 8 MiB");
+      const content = await readFile(path);
+      if (content.length !== metadata.size) throw new Error("附件已变化，请重新选择");
+      items.push({ name: path.split(/[\\/]/).pop(), base64: content.toString("base64") });
+    }
+    if (!vault.unlocked) throw new Error("密钥库已锁定");
+    return items;
+  });
+  handle("mail-client:download", async (id, selection, index) => {
+    const attachment = await mailClient.attachment(id, selection, index);
+    const target = await dialog.showSaveDialog(win, { defaultPath: attachment.name });
+    if (target.canceled || !target.filePath) return false;
+    if (!vault.unlocked) throw new Error("密钥库已锁定");
+    await writeFile(target.filePath, attachment.content);
+    return true;
+  });
   handle("mail-push:config", () => mailPush.config());
   handle("mail-push:save", (input) => mailPush.save(input));
   handle("mail-push:test", () => mailPush.test());
@@ -427,6 +469,7 @@ function registerIpc() {
     const next = normalized?.state ?? normalized ?? {};
     for (const mailbox of next.mailboxes ?? []) {
       if (mailbox.imap) mailbox.imap = validateMailboxConnection(mailbox.imap);
+      if (mailbox.smtp) mailbox.smtp = validateSmtp(mailbox.smtp);
     }
     await writeJson(dataFile(), normalized);
     currentSnapshot = next;

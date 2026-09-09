@@ -33,6 +33,20 @@ contextBridge.exposeInMainWorld("sinan", {
     check: (id) => unwrap(ipcRenderer.invoke("mailboxes:check", id)),
     validate: (connection) => unwrap(ipcRenderer.invoke("mailboxes:validate", connection)),
   },
+  mailClient: {
+    folders: (id) => unwrap(ipcRenderer.invoke("mail-client:folders", id)),
+    messages: (id, options) => unwrap(ipcRenderer.invoke("mail-client:messages", id, options)),
+    read: (id, selection) => unwrap(ipcRenderer.invoke("mail-client:read", id, selection)),
+    seen: (id, selection, seen) =>
+      unwrap(ipcRenderer.invoke("mail-client:seen", id, selection, seen)),
+    send: (id, draft) => unwrap(ipcRenderer.invoke("mail-client:send", id, draft)),
+    draft: (id) => unwrap(ipcRenderer.invoke("mail-client:draft", id)),
+    saveDraft: (id, draft) => unwrap(ipcRenderer.invoke("mail-client:save-draft", id, draft)),
+    validateSmtp: (value) => unwrap(ipcRenderer.invoke("mail-client:validate-smtp", value)),
+    pickAttachments: () => unwrap(ipcRenderer.invoke("mail-client:pick-attachments")),
+    download: (id, selection, index) =>
+      unwrap(ipcRenderer.invoke("mail-client:download", id, selection, index)),
+  },
   mailPush: {
     config: () => unwrap(ipcRenderer.invoke("mail-push:config")),
     save: (input) => unwrap(ipcRenderer.invoke("mail-push:save", input)),

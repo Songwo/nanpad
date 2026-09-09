@@ -1,5 +1,36 @@
 @import "tailwindcss";
 
+.mail-folder-blue { --mail-folder-color: #477dc8; }
+.mail-folder-green { --mail-folder-color: var(--color-ok); }
+.mail-folder-rose { --mail-folder-color: #c46489; }
+.mail-folder-amber { --mail-folder-color: var(--color-warn); }
+.mail-folder {
+  position: relative;
+  min-width: 0;
+  min-height: 180px;
+  margin-top: 10px;
+  padding: 20px;
+  border: 1px solid color-mix(in srgb, var(--mail-folder-color) 35%, var(--color-line));
+  border-radius: 0 8px 8px 8px;
+  background: color-mix(in srgb, var(--mail-folder-color) 9%, var(--color-card));
+  color: var(--mail-folder-color);
+  transition: transform 180ms ease, box-shadow 180ms ease;
+}
+.mail-folder-tab {
+  position: absolute;
+  top: -11px;
+  left: -1px;
+  width: 38%;
+  height: 11px;
+  border-radius: 6px 10px 0 0;
+  background: color-mix(in srgb, var(--mail-folder-color) 35%, var(--color-card));
+}
+.mail-folder:hover { transform: translateY(-3px); box-shadow: 0 6px 18px color-mix(in srgb, var(--mail-folder-color) 10%, transparent); }
+.mail-folder:focus-visible { outline: 2px solid var(--color-ink); outline-offset: 4px; }
+.mail-folder-swatch { width: 32px; height: 32px; border-radius: 50%; background: var(--mail-folder-color); }
+.mail-reader { max-height: calc(100dvh - 24px); }
+@media (prefers-reduced-motion: reduce) { .mail-folder { transition: none; } .mail-folder:hover { transform: none; } }
+
 .markdown-body { min-width: 0; font-size: 14px; line-height: 1.65; overflow-wrap: anywhere; }
 .markdown-body > * + * { margin-top: 0.75rem; }
 .markdown-body h1, .markdown-body h2, .markdown-body h3 { font-weight: 650; line-height: 1.4; margin-top: 1rem; }
@@ -44,6 +75,7 @@
   --color-ok: #00ba7c;
   --color-warn: #ffad1f;
   --color-crit: #f4212e;
+  --color-link: #3973b7;
   --color-glass: rgba(12, 12, 14, 0.72);
   --color-glass-border: rgba(255, 255, 255, 0.14);
   --color-term: #d7dbdf;

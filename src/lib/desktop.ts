@@ -153,6 +153,7 @@ export interface DesktopBridge {
     onChanged(handler: () => void): () => void;
   };
   mailboxes: import("./mailbox").MailboxesBridge;
+  mailClient: import("./mailbox").MailClientBridge;
   mailPush: import("./mail-push").MailPushBridge;
   aiAccounts: import("./ai-accounts").AiAccountBridge;
   profile: {

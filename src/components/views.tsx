@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import { AssetWorkspace } from "./asset-workspace";
 import { AssetOrganizer } from "./asset-organizer";
+import { MailWorkspace } from "./mail-workspace";
 import { useSettings } from "@/lib/settings";
 import { Area, AreaChart, ResponsiveContainer, Tooltip, XAxis } from "recharts";
 import { AiCard, CertCard, DomainCard, MailCard, SecretCard, ServerCard } from "./asset-card";
@@ -59,6 +60,7 @@ function ViewBody() {
   const view = useAppStore((s) => s.view);
   const layout = useSettings((s) => s.assetLayout);
   const hydrated = useAppStore((s) => s.hydrated);
+  if (view === "mail") return <MailWorkspace />;
   if (hydrated && view !== "agent" && view !== "terminal" && layout !== "cards")
     return <AssetWorkspace />;
   switch (view) {
@@ -68,8 +70,6 @@ function ViewBody() {
       return <ServersView />;
     case "domains":
       return <DomainsView />;
-    case "mail":
-      return <MailView />;
     case "ai":
       return <AiView />;
     case "vault":
@@ -172,7 +172,7 @@ function ListHeader() {
           ⌘K
         </Button>
       </div>
-      {view !== "terminal" && (
+      {view !== "terminal" && view !== "mail" && (
         <div className="layout-switch" role="group" aria-label={t("显示方式")}>
           {(
             [
@@ -649,18 +649,6 @@ function DomainsView() {
       items={items}
       empty={t("没有匹配的域名。")}
       render={(s) => <DomainCard key={s.id} data={s} />}
-    />
-  );
-}
-
-function MailView() {
-  const list = useAppStore((s) => s.mailboxes);
-  const items = useListFilter(list, (s) => [s.address, s.domain, s.forwardTo, tagsOf(s).join(" ")]);
-  return (
-    <AssetList
-      items={items}
-      empty={t("没有匹配的邮箱。")}
-      render={(s) => <MailCard key={s.id} data={s} />}
     />
   );
 }

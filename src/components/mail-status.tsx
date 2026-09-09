@@ -1,4 +1,4 @@
-import { Check, Loader2, MailCheck, RefreshCw, Save, Settings2 } from "lucide-react";
+import { Check, Loader2, MailCheck, RefreshCw, Save, Settings2, Inbox } from "lucide-react";
 import { useEffect, useState } from "react";
 import { desktop } from "@/lib/desktop";
 import { t } from "@/lib/i18n";
@@ -6,6 +6,8 @@ import { useAppStore } from "@/lib/store";
 import type { Mailbox } from "@/lib/types";
 import { Button } from "./ui/button";
 import { Field, Input } from "./ui/input";
+import { MailReader } from "./mail-reader";
+import { useVault } from "@/lib/vault-state";
 
 export function MailStatus({ mailbox }: { mailbox: Mailbox }) {
   const bridge = desktop();
@@ -15,6 +17,7 @@ export function MailStatus({ mailbox }: { mailbox: Mailbox }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [saved, setSaved] = useState(false);
+  const [reading, setReading] = useState(false);
   useEffect(() => {
     setHost(mailbox.imap?.host ?? "");
     setPort(String(mailbox.imap?.port ?? 993));
@@ -72,6 +75,19 @@ export function MailStatus({ mailbox }: { mailbox: Mailbox }) {
 
   return (
     <section className="border-t border-line py-5" aria-label={t("收件箱状态")}>
+      <Button
+        className="mb-4"
+        variant="outline"
+        disabled={Boolean(mailbox.demo)}
+        onClick={async () => {
+          if (await useVault.getState().require(t("查看和发送邮件需要解锁密钥库。")))
+            setReading(true);
+        }}
+      >
+        <Inbox className="size-4" />
+        {t("打开收件箱与写信")}
+      </Button>
+      {reading && <MailReader mailboxId={mailbox.id} close={() => setReading(false)} />}
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h3 className="flex items-center gap-2 text-meta font-semibold">
           <MailCheck className="size-4" />
