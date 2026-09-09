@@ -4,6 +4,8 @@
 
 [下载安装包](https://github.com/Songwo/nanpad/releases/latest) · [使用教程](docs/USER-GUIDE.md) · [产品介绍](docs/PRODUCT.md) · [AI 服务授权](docs/AI-ACCOUNTS.md) · [模型与本地 RAG](docs/AGENT-RAG.md) · [安全与备份](docs/SECURITY.md) · [更新日志](CHANGELOG.md)
 
+[社区友链 · LINUX DO](https://linux.do/) · 真诚、友善、团结、专业。
+
 ![Nanpad 桌面界面](screenshots/dark-overview.png)
 
 ## 安装与首次使用
@@ -139,6 +141,16 @@ npm run desktop:dist -- --win --x64 --publish never
 | `src/lib/`                         | 状态、桥接类型、国际化与界面业务逻辑          |
 | `scripts/`                         | 构建、验证、截图和开发辅助工具                |
 | `docs/`                            | 使用教程、产品介绍、AI 接入、安全与发布指南   |
+
+## 社区与交流
+
+司南认可并支持 [LINUX DO](https://linux.do/) 社区倡导的「真诚、友善、团结、专业」。欢迎佬友交流账号、订阅和服务器的管理经验，也欢迎通过 [GitHub Issues](https://github.com/Songwo/nanpad/issues) 反馈使用问题和改进建议。
+
+社区友链：[LINUX DO](https://linux.do/)。社区开源推广的声明与发帖要求见 [新推广方式：开源推广](https://linux.do/t/topic/1776670)；友链表示对社区的认可，不代表官方认证或合作背书。
+
+## 开源许可
+
+司南自有源码采用 [MIT License](LICENSE)，允许在保留版权与许可声明的前提下使用、修改、分发和商用。依赖和随仓库分发的第三方内容保留各自的许可证与版权声明。
 
 ## 已知边界
 
