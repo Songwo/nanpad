@@ -48,6 +48,15 @@
           </form>
         </details>
       </section>
+      <section class="auto-capture" aria-label="自动采集">
+        <label class="auto-row" for="auto-capture">
+          <span class="auto-title">登录时自动采集</span>
+          <input type="checkbox" id="auto-capture" />
+        </label>
+        <p class="auto-hint">
+          开启后，在网站点击登录会自动把账号密码发送到司南待确认队列；仍需在桌面端核对后才会加密保存。默认关闭。
+        </p>
+      </section>
       <form id="capture" autocomplete="off">
         <div class="site-heading">
           <img src="icons/globe.svg" alt="" /><span id="url">正在读取当前网站</span>

@@ -385,3 +385,32 @@ footer {
     animation: none !important;
   }
 }
+
+/* 自动采集开关：默认关闭，开启后由内容脚本在登录提交时采集。 */
+.auto-capture {
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+}
+.auto-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  cursor: pointer;
+}
+.auto-title {
+  font-weight: 600;
+}
+.auto-capture input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--primary);
+  cursor: pointer;
+}
+.auto-hint {
+  margin: 6px 0 0;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.5;
+}

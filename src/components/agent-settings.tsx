@@ -53,6 +53,25 @@ export function AgentSettings({
   if (!api) return <p>{t("模型连接与本地知识库仅在桌面端可用。")}</p>;
   if (!config) return <p role="status">{error || t("加载中…")}</p>;
   const patch = (value: Partial<ModelConfig>) => setConfig({ ...config, ...value });
+  const PROVIDERS = [
+    { value: "https://api.openai.com/v1", label: "OpenAI API" },
+    { value: "https://api.x.ai/v1", label: "xAI / Grok API" },
+    {
+      value: "https://generativelanguage.googleapis.com/v1beta/openai",
+      label: "Google / Gemini API",
+    },
+    { value: "https://api.deepseek.com/v1", label: "DeepSeek" },
+    {
+      value: "https://dashscope.aliyuncs.com/compatible-mode/v1",
+      label: t("阿里云 / 通义千问"),
+    },
+    { value: "https://ark.cn-beijing.volces.com/api/v3", label: t("火山方舟 / 豆包") },
+    { value: "https://znck.zle.ee/v1", label: "znck.zle.ee" },
+  ];
+  // 下拉框反映当前生效的服务商；非预设地址显示为自定义，便于确认正在用哪家。
+  const providerValue = PROVIDERS.some((p) => p.value === config.baseUrl)
+    ? config.baseUrl
+    : "custom";
   const save = async () => {
     const saved = await api.saveConfig({
       ...config,
@@ -72,28 +91,23 @@ export function AgentSettings({
           {t("问题、最近对话及命中片段会发送给已配置的模型。资产密钥值和自由备注不参与检索。")}
         </p>
         <fieldset disabled={busy} className="mt-4 space-y-3">
+          {config.hasApiKey && config.apiKeyReadable === false && (
+            <p role="alert" className="rounded-md border border-line bg-canvas px-3 py-2 text-meta text-crit">
+              {t(
+                "已保存的 API Key 在当前环境无法解密（日常数据迁移后常见），请重新输入并保存，否则问答无法连接模型。",
+              )}
+            </p>
+          )}
           <Field label={t("模型服务商")}>
             <Select
               aria-label={t("模型服务商")}
-              value=""
+              value={providerValue}
               onValueChange={(value) => {
-                if (value) patch({ baseUrl: value, model: "" });
+                if (value && value !== "custom") patch({ baseUrl: value, model: "" });
               }}
               options={[
-                { value: "", label: t("选择服务商预设") },
-                { value: "https://api.openai.com/v1", label: "OpenAI API" },
-                { value: "https://api.x.ai/v1", label: "xAI / Grok API" },
-                {
-                  value: "https://generativelanguage.googleapis.com/v1beta/openai",
-                  label: "Google / Gemini API",
-                },
-                { value: "https://api.deepseek.com/v1", label: "DeepSeek" },
-                {
-                  value: "https://dashscope.aliyuncs.com/compatible-mode/v1",
-                  label: t("阿里云 / 通义千问"),
-                },
-                { value: "https://ark.cn-beijing.volces.com/api/v3", label: t("火山方舟 / 豆包") },
-                { value: "https://znck.zle.ee/v1", label: "znck.zle.ee" },
+                ...PROVIDERS,
+                { value: "custom", label: t("自定义地址") },
               ]}
             />
           </Field>
@@ -105,10 +119,24 @@ export function AgentSettings({
             />
           </Field>
           <Field label={t("模型名称")}>
+            {models.length > 0 && (
+              <Select
+                aria-label={t("选择模型")}
+                value={models.includes(config.model) ? config.model : ""}
+                onValueChange={(value) => {
+                  if (value) patch({ model: value });
+                }}
+                options={[
+                  { value: "", label: t("已加载 {0} 个模型，点击选择", models.length) },
+                  ...models.map((model) => ({ value: model, label: model })),
+                ]}
+              />
+            )}
             <Input
               aria-label={t("模型名称")}
               list="agent-models"
               value={config.model}
+              placeholder={models.length > 0 ? t("或手动输入模型名") : ""}
               onChange={(e) => patch({ model: e.target.value })}
             />
           </Field>
@@ -156,8 +184,9 @@ export function AgentSettings({
               onClick={() =>
                 void task(async () => {
                   await save();
-                  setModels(await api.models());
-                  setNotice(t("模型列表已更新"));
+                  const loaded = await api.models();
+                  setModels(loaded);
+                  setNotice(t("已加载 {0} 个模型，可在模型名称下拉框选择。", loaded.length));
                 })
               }
             >

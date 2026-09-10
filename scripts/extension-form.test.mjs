@@ -1,7 +1,14 @@
 import assert from "node:assert/strict";
 import { before, after, test } from "node:test";
+import { createServer } from "node:http";
+import { readFileSync } from "node:fs";
 import { chromium } from "playwright";
 import { collectLoginForms } from "../browser-extension/form-capture.mjs";
+
+const submitCaptureSource = readFileSync(
+  new URL("../browser-extension/submit-capture.mjs", import.meta.url),
+  "utf8",
+);
 
 let browser;
 before(async () => {
@@ -87,4 +94,119 @@ test("超过长度限制的密码留空并标记，不能截断保存错误密�
   assert.deepEqual(result, [
     { username: "long-user", password: "", kind: "login", oversized: true },
   ]);
+});
+
+// —— 自动采集（submit-capture.mjs 内容脚本）——
+// 真实 HTTP 页面上执行脚本源码，用桩替换 chrome.*，验证提交瞬间的采集行为。
+async function withAutoCapture(t, html, enabled) {
+  const server = createServer((_req, res) => {
+    res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
+    res.end(html);
+  });
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const url = `http://127.0.0.1:${server.address().port}/`;
+  t.after(async () => {
+    server.closeAllConnections?.();
+    await new Promise((resolve) => server.close(resolve));
+  });
+  const page = await browser.newPage();
+  t.after(() => page.close());
+  await page.goto(url);
+  await page.evaluate((on) => {
+    window.__messages = [];
+    window.__changedListeners = [];
+    globalThis.chrome = {
+      storage: {
+        local: { get: async () => ({ nanpadAutoCapture: on }) },
+        onChanged: { addListener: (fn) => window.__changedListeners.push(fn) },
+      },
+      runtime: {
+        sendMessage: async (message) => {
+          window.__messages.push(message);
+          return { ok: true };
+        },
+      },
+    };
+  }, enabled);
+  await page.evaluate(submitCaptureSource);
+  // 内容脚本的开关读取是异步的，等它完成再触发提交。
+  await page.waitForTimeout(60);
+  return { page, url };
+}
+async function submitForm(page, selector) {
+  await page.evaluate(
+    (formSelector) => {
+      document.querySelector(formSelector).dispatchEvent(
+        new Event("submit", { bubbles: true, cancelable: true }),
+      );
+    },
+    selector,
+  );
+  await page.waitForTimeout(150);
+  return page.evaluate(() => window.__messages);
+}
+
+test("自动采集：提交含密码表单时读取账号密码并发送到后台", async (t) => {
+  const { page, url } = await withAutoCapture(
+    t,
+    `<title>示例站</title><form><input name="user" value="alice@example.test"><input type="password" value="pw1"></form>`,
+    true,
+  );
+  assert.deepEqual(await submitForm(page, "form"), [
+    {
+      type: "nanpad-auto-capture",
+      capture: {
+        url: `${new URL(url).origin}/`,
+        title: "示例站",
+        username: "alice@example.test",
+        password: "pw1",
+      },
+    },
+  ]);
+});
+test("自动采集默认关闭：开关未开启时不监听表单提交", async (t) => {
+  const { page } = await withAutoCapture(
+    t,
+    `<form><input value="u"><input type="password" value="p"></form>`,
+    false,
+  );
+  assert.deepEqual(await submitForm(page, "form"), []);
+});
+test("无密码与验证码表单不采集，开关切换即时生效", async (t) => {
+  const { page, url } = await withAutoCapture(
+    t,
+    `<form id="no-pw"><input value="u"></form><form id="otp"><input value="u"><input name="otp" type="password" value="123"></form><form id="login"><input autocomplete="username" value="real"><input type="password" value="pw"></form>`,
+    false,
+  );
+  assert.deepEqual(await submitForm(page, "#login"), []);
+  // 模拟在弹窗中打开开关：storage 变化通知内容脚本。
+  await page.evaluate(() =>
+    window.__changedListeners.forEach((fn) =>
+      fn({ nanpadAutoCapture: { newValue: true } }, "local"),
+    ),
+  );
+  assert.deepEqual(await submitForm(page, "#login"), [
+    {
+      type: "nanpad-auto-capture",
+      capture: { url: `${new URL(url).origin}/`, title: "", username: "real", password: "pw" },
+    },
+  ]);
+  await submitForm(page, "#no-pw");
+  await submitForm(page, "#otp");
+  assert.equal(await page.evaluate(() => window.__messages.length), 1);
+});
+test("自动采集在页面角落给出结果提示", async (t) => {
+  const { page } = await withAutoCapture(
+    t,
+    `<form><input value="u"><input type="password" value="p"></form>`,
+    true,
+  );
+  await submitForm(page, "form");
+  assert.ok(
+    await page.evaluate(() =>
+      [...document.documentElement.children].some(
+        (el) => el.tagName === "DIV" && el.style.position === "fixed",
+      ),
+    ),
+  );
 });

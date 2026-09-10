@@ -10,7 +10,14 @@ import { Button } from "./ui/button";
 
 export function CaptureInbox() {
   const [items, setItems] = useState<
-    Array<{ id: string; title: string; url: string; hasCredential?: boolean; username?: string }>
+    Array<{
+      id: string;
+      title: string;
+      url: string;
+      hasCredential?: boolean;
+      username?: string;
+      source?: string;
+    }>
   >([]);
   const [busy, setBusy] = useState(false);
   const generation = useRef(0);
@@ -109,7 +116,14 @@ export function CaptureInbox() {
           <ExternalLink className="size-5 shrink-0 text-muted" />
         )}
         <div className="min-w-0 flex-1">
-          <strong className="block truncate">{item.title}</strong>
+          <strong className="flex items-center gap-2">
+            <span className="truncate">{item.title}</span>
+            {item.source === "auto" && (
+              <span className="shrink-0 rounded-full bg-line px-2 py-0.5 text-2xs text-muted">
+                {t("自动采集")}
+              </span>
+            )}
+          </strong>
           <p className="break-all text-meta text-muted">{item.url}</p>
           {item.username && <p className="truncate text-meta text-muted">{item.username}</p>}
         </div>

@@ -4,6 +4,8 @@ export interface ModelConfig {
   baseUrl: string;
   model: string;
   hasApiKey: boolean;
+  /** 已保存的 API Key 在当前环境能否解密（数据迁移后可能失效）。 */
+  apiKeyReadable: boolean;
   topK: number;
   maxSteps: number;
   maxTokens: number;

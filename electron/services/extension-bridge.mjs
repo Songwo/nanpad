@@ -50,8 +50,13 @@ function objectWithKeys(value, keys) {
 }
 
 function normalizeCredentialCapture(value) {
+  // source 是唯一的可选键：自动采集标记为 "auto"，其他值或不带该键都按手动采集处理。
+  const keys =
+    value?.source === "auto"
+      ? ["url", "title", "username", "password", "source"]
+      : ["url", "title", "username", "password"];
   if (
-    !objectWithKeys(value, ["url", "title", "username", "password"]) ||
+    !objectWithKeys(value, keys) ||
     typeof value.url !== "string" ||
     value.url.length > 4096 ||
     typeof value.title !== "string" ||
@@ -71,6 +76,7 @@ function normalizeCredentialCapture(value) {
       ...normalizeCapture(value),
       username: value.username.trim(),
       password: value.password,
+      ...(value.source === "auto" ? { source: "auto" } : {}),
     };
   } catch {
     throw new RequestError(400, "网站地址不正确。");
@@ -354,6 +360,7 @@ export class ExtensionBridge {
       title: item.title,
       username: item.username,
       hasCredential: true,
+      source: item.source === "auto" ? "auto" : "manual",
       createdAt: item.createdAt,
     }));
   }
@@ -372,6 +379,7 @@ export class ExtensionBridge {
       title: item.title,
       username: item.username,
       password: item.password,
+      source: item.source === "auto" ? "auto" : "manual",
     };
   }
 
@@ -524,7 +532,17 @@ export class ExtensionBridge {
       });
       this.#scheduleExpiry();
       this.#notify();
-      this.#call(this.#onCapture);
+      // 只把不含密码的元信息交给回调，桌面端据此决定是否聚焦窗口（自动采集不抢前台）。
+      this.#call(
+        this.#onCapture,
+        {
+          id,
+          url: capture.url,
+          title: capture.title,
+          username: capture.username,
+          source: capture.source === "auto" ? "auto" : "manual",
+        },
+      );
       this.#respond(response, 201, { id });
     } catch (error) {
       this.#respond(response, error instanceof RequestError ? error.status : 500, {

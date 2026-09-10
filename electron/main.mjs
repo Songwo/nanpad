@@ -287,7 +287,10 @@ function registerIpc() {
   vault = new Vault(vaultPath(app.getPath("userData")));
   extensionBridge = new ExtensionBridge({
     isUnlocked: () => Boolean(vault?.unlocked),
-    onCapture: showWindow,
+    // 手动发送仍聚焦窗口引导确认；自动采集在用户浏览网页时到达，只更新待确认数，不抢前台。
+    onCapture: (item) => {
+      if (item?.source !== "auto") showWindow();
+    },
     onChange: () => emit("extension:changed", {}),
     // 测试进程使用随机端口，避免连接用户正在运行的桌面端。
     ...((!app.isPackaged && process.env.NANPAD_TEST_DATA_DIR) ||

@@ -28,14 +28,14 @@ try {
   assert.equal(status.running, true, status.error || "fixture bridge did not start");
   const bridgeBase = `http://127.0.0.1:${status.port}`;
   await cp(builtExtension, extension, { recursive: true });
-  const popupModule = await readFile(join(extension, "popup.mjs"), "utf8");
-  assert.equal(popupModule.split('const bridge = "http://127.0.0.1:47832";').length, 2);
-  // 隔离测试只改本机端口，真实扩展权限、来源、表单注入和 HTTP 行为保持不变。
+  const bridgeConfig = await readFile(join(extension, "bridge-config.mjs"), "utf8");
+  assert.equal(bridgeConfig.split('export const BRIDGE = "http://127.0.0.1:47832";').length, 2);
+  // 隔离测试只改本机端口（弹窗与后台服务共用此常量），真实扩展权限、来源、表单注入和 HTTP 行为保持不变。
   await writeFile(
-    join(extension, "popup.mjs"),
-    popupModule.replace(
-      'const bridge = "http://127.0.0.1:47832";',
-      `const bridge = "${bridgeBase}";`,
+    join(extension, "bridge-config.mjs"),
+    bridgeConfig.replace(
+      'export const BRIDGE = "http://127.0.0.1:47832";',
+      `export const BRIDGE = "${bridgeBase}";`,
     ),
   );
   context = await chromium.launchPersistentContext(join(directory, "profile"), {
@@ -85,7 +85,7 @@ try {
   assert.equal(await popup.getByLabel("密码", { exact: true }).getAttribute("type"), "password");
   assert.equal(bridge.list().length, 0);
   await mkdir("screenshots", { recursive: true });
-  await popup.screenshot({ path: "screenshots/nanpad-v070-extension-pair.png", fullPage: true });
+  await popup.screenshot({ path: "screenshots/nanpad-v080-extension-pair.png", fullPage: true });
   await popup.getByLabel("桌面配对码").fill(bridge.beginPairing().code);
   await popup.getByRole("button", { name: "连接", exact: true }).click();
   try {
@@ -125,10 +125,10 @@ try {
   assert.equal(credential.password, " fixture-password ");
   assert.equal(credential.username, "work@example.test");
   assert.ok(!credential.url.includes("private"));
-  await popup.screenshot({ path: "screenshots/nanpad-v070-extension-ready.png", fullPage: true });
+  await popup.screenshot({ path: "screenshots/nanpad-v080-extension-ready.png", fullPage: true });
   await popup.emulateMedia({ colorScheme: "dark" });
   await popup.screenshot({
-    path: "screenshots/nanpad-v070-extension-dark.png",
+    path: "screenshots/nanpad-v080-extension-dark.png",
     fullPage: true,
     animations: "disabled",
   });
@@ -146,8 +146,39 @@ try {
   assert.equal(await popup.getByLabel("密码", { exact: true }).inputValue(), "retained-on-failure");
   assert.deepEqual(await popup.evaluate(() => globalThis.chrome.storage.session.get(null)), {});
   assert.equal(bridge.list().length, 0);
+  // —— 自动采集：重新配对后打开开关，提交登录表单即送达（source=auto，页面有提示）。 ——
+  await popup.getByLabel("桌面配对码").fill(bridge.beginPairing().code);
+  await popup.getByRole("button", { name: "连接", exact: true }).click();
+  await popup.getByText("已连接本机司南", { exact: true }).waitFor({ timeout: 10000 });
+  assert.equal(await popup.getByLabel("登录时自动采集").isChecked(), false);
+  await popup.getByLabel("登录时自动采集").check();
+  assert.deepEqual(await popup.evaluate(() => globalThis.chrome.storage.local.get(null)), {
+    nanpadAutoCapture: true,
+  });
+  await website.evaluate(() => {
+    document
+      .querySelector("form")
+      .dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+  });
+  await new Promise((resolve) => setTimeout(resolve, 500));
+  const [auto] = bridge.list();
+  assert.equal(auto.source, "auto");
+  assert.equal(auto.url, `${fixtureBase}/`);
+  const autoCredential = bridge.take(auto.id);
+  assert.equal(autoCredential.username, "work@example.test");
+  assert.equal(autoCredential.password, " fixture-password ");
+  assert.ok(
+    await website.evaluate(() =>
+      [...document.documentElement.children].some(
+        (el) => el.tagName === "DIV" && el.style.position === "fixed",
+      ),
+    ),
+    "自动采集后页面应出现结果提示",
+  );
+  // 请求计数只覆盖弹窗上下文：自动采集由后台服务发出，不经此监听器；
+  // 其送达证据是上面的桥接队列（source=auto + 一次性取出凭据一致）。
   assert.equal(requests.filter((request) => request.pathname === "/v1/captures").length, 2);
-  assert.equal(requests.filter((request) => request.pathname === "/v1/status").length, 2);
+  assert.equal(requests.filter((request) => request.pathname === "/v1/status").length, 3);
   assert.ok(requests.every((request) => request.method === "POST"));
   unlocked = false;
   bridge.revoke();
@@ -162,6 +193,7 @@ try {
       credentialStorageUnused: true,
       maskAndSelection: true,
       expiredTokenCleared: true,
+      autoCaptureRelay: true,
       automaticRetry: false,
       imagesLoaded: true,
       pageErrors,

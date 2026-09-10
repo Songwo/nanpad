@@ -14,6 +14,11 @@ const manifest = JSON.parse(await readFile(join(extension, "manifest.json"), "ut
 assert.equal(manifest.version, version);
 assert.deepEqual(manifest.permissions, ["activeTab", "scripting", "storage"]);
 assert.deepEqual(manifest.host_permissions, ["http://127.0.0.1/*"]);
+// 0.8.0 自动采集：后台服务与全站内容脚本，令牌仍只在扩展上下文流转。
+assert.equal(manifest.background?.service_worker, "background.mjs");
+assert.deepEqual(manifest.content_scripts, [
+  { matches: ["http://*/*", "https://*/*"], js: ["submit-capture.mjs"], run_at: "document_idle" },
+]);
 const directory = await mkdtemp(join(tmpdir(), "nanpad-extension-"));
 const server = createServer(async (req, res) => {
   const pathname = new URL(req.url, "http://localhost").pathname;
@@ -23,6 +28,7 @@ const server = createServer(async (req, res) => {
     "popup.mjs": "text/javascript",
     "browser-capture.mjs": "text/javascript",
     "form-capture.mjs": "text/javascript",
+    "bridge-config.mjs": "text/javascript",
     "popup.css": "text/css",
     "icon.png": "image/png",
   };
@@ -72,7 +78,11 @@ try {
         },
       },
       scripting: { executeScript: async () => [{ result: [] }] },
-      storage: { session: { get: async () => ({}), set: async () => {}, remove: async () => {} } },
+      storage: {
+        session: { get: async () => ({}), set: async () => {}, remove: async () => {} },
+        // 弹窗启动时会读取「自动采集」开关偏好。
+        local: { get: async () => ({}) },
+      },
     };
   });
   const base = `http://127.0.0.1:${server.address().port}`;

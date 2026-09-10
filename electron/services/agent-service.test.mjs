@@ -292,6 +292,25 @@ test("系统加密不可用时不能保存明文 Key", async (t) => {
   );
   assert.equal((await f.service.config()).hasApiKey, false);
 });
+test("数据迁移后无法解密的 Key 标记为不可读并提示重新输入", async (t) => {
+  const f = await fixture(t, () => {});
+  await f.service.saveConfig({ ...(await f.service.config()), apiKey: "k1" });
+  assert.equal((await f.service.config()).apiKeyReadable, true);
+  // 模拟日常数据迁移到其他环境后 safeStorage 密文解不开。
+  f.service.secureStorage = {
+    isEncryptionAvailable: () => true,
+    decryptString: () => {
+      throw new Error("decrypt failed");
+    },
+  };
+  const migrated = await f.service.config();
+  assert.equal(migrated.hasApiKey, true);
+  assert.equal(migrated.apiKeyReadable, false);
+  await assert.rejects(
+    f.service.run({ id: "undecryptable", question: "我的服务器" }),
+    /重新输入 API Key/,
+  );
+});
 test("模型捏造的来源标记不能作为成功答案交付", async (t) => {
   const f = await fixture(t, (_req, res) =>
     sse(res, [{ delta: { content: "结论 [S99]" }, finish_reason: "stop" }]),

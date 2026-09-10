@@ -130,6 +130,7 @@ test("真实 HTTP 配对、核对元数据和一次性取出；响应与通知�
       title: CAPTURE.title,
       username: CAPTURE.username,
       hasCredential: true,
+      source: "manual",
       createdAt: items[0].createdAt,
     },
   ]);
@@ -138,16 +139,60 @@ test("真实 HTTP 配对、核对元数据和一次性取出；响应与通知�
   assert.equal(value.bridge.list()[0].username, CAPTURE.username);
   assertNoSecrets([response, value.changes, value.captures, value.bridge.list()]);
   assertNoSecrets(value.changes, [pairing.code, pairing.token, CAPTURE.username]);
-  assert.deepEqual(value.captures, [[]]);
+  assert.deepEqual(value.captures, [
+    [
+      {
+        id: response.body.id,
+        url: "https://example.test/",
+        title: CAPTURE.title,
+        username: CAPTURE.username,
+        source: "manual",
+      },
+    ],
+  ]);
   assert.deepEqual(value.bridge.take(response.body.id), {
     id: response.body.id,
     url: "https://example.test/",
     title: CAPTURE.title,
     username: CAPTURE.username,
     password: CAPTURE.password,
+    source: "manual",
   });
   assert.throws(() => value.bridge.take(response.body.id), /已过期或已被处理/u);
   assert.deepEqual(value.bridge.list(), []);
+});
+
+test("自动采集标记：source=auto 全链路可见且回调不含密码，非法 source 值拒绝", async (t) => {
+  const value = await fixture(t);
+  const pairing = await pair(value);
+  const response = await send(value.port, "/v1/captures", {
+    token: pairing.token,
+    body: { ...CAPTURE, source: "auto" },
+  });
+  assert.equal(response.status, 201);
+  const items = value.bridge.list();
+  assert.equal(items[0].source, "auto");
+  assertNoSecrets([response, value.captures, items]);
+  assert.deepEqual(value.captures, [
+    [
+      {
+        id: response.body.id,
+        url: "https://example.test/",
+        title: CAPTURE.title,
+        username: CAPTURE.username,
+        source: "auto",
+      },
+    ],
+  ]);
+  const taken = value.bridge.take(response.body.id);
+  assert.equal(taken.source, "auto");
+  assert.equal(taken.password, CAPTURE.password);
+  // source 仅接受 "auto"：其他值按未知键处理，整包拒绝。
+  const rejected = await send(value.port, "/v1/captures", {
+    token: pairing.token,
+    body: { ...CAPTURE, source: "popup" },
+  });
+  assert.equal(rejected.status, 400);
 });
 
 test("拒绝非扩展来源、伪造 Host 和未认证请求，错误均禁止缓存", async (t) => {

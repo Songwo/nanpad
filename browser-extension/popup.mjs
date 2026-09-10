@@ -1,9 +1,11 @@
 import { normalizeCapture, captureUrl } from "./browser-capture.mjs";
 import { collectLoginForms } from "./form-capture.mjs";
+import { BRIDGE } from "./bridge-config.mjs";
 
-const bridge = "http://127.0.0.1:47832";
+const bridge = BRIDGE;
 const chrome = globalThis.chrome;
 const tokenKey = "nanpadConnectionToken";
+const autoKey = "nanpadAutoCapture";
 const $ = (selector) => document.querySelector(selector);
 const title = $("#title");
 const username = $("#username");
@@ -214,6 +216,14 @@ $("#disconnect").addEventListener("click", async () => {
   await forgetConnection();
   connection("已断开桌面连接");
   message("已移除此浏览器会话的连接凭据。");
+});
+const autoToggle = $("#auto-capture");
+autoToggle.addEventListener("change", () => {
+  // 偏好跟随浏览器本地保存；内容脚本通过 storage 监听即时生效。
+  void chrome.storage.local.set({ [autoKey]: autoToggle.checked });
+});
+void chrome.storage.local.get(autoKey).then((stored) => {
+  autoToggle.checked = stored[autoKey] === true;
 });
 $("#capture").addEventListener("submit", async (event) => {
   event.preventDefault();
