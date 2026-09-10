@@ -1,34 +1,53 @@
-import { useEffect, useState } from "react";
-import { ExternalLink, X } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { ExternalLink, KeyRound, Loader2, X } from "lucide-react";
 import { toast } from "sonner";
 import { desktop } from "@/lib/desktop";
 import { useAppStore } from "@/lib/store";
 import { useProfile } from "@/lib/profile";
+import { useVault } from "@/lib/vault-state";
 import { t } from "@/lib/i18n";
 import { Button } from "./ui/button";
 
 export function CaptureInbox() {
-  const [items, setItems] = useState<Array<{ id: string; title: string; url: string }>>([]);
+  const [items, setItems] = useState<
+    Array<{ id: string; title: string; url: string; hasCredential?: boolean; username?: string }>
+  >([]);
+  const [busy, setBusy] = useState(false);
+  const generation = useRef(0);
   const ready = useProfile((s) => s.profile?.ready);
   const state = useAppStore();
   useEffect(() => {
-    const bridge = desktop()?.capture;
-    if (!bridge) return;
+    const api = desktop();
+    if (!api) return;
     let active = true;
-    const refresh = () =>
-      void bridge
-        .list()
-        .then((list) => {
-          if (active) setItems(list);
+    let revision = 0;
+    const invalidate = () => {
+      generation.current++;
+    };
+    const refresh = () => {
+      const current = ++revision;
+      void Promise.all([api.capture.list(), api.extension.list()])
+        .then(([sites, accounts]) => {
+          if (active && current === revision) setItems([...accounts, ...sites]);
         })
         .catch((error) => {
           if (active) toast.error(String(error));
         });
-    const off = bridge.onChanged(refresh);
+    };
+    const off = api.capture.onChanged(refresh);
+    const offExtension = api.extension.onChanged(refresh);
+    const offVault = api.onVaultChanged(() => {
+      invalidate();
+      setItems((list) => list.filter((entry) => !entry.hasCredential));
+      refresh();
+    });
     refresh();
     return () => {
       active = false;
+      invalidate();
       off();
+      offExtension();
+      offVault();
     };
   }, []);
   const item = items[0];
@@ -42,8 +61,41 @@ export function CaptureInbox() {
   )
     return null;
   async function dismiss() {
-    await desktop()?.capture.discard(item.id);
+    await (item.hasCredential ? desktop()?.extension : desktop()?.capture)?.discard(item.id);
     setItems((list) => list.filter((entry) => entry.id !== item.id));
+  }
+  async function accept() {
+    setBusy(true);
+    const current = generation.current;
+    try {
+      if (item.hasCredential) {
+        const api = desktop()!;
+        const captured = await api.extension.take(item.id);
+        // 领取过程中锁库、卸载或打开其他表单时，不把凭据放回界面。
+        if (
+          current !== generation.current ||
+          !useVault.getState().unlocked ||
+          useAppStore.getState().composerOpen
+        )
+          return;
+        state.openComposer("secret", null, {
+          kind: "password",
+          name: captured.title,
+          _url: captured.url,
+          _username: captured.username,
+          _password: captured.password,
+          _captureId: captured.id,
+        });
+        setItems((list) => list.filter((entry) => entry.id !== item.id));
+      } else {
+        state.openComposer("secret", null, { kind: "password", name: item.title, _url: item.url });
+        await dismiss();
+      }
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : t("账号接收失败"));
+    } finally {
+      setBusy(false);
+    }
   }
   return (
     <aside
@@ -51,16 +103,22 @@ export function CaptureInbox() {
       aria-label={t("浏览器待保存网站")}
     >
       <div className="flex items-center gap-3">
-        <ExternalLink className="size-5 shrink-0 text-muted" />
+        {item.hasCredential ? (
+          <KeyRound className="size-5 shrink-0 text-muted" />
+        ) : (
+          <ExternalLink className="size-5 shrink-0 text-muted" />
+        )}
         <div className="min-w-0 flex-1">
           <strong className="block truncate">{item.title}</strong>
           <p className="break-all text-meta text-muted">{item.url}</p>
+          {item.username && <p className="truncate text-meta text-muted">{item.username}</p>}
         </div>
         <Button
           size="icon-sm"
           variant="ghost"
           title={t("忽略网站")}
           aria-label={t("忽略网站")}
+          disabled={busy}
           onClick={() => void dismiss().catch((e) => toast.error(String(e)))}
         >
           <X className="size-4" />
@@ -68,17 +126,9 @@ export function CaptureInbox() {
       </div>
       <div className="mt-3 flex items-center justify-between gap-3">
         <span className="text-meta text-muted">{t("{0} 个网站待确认", items.length)}</span>
-        <Button
-          onClick={() => {
-            state.openComposer("secret", null, {
-              kind: "password",
-              name: item.title,
-              _url: item.url,
-            });
-            void dismiss().catch((e) => toast.error(String(e)));
-          }}
-        >
-          {t("填写账号并保存")}
+        <Button onClick={() => void accept()} disabled={busy}>
+          {busy && <Loader2 className="size-4 animate-spin" />}
+          {item.hasCredential ? t("核对账号并保存") : t("填写账号并保存")}
         </Button>
       </div>
     </aside>

@@ -43,6 +43,7 @@ export function AppShell() {
         .setExpanded({ ...asset, origin: { x: window.innerWidth / 2, y: 50, w: 100, h: 50 } }),
     );
     const offVault = bridge.onVaultChanged(() => {
+      if (useAppStore.getState().composerPreset?._captureId) useAppStore.getState().closeComposer();
       void useVault.getState().refresh();
     });
     const offMetricError = bridge.metrics.onError((event) =>

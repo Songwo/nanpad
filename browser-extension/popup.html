@@ -7,19 +7,99 @@
     <link rel="stylesheet" href="popup.css" />
   </head>
   <body>
-    <header>
-      <img src="icon.png" width="32" height="32" alt="" />
-      <h1>司南 Nanpad</h1>
+    <header class="app-header">
+      <img class="brand" src="icon.png" width="32" height="32" alt="" />
+      <div>
+        <h1>司南 Nanpad</h1>
+        <span class="subtitle">网站账号</span>
+      </div>
+      <button
+        class="icon-button"
+        id="refresh"
+        title="重新读取当前页"
+        aria-label="重新读取当前页"
+        disabled
+      >
+        <img src="icons/refresh-cw.svg" alt="" />
+      </button>
     </header>
-    <form id="capture">
-      <label for="title">网站名称</label><input id="title" maxlength="120" required />
-      <label for="url">站点地址</label><input id="url" type="url" required readonly />
-      <button type="submit" id="send" disabled>保存到司南</button>
-    </form>
-    <p id="status" role="status" aria-live="polite"></p>
-    <a href="https://github.com/Songwo/nanpad/releases/latest" target="_blank" rel="noreferrer"
-      >下载桌面端</a
-    >
+    <main>
+      <section class="connection" aria-label="桌面连接">
+        <div class="connection-row">
+          <span class="connection-indicator" id="connection-indicator"></span
+          ><strong id="connection-state">正在连接桌面端</strong
+          ><button class="text-button" id="disconnect" hidden>断开</button>
+        </div>
+        <details id="pairing">
+          <summary>连接桌面端<img src="icons/chevron-down.svg" alt="" /></summary>
+          <form id="pair-form" autocomplete="off">
+            <label for="pair-code">桌面配对码</label>
+            <div class="pair-row">
+              <input
+                id="pair-code"
+                type="password"
+                placeholder="输入配对码"
+                maxlength="128"
+                autocomplete="off"
+                spellcheck="false"
+                required
+              /><button class="secondary-button" id="pair-button" type="submit">连接</button>
+            </div>
+          </form>
+        </details>
+      </section>
+      <form id="capture" autocomplete="off">
+        <div class="site-heading">
+          <img src="icons/globe.svg" alt="" /><span id="url">正在读取当前网站</span>
+        </div>
+        <label for="title">网站名称</label
+        ><input id="title" maxlength="120" required autocomplete="off" />
+        <fieldset id="form-choices" hidden>
+          <legend>选择账号表单</legend>
+          <div id="choices"></div>
+        </fieldset>
+        <div class="field-label">
+          <label for="username">账号</label><span id="capture-hint"></span>
+        </div>
+        <input
+          id="username"
+          maxlength="320"
+          placeholder="邮箱 / 用户名"
+          autocomplete="off"
+          spellcheck="false"
+        />
+        <label for="password">密码</label>
+        <div class="password-field">
+          <input
+            id="password"
+            type="password"
+            maxlength="4096"
+            autocomplete="off"
+            placeholder="输入密码"
+          /><button
+            class="icon-button"
+            id="toggle-password"
+            type="button"
+            title="显示密码"
+            aria-label="显示密码"
+            aria-pressed="false"
+          >
+            <img src="icons/eye.svg" alt="" />
+          </button>
+        </div>
+        <button class="primary-button" type="submit" id="send" disabled>
+          <img src="icons/arrow-down-to-line.svg" alt="" /><span>发送到司南</span>
+        </button>
+      </form>
+      <p id="status" role="status" aria-live="polite"></p>
+    </main>
+    <footer>
+      <button class="text-button" id="site-only" disabled>
+        <img src="icons/bookmark-plus.svg" alt="" />仅记录站点并打开司南</button
+      ><a href="https://github.com/Songwo/nanpad/releases/latest" target="_blank" rel="noreferrer"
+        >桌面端<img src="icons/arrow-up-right.svg" alt=""
+      /></a>
+    </footer>
     <script type="module" src="popup.mjs"></script>
   </body>
 </html>

@@ -28,6 +28,15 @@ contextBridge.exposeInMainWorld("sinan", {
     discard: (id) => unwrap(ipcRenderer.invoke("capture:discard", id)),
     onChanged: (handler) => on("capture:changed", handler),
   },
+  extension: {
+    status: () => unwrap(ipcRenderer.invoke("extension:status")),
+    beginPairing: () => unwrap(ipcRenderer.invoke("extension:pair")),
+    revoke: () => unwrap(ipcRenderer.invoke("extension:revoke")),
+    list: () => unwrap(ipcRenderer.invoke("extension:list")),
+    take: (id) => unwrap(ipcRenderer.invoke("extension:take", id)),
+    discard: (id) => unwrap(ipcRenderer.invoke("extension:discard", id)),
+    onChanged: (handler) => on("extension:changed", handler),
+  },
   isDesktop: true,
   mailboxes: {
     check: (id) => unwrap(ipcRenderer.invoke("mailboxes:check", id)),

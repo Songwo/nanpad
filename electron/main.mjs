@@ -13,6 +13,7 @@ import {
 } from "electron";
 import { X509Certificate } from "node:crypto";
 import { CaptureQueue } from "./services/browser-capture.mjs";
+import { ExtensionBridge } from "./services/extension-bridge.mjs";
 import { readFileSync } from "node:fs";
 import { readFile, writeFile, rename, mkdir, stat } from "node:fs/promises";
 import { dirname, join, posix } from "node:path";
@@ -74,6 +75,7 @@ let aiAccounts;
 let mailboxes;
 let mailClient;
 let mailPush;
+let extensionBridge;
 let tray = null;
 let quitting = false;
 let notificationTimer;
@@ -97,6 +99,7 @@ app.on("open-url", (event, url) => {
 let preferenceWrites = Promise.resolve();
 
 function stopPrivateTasks() {
+  extensionBridge?.revoke();
   mailPush?.stop();
   mailboxes?.stop();
   mailClient?.stop();
@@ -282,6 +285,25 @@ function registerIpc() {
     captures.discard(id);
   });
   vault = new Vault(vaultPath(app.getPath("userData")));
+  extensionBridge = new ExtensionBridge({
+    isUnlocked: () => Boolean(vault?.unlocked),
+    onCapture: showWindow,
+    onChange: () => emit("extension:changed", {}),
+    // 测试进程使用随机端口，避免连接用户正在运行的桌面端。
+    ...((!app.isPackaged && process.env.NANPAD_TEST_DATA_DIR) ||
+    process.argv.some((arg) => arg.startsWith("--user-data-dir="))
+      ? { port: 0 }
+      : {}),
+  });
+  handle("extension:status", () => extensionBridge.status());
+  handle("extension:pair", async () => {
+    await extensionBridge.start();
+    return extensionBridge.beginPairing();
+  });
+  handle("extension:revoke", () => extensionBridge.revoke());
+  handle("extension:list", () => extensionBridge.list());
+  handle("extension:take", (id) => extensionBridge.take(id));
+  handle("extension:discard", (id) => extensionBridge.discard(id));
   const profile = new ProfileService(
     join(app.getPath("userData"), "profile.json"),
     vault,
@@ -711,6 +733,7 @@ if (!app.requestSingleInstanceLock()) {
     }
     Menu.setApplicationMenu(buildMenu());
     registerIpc();
+    await extensionBridge.start();
     try {
       const icon = nativeImage.createFromPath(
         app.isPackaged ? join(process.resourcesPath, "icon.png") : join(here, "../build/icon.png"),
@@ -739,6 +762,7 @@ if (!app.requestSingleInstanceLock()) {
 
   app.on("before-quit", () => {
     stopPrivateTasks();
+    void extensionBridge?.stop();
     quitting = true;
     clearInterval(notificationTimer);
     clearInterval(mailPushTimer);

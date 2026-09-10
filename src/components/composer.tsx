@@ -33,12 +33,16 @@ export function Composer() {
   const kind = useAppStore((s) => s.composerKind);
   const editingId = useAppStore((s) => s.editingId);
   const close = useAppStore((s) => s.closeComposer);
+  const captureId = useAppStore((s) => s.composerPreset?._captureId);
+  const unlocked = useVault((s) => s.unlocked);
+  const captured = useRef(false);
+  if (open) captured.current = Boolean(captureId);
   const { mounted, shown } = usePresence(open, 180);
   // Closing clears `editingId`, so the exit would otherwise re-title itself
   // from "编辑" to "添加" halfway out.
   const last = useRef({ kind, editingId });
   if (open) last.current = { kind, editingId };
-  if (!mounted) return null;
+  if (!mounted || (captured.current && (!open || !unlocked))) return null;
   return (
     <ComposerBody
       kind={last.current.kind}
@@ -107,6 +111,12 @@ function ComposerBody({
   async function submit(e: FormEvent) {
     e.preventDefault();
     if (imageBusy) return;
+    const captureStillOpen = () =>
+      !form._captureId ||
+      (useAppStore.getState().composerOpen &&
+        useAppStore.getState().composerPreset?._captureId === form._captureId &&
+        useVault.getState().unlocked);
+    if (!captureStillOpen()) return;
     const id = editingId ?? uid(kind.slice(0, 3));
 
     // Secrets go to the encrypted vault before the asset is written, so a
@@ -121,6 +131,7 @@ function ComposerBody({
           return;
         } else {
           try {
+            if (!captureStillOpen()) return;
             const vault = desktop()!.vault;
             if (sshCredential) await vault.set(credentialId(id), sshCredential);
             if (account) await vault.set(accountId(id), account);
@@ -132,6 +143,7 @@ function ComposerBody({
       }
     }
 
+    if (!captureStillOpen()) return;
     persist(kind, id, form, existing);
     if (kind === "secret" && form.kind === "password" && form._mailboxId) {
       useAppStore.getState().linkAssets({ kind, id }, { kind: "mail", id: form._mailboxId });

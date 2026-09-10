@@ -147,6 +147,37 @@ export interface PersistedFile extends Snapshot {
 }
 
 export interface DesktopBridge {
+  extension: {
+    status(): Promise<{
+      running: boolean;
+      port: number;
+      pairedClients: number;
+      pairingPending: boolean;
+      pendingCount: number;
+      error?: string;
+    }>;
+    beginPairing(): Promise<{ code: string; expiresAt: number; port: number }>;
+    revoke(): Promise<void>;
+    list(): Promise<
+      Array<{
+        id: string;
+        url: string;
+        title: string;
+        username: string;
+        hasCredential: boolean;
+        createdAt: number;
+      }>
+    >;
+    take(id: string): Promise<{
+      id: string;
+      url: string;
+      title: string;
+      username: string;
+      password: string;
+    }>;
+    discard(id: string): Promise<void>;
+    onChanged(handler: () => void): () => void;
+  };
   capture: {
     list(): Promise<Array<{ id: string; url: string; title: string }>>;
     discard(id: string): Promise<void>;

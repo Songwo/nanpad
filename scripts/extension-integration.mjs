@@ -12,8 +12,8 @@ const { version } = JSON.parse(await readFile("package.json", "utf8"));
 const extension = resolve(`release/v${version}/nanpad-browser-extension`);
 const manifest = JSON.parse(await readFile(join(extension, "manifest.json"), "utf8"));
 assert.equal(manifest.version, version);
-assert.deepEqual(manifest.permissions, ["activeTab"]);
-assert.equal(manifest.host_permissions, undefined);
+assert.deepEqual(manifest.permissions, ["activeTab", "scripting", "storage"]);
+assert.deepEqual(manifest.host_permissions, ["http://127.0.0.1/*"]);
 const directory = await mkdtemp(join(tmpdir(), "nanpad-extension-"));
 const server = createServer(async (req, res) => {
   const pathname = new URL(req.url, "http://localhost").pathname;
@@ -22,9 +22,11 @@ const server = createServer(async (req, res) => {
     "popup.html": "text/html",
     "popup.mjs": "text/javascript",
     "browser-capture.mjs": "text/javascript",
+    "form-capture.mjs": "text/javascript",
     "popup.css": "text/css",
     "icon.png": "image/png",
   };
+  if (/^icons\/[a-z-]+\.svg$/.test(file)) types[file] = "image/svg+xml";
   if (!types[file]) {
     res.writeHead(404);
     res.end();
@@ -41,7 +43,12 @@ const server = createServer(async (req, res) => {
 await new Promise((done) => server.listen(0, "127.0.0.1", done));
 let browser, instance;
 try {
-  browser = await chromium.launch({ headless: true });
+  browser = await chromium.launch({
+    headless: true,
+    ...(process.env.NANPAD_EXTENSION_BROWSER_PATH
+      ? { executablePath: process.env.NANPAD_EXTENSION_BROWSER_PATH }
+      : {}),
+  });
   const popup = await browser.newPage({ viewport: { width: 360, height: 500 } });
   await popup.addInitScript(() => {
     window.chrome = {
@@ -55,23 +62,32 @@ try {
               : "https://user:private@example.test/reset/private?token=private#private",
           },
         ],
-        update: async (id, value) => {
-          window.captureResult = { id, ...value };
+        get: async () => ({
+          id: 12,
+          title: "示例网站",
+          url: "https://user:private@example.test/reset/private?token=private#private",
+        }),
+        create: async (value) => {
+          window.captureResult = { ...value };
         },
       },
+      scripting: { executeScript: async () => [{ result: [] }] },
+      storage: { session: { get: async () => ({}), set: async () => {}, remove: async () => {} } },
     };
   });
   const base = `http://127.0.0.1:${server.address().port}`;
   await popup.goto(base);
-  await popup.getByRole("button", { name: "保存到司南" }).click();
+  await popup.getByRole("button", { name: "仅记录站点并打开司南" }).click();
   await popup.getByRole("status").filter({ hasText: "已请求打开司南" }).waitFor();
   const result = await popup.evaluate(() => window.captureResult);
-  assert.equal(result.id, 12);
   assert.ok(!result.url.includes("private"));
-  await popup.screenshot({ path: "screenshots/nanpad-v040-extension.png" });
+  await popup.screenshot({ path: "screenshots/nanpad-v070-extension-site.png" });
   await popup.goto(`${base}/?blocked=1`);
   await popup.getByRole("status").filter({ hasText: "请在 HTTP" }).waitFor();
-  assert.equal(await popup.getByRole("button", { name: "保存到司南" }).isDisabled(), true);
+  assert.equal(
+    await popup.getByRole("button", { name: "仅记录站点并打开司南" }).isDisabled(),
+    true,
+  );
   await browser.close();
   browser = null;
 
@@ -190,7 +206,12 @@ try {
     const graph = document.querySelector(".asset-graph").getBoundingClientRect();
     return [...document.querySelectorAll(".asset-graph-node")].every((node) => {
       const rect = node.getBoundingClientRect();
-      return rect.left >= graph.left && rect.right <= graph.right && rect.top >= graph.top && rect.bottom <= graph.bottom;
+      return (
+        rect.left >= graph.left &&
+        rect.right <= graph.right &&
+        rect.top >= graph.top &&
+        rect.bottom <= graph.bottom
+      );
     });
   });
   await page.screenshot({ path: "screenshots/nanpad-v040-graph.png" });
