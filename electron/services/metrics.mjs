@@ -21,31 +21,31 @@ export function pruneSamples(samples, now = Date.now()) {
 export class MetricsStore {
   #file;
   #queue = Promise.resolve();
+  /** 解析后的整份文件常驻内存：单实例进程内没有第二个写方，列表查询不再重读磁盘。 */
+  #doc = null;
   constructor(file) {
     this.#file = file;
   }
   async #read() {
+    if (this.#doc) return this.#doc;
     try {
       const value = JSON.parse(await readFile(this.#file, "utf8"));
       if (!value || Array.isArray(value) || typeof value !== "object")
         throw new Error("Invalid metrics file");
-      return value;
+      this.#doc = value;
     } catch (err) {
-      if (err.code === "ENOENT") return {};
-      throw err;
+      if (err.code !== "ENOENT") throw err;
+      this.#doc = {};
     }
+    return this.#doc;
   }
   record(id, probe) {
     if (typeof id !== "string" || !id || id.length > 256)
       return Promise.reject(new Error("Invalid server ID"));
     const job = this.#queue.then(async () => {
-      const saved = await this.#read();
-      const data = Object.create(null);
-      for (const [key, value] of Object.entries(saved)) {
-        const samples = pruneSamples(Array.isArray(value) ? value : []);
-        if (samples.length) data[key] = samples;
-      }
-      data[id] = pruneSamples([...(data[id] ?? []), probe]);
+      const data = await this.#read();
+      // 只修剪本次写入的服务器；其他键在下次触碰时再修剪，免去每次采样的全量重算。
+      data[id] = pruneSamples([...pruneSamples(Array.isArray(data[id]) ? data[id] : []), probe]);
       await mkdir(dirname(this.#file), { recursive: true });
       await writeFile(`${this.#file}.tmp`, JSON.stringify(data), "utf8");
       await rename(`${this.#file}.tmp`, this.#file);

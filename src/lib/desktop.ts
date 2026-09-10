@@ -186,6 +186,14 @@ export interface DesktopBridge {
   mailboxes: import("./mailbox").MailboxesBridge;
   mailClient: import("./mailbox").MailClientBridge;
   mailPush: import("./mail-push").MailPushBridge;
+  storage: {
+    stats(): Promise<{
+      files: Record<string, number>;
+      cache: { dirs: Record<string, number>; total: number };
+      mail: { folders: number; pages: number; messages: number; bytes: number };
+    }>;
+    clear(scope: "mail" | "chromium"): Promise<string>;
+  };
   aiAccounts: import("./ai-accounts").AiAccountBridge;
   profile: {
     get(): Promise<import("./profile").Profile>;

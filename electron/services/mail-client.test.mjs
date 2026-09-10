@@ -365,3 +365,40 @@ test("锁库取消无响应的 SMTP 请求，不依赖传输层完成回调", as
   await assert.rejects(sending, /结果未确认/);
   assert.ok(closed > 0);
 });
+
+// —— 0.9.0 会话级缓存 ——
+test("正文与附件共享会话缓存：同一封邮件不重复连接解析", async () => {
+  const f = fixture();
+  const first = await f.service.read("mail-1", selected);
+  assert.equal(first.text, "Hello from MIME");
+  const second = await f.service.read("mail-1", selected);
+  assert.deepEqual(second, first);
+  assert.equal(f.service.cacheStats().messages, 1);
+  // 附件走同一份已解析缓存：即使该邮件没有附件，也不应重新连接 IMAP。
+  await assert.rejects(f.service.attachment("mail-1", selected, 0), /附件不存在/);
+  assert.equal(f.calls.filter((c) => c === "connect").length, 1);
+});
+test("标记已读后清除该邮箱的会话缓存", async () => {
+  const f = fixture();
+  await f.service.read("mail-1", selected);
+  await f.service.seen("mail-1", selected, true);
+  await f.service.read("mail-1", selected);
+  // 读取 + 标记 + 缓存清除后的再次读取都各自连接。
+  assert.equal(f.calls.filter((c) => c === "connect").length, 3);
+});
+test("锁库后缓存命中路径不返回邮件内容", async () => {
+  const f = fixture();
+  await f.service.read("mail-1", selected);
+  assert.equal(f.service.cacheStats().messages, 1);
+  f.vault.unlocked = false;
+  await assert.rejects(f.service.read("mail-1", selected), /密钥库已锁定/);
+  f.vault.unlocked = true;
+});
+test("文件夹与列表分页在短 TTL 内直接复用", async () => {
+  const f = fixture();
+  await f.service.folders("mail-1");
+  await f.service.folders("mail-1");
+  await f.service.messages("mail-1", { folder: "INBOX" });
+  await f.service.messages("mail-1", { folder: "INBOX" });
+  assert.equal(f.calls.filter((c) => c === "connect").length, 2);
+});

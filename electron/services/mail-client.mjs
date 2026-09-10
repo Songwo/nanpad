@@ -7,6 +7,12 @@ import { sanitizeMailHtml } from "./mail-content.mjs";
 
 const MAX_MESSAGE = 12 * 1024 * 1024;
 const MAX_ATTACHMENTS = 8 * 1024 * 1024;
+// 会话级缓存参数：文件夹与分页短 TTL，解析邮件按字节预算 LRU。
+const FOLDERS_TTL_MS = 60_000;
+const PAGES_TTL_MS = 30_000;
+const MESSAGE_CACHE_MAX = 10;
+const MESSAGE_CACHE_BYTES = 32 * 1024 * 1024;
+const PAGES_CACHE_MAX = 40;
 class MailClientError extends Error {}
 const fail = (message) => {
   throw new MailClientError(message);
@@ -131,6 +137,15 @@ export class MailClient {
   #controllers = new Set();
   #generation = 0;
   #sending = new Set();
+  /**
+   * 会话级缓存（0.9.0）：文件夹列表与分页结果短 TTL 复用，已解析邮件
+   * LRU 复用（正文读取与附件下载共享，避免重复拉取与解析同一封邮件）。
+   * 密文级磁盘缓存按 docs/plans/v0.9.0 的评审结论顺延；锁库即全部清除。
+   */
+  #foldersCache = new Map();
+  #pagesCache = new Map();
+  #messagesCache = new Map();
+  #messagesCacheBytes = 0;
   constructor({
     vault,
     getSnapshot,
@@ -145,6 +160,63 @@ export class MailClient {
   stop() {
     this.#generation += 1;
     for (const controller of this.#controllers) controller.abort();
+    this.clearCaches();
+  }
+  /** 清空全部邮件缓存；锁库、断开或退出时调用，缓存不跨锁定保留。 */
+  clearCaches() {
+    this.#foldersCache.clear();
+    this.#pagesCache.clear();
+    this.#messagesCache.clear();
+    this.#messagesCacheBytes = 0;
+  }
+  cacheStats() {
+    return {
+      folders: this.#foldersCache.size,
+      pages: this.#pagesCache.size,
+      messages: this.#messagesCache.size,
+      bytes: this.#messagesCacheBytes,
+    };
+  }
+  #assertCacheReadable() {
+    // 缓存命中路径绕过了 #run，必须自己守住锁定边界：锁库后不返回任何邮件内容。
+    if (!this.#vault.unlocked) fail("密钥库已锁定，邮件操作已取消");
+  }
+  #cachedMessage(id, input) {
+    this.#assertCacheReadable();
+    const key = `${id}|${input.folder}|${input.uid}|${input.uidValidity}`;
+    if (!this.#messagesCache.has(key)) return { key, entry: null };
+    const entry = this.#messagesCache.get(key);
+    this.#messagesCache.delete(key);
+    this.#messagesCache.set(key, entry);
+    return { key, entry };
+  }
+  #storeMessage(key, { item, parsed }, message) {
+    const bytes =
+      (item?.source?.length ?? 0) +
+      (parsed.text?.length ?? 0) +
+      (parsed.html?.length ?? 0) +
+      parsed.attachments.reduce((sum, file) => sum + (file.content?.length ?? 0), 0);
+    // 超大邮件不值得占用缓存预算；按字节 LRU 驱逐到预算内。
+    if (bytes > MESSAGE_CACHE_BYTES) return;
+    this.#messagesCache.set(key, { item, parsed, message, bytes });
+    this.#messagesCacheBytes += bytes;
+    while (this.#messagesCacheBytes > MESSAGE_CACHE_BYTES || this.#messagesCache.size > MESSAGE_CACHE_MAX) {
+      const oldest = this.#messagesCache.keys().next().value;
+      if (oldest === undefined) break;
+      const evicted = this.#messagesCache.get(oldest);
+      this.#messagesCache.delete(oldest);
+      this.#messagesCacheBytes -= evicted.bytes;
+    }
+  }
+  #dropMailboxCaches(id) {
+    for (const key of this.#pagesCache.keys())
+      if (key.startsWith(`${id}|`)) this.#pagesCache.delete(key);
+    for (const key of this.#messagesCache.keys())
+      if (key.startsWith(`${id}|`)) {
+        const evicted = this.#messagesCache.get(key);
+        this.#messagesCache.delete(key);
+        this.#messagesCacheBytes -= evicted.bytes;
+      }
   }
   async #run(id, operation) {
     const generation = this.#generation;
@@ -225,16 +297,23 @@ export class MailClient {
     });
   }
   folders(id) {
-    return this.#withImap(id, async (client) =>
-      (await client.list())
+    const cached = this.#foldersCache.get(id);
+    if (cached && Date.now() - cached.at < FOLDERS_TTL_MS) {
+      this.#assertCacheReadable();
+      return cached.value;
+    }
+    return this.#withImap(id, async (client) => {
+      const value = (await client.list())
         .filter((item) => !item.flags?.has("\\Noselect"))
         .slice(0, 200)
         .map((item) => ({
           path: item.path,
           name: clean(item.name),
           specialUse: item.specialUse ?? null,
-        })),
-    );
+        }));
+      this.#foldersCache.set(id, { value, at: Date.now() });
+      return value;
+    });
   }
   messages(id, input) {
     const folder = selection(input);
@@ -242,6 +321,12 @@ export class MailClient {
     if (!Number.isSafeInteger(page) || page < 0 || page > 10000) fail("页码无效");
     const query = typeof input.query === "string" ? input.query.trim() : "";
     if (query.length > 100 || hasControl(query)) fail("搜索词无效");
+    const pageKey = `${id}|${folder}|${page}|${query}|${input.unseen === true}`;
+    const cached = this.#pagesCache.get(pageKey);
+    if (cached && Date.now() - cached.at < PAGES_TTL_MS) {
+      this.#assertCacheReadable();
+      return cached.value;
+    }
     return this.#withImap(id, async (client) => {
       const box = await client.mailboxOpen(folder, { readOnly: true });
       let range,
@@ -274,13 +359,17 @@ export class MailClient {
           { uid: useUid },
         ))
           items.push(summary(item));
-      return {
+      const value = {
         items: items.sort((a, b) => b.uid - a.uid),
         total,
         page,
         uidValidity: String(box.uidValidity),
         folder,
       };
+      this.#pagesCache.set(pageKey, { value, at: Date.now() });
+      while (this.#pagesCache.size > PAGES_CACHE_MAX)
+        this.#pagesCache.delete(this.#pagesCache.keys().next().value);
+      return value;
     });
   }
   async #parsed(client, input) {
@@ -311,45 +400,64 @@ export class MailClient {
     });
     return { item, parsed };
   }
-  read(id, input) {
+  #buildMessage({ item, parsed }) {
+    if (!parsed.text && parsed.html?.length > 1024 * 1024)
+      fail("HTML 正文过大，请在服务商网页查看");
+    const text =
+      parsed.text ||
+      (parsed.html
+        ? htmlToText(parsed.html, {
+            wordwrap: false,
+            selectors: [{ selector: "img", format: "skip" }],
+          })
+        : "");
+    return {
+      ...summary(item),
+      text: text.slice(0, 500000),
+      html: sanitizeMailHtml(parsed.html, parsed.attachments),
+      cc: contacts(parsed.cc?.value),
+      replyTo: contacts(parsed.replyTo?.value ?? parsed.from?.value),
+      messageId: /^<[^<>\s]{1,500}>$/.test(parsed.messageId ?? "") ? parsed.messageId : null,
+      attachments: parsed.attachments.map((file, index) => ({
+        index,
+        name: clean(file.filename || `attachment-${index + 1}`, 180),
+        size: file.size,
+        contentType: clean(file.contentType, 100),
+      })),
+    };
+  }
+  async read(id, input) {
+    selection(input, true);
+    const { key, entry } = this.#cachedMessage(id, input);
+    if (entry) {
+      // 命中缓存：不建立 IMAP 连接，直接返回（或基于已解析内容构建正文）。
+      if (!entry.message) entry.message = this.#buildMessage(entry);
+      return entry.message;
+    }
     return this.#withImap(id, async (client) => {
-      const { item, parsed } = await this.#parsed(client, input);
-      if (!parsed.text && parsed.html?.length > 1024 * 1024)
-        fail("HTML 正文过大，请在服务商网页查看");
-      const text =
-        parsed.text ||
-        (parsed.html
-          ? htmlToText(parsed.html, {
-              wordwrap: false,
-              selectors: [{ selector: "img", format: "skip" }],
-            })
-          : "");
-      return {
-        ...summary(item),
-        text: text.slice(0, 500000),
-        html: sanitizeMailHtml(parsed.html, parsed.attachments),
-        cc: contacts(parsed.cc?.value),
-        replyTo: contacts(parsed.replyTo?.value ?? parsed.from?.value),
-        messageId: /^<[^<>\s]{1,500}>$/.test(parsed.messageId ?? "") ? parsed.messageId : null,
-        attachments: parsed.attachments.map((file, index) => ({
-          index,
-          name: clean(file.filename || `attachment-${index + 1}`, 180),
-          size: file.size,
-          contentType: clean(file.contentType, 100),
-        })),
-      };
+      const parsed = await this.#parsed(client, input);
+      const message = this.#buildMessage(parsed);
+      this.#storeMessage(key, parsed, message);
+      return message;
     });
   }
-  attachment(id, input, index) {
+  async attachment(id, input, index) {
     if (!Number.isSafeInteger(index) || index < 0 || index > 1000) fail("附件标识无效");
-    return this.#withImap(id, async (client) => {
-      const { parsed } = await this.#parsed(client, input);
+    selection(input, true);
+    const pick = (parsed) => {
       const file = parsed.attachments[index];
       if (!file || file.size > MAX_ATTACHMENTS) fail("附件不存在或超过 8 MiB");
       return {
         name: clean(file.filename || `attachment-${index + 1}`, 180).replace(/[\\/:*?"<>|]/g, "_"),
         content: file.content,
       };
+    };
+    const { key, entry } = this.#cachedMessage(id, input);
+    if (entry) return pick(entry.parsed);
+    return this.#withImap(id, async (client) => {
+      const parsed = await this.#parsed(client, input);
+      this.#storeMessage(key, parsed, null);
+      return pick(parsed);
     });
   }
   seen(id, input, seen) {
@@ -362,6 +470,8 @@ export class MailClient {
       assertActive();
       if (seen) await client.messageFlagsAdd(input.uid, ["\\Seen"], { uid: true });
       else await client.messageFlagsRemove(input.uid, ["\\Seen"], { uid: true });
+      // 已读状态会改变列表与摘要，清掉该邮箱的会话缓存保证一致。
+      this.#dropMailboxCaches(id);
       return true;
     });
   }

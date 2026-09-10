@@ -61,6 +61,10 @@ contextBridge.exposeInMainWorld("sinan", {
     save: (input) => unwrap(ipcRenderer.invoke("mail-push:save", input)),
     test: () => unwrap(ipcRenderer.invoke("mail-push:test")),
   },
+  storage: {
+    stats: () => unwrap(ipcRenderer.invoke("storage:stats")),
+    clear: (scope) => unwrap(ipcRenderer.invoke("storage:clear", scope)),
+  },
   aiAccounts: {
     list: () => unwrap(ipcRenderer.invoke("ai-accounts:list")),
     start: (provider) => unwrap(ipcRenderer.invoke("ai-accounts:start", provider)),

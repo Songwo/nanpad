@@ -13,6 +13,7 @@ import { toast } from "sonner";
 import { desktop } from "@/lib/desktop";
 import { t } from "@/lib/i18n";
 import type { MailMessage } from "@/lib/mailbox";
+import { readImageGrants, writeImageGrants } from "@/lib/mail-image-grants";
 import { cn } from "@/lib/utils";
 import { Button } from "./ui/button";
 
@@ -247,15 +248,22 @@ function HtmlBody({
 export function MailContent({ message }: { message: MailMessage }) {
   const [plain, setPlain] = useState(false);
   const [allowedFor, setAllowedFor] = useState<MailMessage | null>(null);
-  // 授权绑定本次读取对象，换邮件或刷新后不会继承外部图片权限。
-  const allowed = allowedFor === message;
+  const [rememberedGrants, setRememberedGrants] = useState<string[]>(() => readImageGrants());
+  // 授权绑定本次读取对象；已记住授权的邮件按 Message-ID 跨会话延续，不自动加载其他邮件。
+  const grantKey = `img:${message.messageId ?? `uid-${message.uid}`}`;
+  const allowed = allowedFor === message || rememberedGrants.includes(grantKey);
   const parsed = useMemo(() => {
     if (!message.html || typeof DOMParser === "undefined") return null;
     const body = new DOMParser().parseFromString(message.html, "text/html").body;
     return body.querySelectorAll("*").length <= 10000 ? body : null;
   }, [message.html]);
   const remoteCount = parsed?.querySelectorAll("img[data-mail-remote-src]").length ?? 0;
-  const loadImages = () => setAllowedFor(message);
+  const loadImages = () => {
+    setAllowedFor(message);
+    const next = [...rememberedGrants.filter((key) => key !== grantKey), grantKey];
+    setRememberedGrants(next);
+    writeImageGrants(next);
+  };
   return (
     <section className="min-w-0" aria-label={t("邮件正文")}>
       <div className="mb-5 flex min-w-0 flex-wrap items-center justify-between gap-3">

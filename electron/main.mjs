@@ -15,7 +15,7 @@ import { X509Certificate } from "node:crypto";
 import { CaptureQueue } from "./services/browser-capture.mjs";
 import { ExtensionBridge } from "./services/extension-bridge.mjs";
 import { readFileSync } from "node:fs";
-import { readFile, writeFile, rename, mkdir, stat } from "node:fs/promises";
+import { readFile, writeFile, rename, mkdir, stat, readdir, rm } from "node:fs/promises";
 import { dirname, join, posix } from "node:path";
 import { fileURLToPath } from "node:url";
 import { SshManager } from "./services/ssh.mjs";
@@ -383,6 +383,85 @@ function registerIpc() {
   handle("mail-push:config", () => mailPush.config());
   handle("mail-push:save", (input) => mailPush.save(input));
   handle("mail-push:test", () => mailPush.test());
+  // —— 存储管理（0.9.0）：只统计与清理缓存，永远不触碰资产、密钥库与凭据文件本体。 ——
+  const STORAGE_FILES = [
+    "assets.json",
+    "vault.enc",
+    "conversations.json",
+    "metrics.json",
+    "rag-index.json",
+    "knowledge.json",
+    "profile.json",
+    "agent-config.json",
+    "mailbox-baselines.json",
+  ];
+  const CHROMIUM_CACHE_DIRS = [
+    "Cache",
+    "Code Cache",
+    "GPUCache",
+    "DawnWebGPUCache",
+    "DawnGraphiteCache",
+    "ShaderCache",
+    "Shared Dictionary",
+  ];
+  async function dirSize(path) {
+    let total = 0;
+    let entries;
+    try {
+      entries = await readdir(path, { withFileTypes: true });
+    } catch {
+      return 0;
+    }
+    for (const entry of entries) {
+      const child = join(path, entry.name);
+      if (entry.isDirectory()) total += await dirSize(child);
+      else {
+        try {
+          total += (await stat(child)).size;
+        } catch {
+          /* 文件竞争删除时跳过 */
+        }
+      }
+    }
+    return total;
+  }
+  handle("storage:stats", async () => {
+    const root = app.getPath("userData");
+    const files = {};
+    for (const name of STORAGE_FILES) {
+      try {
+        files[name] = (await stat(join(root, name))).size;
+      } catch {
+        files[name] = 0;
+      }
+    }
+    const dirs = {};
+    let cacheTotal = 0;
+    for (const dir of CHROMIUM_CACHE_DIRS) {
+      const size = await dirSize(join(root, dir));
+      dirs[dir] = size;
+      cacheTotal += size;
+    }
+    return {
+      files,
+      cache: { dirs, total: cacheTotal },
+      mail: mailClient?.cacheStats() ?? { folders: 0, pages: 0, messages: 0, bytes: 0 },
+    };
+  });
+  handle("storage:clear", async (_event, scope) => {
+    if (scope === "mail") {
+      mailClient?.clearCaches();
+      return "mail";
+    }
+    if (scope === "chromium") {
+      const root = app.getPath("userData");
+      // 运行中删除缓存目录是安全的：Chromium 会在需要时自动重建。
+      for (const dir of CHROMIUM_CACHE_DIRS)
+        await rm(join(root, dir), { recursive: true, force: true }).catch(() => {});
+      return "chromium";
+    }
+    throw new Error("未知的清理范围");
+  });
   agent = new AgentService({
     directory: app.getPath("userData"),
     secureStorage: safeStorage,

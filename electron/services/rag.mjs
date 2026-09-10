@@ -55,6 +55,18 @@ const LABELS = {
 };
 export const hash = (text) => createHash("sha256").update(text).digest("hex");
 
+/** MiniSearch 配置以常量共享：loadJSON 反序列化必须使用与构建时相同的选项。 */
+const SEARCH_OPTIONS = { fields: ["title", "text"], storeFields: [], tokenize };
+/** 索引格式版本：分块、字段或序列化结构变化时递增，使旧缓存整体失效。 */
+const INDEX_FORMAT_VERSION = 2;
+
+/** 文档集签名：任何文档的增删改都会改变签名，从而触发重建。 */
+function docsSignature(docs) {
+  const parts = [`v${INDEX_FORMAT_VERSION}`];
+  for (const doc of docs) parts.push(`${doc.id}\0${doc.text}`, "\x01");
+  return hash(parts.join(""));
+}
+
 export function tokenize(text) {
   const result =
     String(text)
@@ -170,7 +182,11 @@ export function knowledgeChunks(documents) {
 }
 
 export class LocalIndex {
-  constructor(snapshot, documents) {
+  /**
+   * `saved` 为上次持久化的 `rag-index.json` 内容：签名一致时直接
+   * `MiniSearch.loadJSON` 复用，跳过分词与建索引（见 docs/plans/v0.9.0）。
+   */
+  constructor(snapshot, documents, saved = null) {
     const folders = normalizedMailFolders(snapshot.mailFolders);
     const assets = assetDocuments(snapshot, folders);
     const mailboxes = assets.filter((doc) => doc.kind === "mail");
@@ -192,7 +208,19 @@ export class LocalIndex {
     this.docs = [...assets, ...folderDocs, ...knowledgeChunks(documents)];
     if (this.docs.length > 6000) throw new Error("本地索引超过 6000 个片段，请减少导入文档。");
     this.byId = new Map(this.docs.map((doc) => [doc.id, doc]));
-    this.searcher = new MiniSearch({ fields: ["title", "text"], storeFields: [], tokenize });
+    this.signature = docsSignature(this.docs);
+    this.reused = false;
+    if (saved?.signature === this.signature && saved.index && typeof saved.index === "object") {
+      try {
+        // MiniSearch 7 的 toJSON 返回普通对象，对应 loadJS 反序列化。
+        this.searcher = MiniSearch.loadJS(saved.index, SEARCH_OPTIONS);
+        this.reused = true;
+        return;
+      } catch {
+        // 缓存损坏按未命中处理，走重建。
+      }
+    }
+    this.searcher = new MiniSearch(SEARCH_OPTIONS);
     this.searcher.addAll(this.docs);
   }
   search(query, limit = 6) {

@@ -68,6 +68,13 @@ export function AgentView() {
 
   const active = conversations.find((c) => c.id === activeId) ?? null;
   const messages = active?.messages ?? [];
+  // 长对话窗口化渲染：只挂载最近的消息，更早的按需展开，避免全量重渲。
+  const [visibleCount, setVisibleCount] = useState(40);
+  useEffect(() => {
+    setVisibleCount(40);
+  }, [activeId]);
+  const visibleMessages = messages.slice(-visibleCount);
+  const hiddenCount = messages.length - visibleMessages.length;
 
   useEffect(() => {
     bottom.current?.scrollIntoView({ block: "end" });
@@ -220,7 +227,16 @@ export function AgentView() {
               <Welcome onPick={send} />
             ) : (
               <div className="space-y-5 pb-4">
-                {messages.map((m) => (
+                {hiddenCount > 0 && (
+                  <button
+                    type="button"
+                    className="mx-auto block rounded-full border border-line px-3 py-1 text-2xs text-muted transition-colors duration-150 ease-out hover:bg-line"
+                    onClick={() => setVisibleCount((count) => count + 80)}
+                  >
+                    {t("显示更早的 {0} 条消息", hiddenCount)}
+                  </button>
+                )}
+                {visibleMessages.map((m) => (
                   <MessageRow key={m.id} message={m} />
                 ))}
                 {running?.conversationId === activeId && (

@@ -17,6 +17,7 @@ import { toast } from "sonner";
 import { Button } from "./ui/button";
 import { CalendarExport, DesktopSettings } from "./operations-panel";
 import { AgentSettings } from "./agent-settings";
+import { StorageSettings } from "./storage-settings";
 import { MailPushSettings } from "./mail-push-settings";
 import { ExtensionSettings } from "./extension-settings";
 import { ProfileForm } from "./onboarding";
@@ -38,6 +39,7 @@ type Tab =
   | "agent"
   | "mail-push"
   | "extension"
+  | "storage"
   | "about"
   | "changelog";
 
@@ -49,6 +51,7 @@ const TABS: Array<{ id: Tab; label: string }> = [
   { id: "agent", label: "模型与知识库" },
   { id: "mail-push", label: "邮件推送" },
   { id: "extension", label: "浏览器插件" },
+  { id: "storage", label: "存储" },
   { id: "about", label: "关于" },
   { id: "changelog", label: "更新日志" },
 ];
@@ -119,6 +122,7 @@ export function Settings() {
             {tab === "agent" && <AgentSettings />}
             {tab === "mail-push" && <MailPushSettings />}
             {tab === "extension" && <ExtensionSettings />}
+            {tab === "storage" && <StorageSettings />}
             {tab === "about" && <About />}
             {tab === "changelog" && <Changelog />}
           </div>

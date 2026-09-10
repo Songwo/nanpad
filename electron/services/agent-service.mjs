@@ -301,12 +301,22 @@ export class AgentService {
   }
   async prepare(config, signal, emit) {
     const docs = await this.read("knowledge.json", []);
-    const index = new LocalIndex(this.getSnapshot(), docs);
-    await this.write("rag-index.json", {
-      version: 1,
-      updatedAt: new Date().toISOString(),
-      index: index.searcher.toJSON(),
-    });
+    // 签名一致时复用上次索引（跳过分词与建索引）；缓存损坏按未命中处理。
+    let saved = null;
+    try {
+      saved = await this.read("rag-index.json", null);
+    } catch {
+      saved = null;
+    }
+    const index = new LocalIndex(this.getSnapshot(), docs, saved);
+    if (!index.reused) {
+      await this.write("rag-index.json", {
+        version: 1,
+        signature: index.signature,
+        updatedAt: new Date().toISOString(),
+        index: index.searcher.toJSON(),
+      });
+    }
     if (!config.embeddingEnabled)
       return { index, search: async (query) => index.search(query, config.topK) };
     if (!config.embeddingModel) throw new Error("启用向量检索后必须填写本地 Embedding 模型名。");

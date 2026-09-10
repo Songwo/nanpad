@@ -311,6 +311,49 @@ test("数据迁移后无法解密的 Key 标记为不可读并提示重新输入
     /重新输入 API Key/,
   );
 });
+test("RAG 索引签名一致时复用缓存，内容变化时重建", async (t) => {
+  const f = await fixture(t, () => {});
+  await f.service.rebuild();
+  const path = join(f.directory, "rag-index.json");
+  const first = JSON.parse(await readFile(path, "utf8"));
+  assert.equal(typeof first.signature, "string");
+  assert.ok(first.index);
+  await new Promise((resolve) => setTimeout(resolve, 10));
+  await f.service.rebuild();
+  const second = JSON.parse(await readFile(path, "utf8"));
+  assert.equal(second.updatedAt, first.updatedAt, "数据未变化应复用缓存，不重写文件");
+  assert.equal(second.signature, first.signature);
+  // 资产变化 → 签名变化 → 重建落盘。
+  const next = demoSnapshot();
+  next.servers = [...next.servers, { id: "cache-probe", name: "缓存验证服务器" }];
+  f.setSnapshot(next);
+  await f.service.rebuild();
+  const third = JSON.parse(await readFile(path, "utf8"));
+  assert.notEqual(third.signature, first.signature);
+  assert.notEqual(third.updatedAt, first.updatedAt);
+});
+test("从缓存复用的索引与全量重建结果一致，损坏缓存回退重建", async () => {
+  const snapshot = demoSnapshot();
+  const documents = [
+    { id: "doc-cache", name: "缓存文档", text: "缓存验证内容。".repeat(80), addedAt: "2026-09-10" },
+  ];
+  const built = new LocalIndex(snapshot, documents);
+  const saved = { version: 1, signature: built.signature, index: built.searcher.toJSON() };
+  const reused = new LocalIndex(snapshot, documents, saved);
+  assert.equal(reused.reused, true);
+  for (const query of ["服务器", "tokyo", "邮箱", "缓存文档"]) {
+    assert.deepEqual(
+      reused.search(query, 6).map((row) => row.id),
+      built.search(query, 6).map((row) => row.id),
+      `查询 ${query} 的复用结果必须与重建一致`,
+    );
+  }
+  assert.equal(new LocalIndex(snapshot, documents, { ...saved, signature: "不匹配" }).reused, false);
+  assert.equal(
+    new LocalIndex(snapshot, documents, { ...saved, index: "{broken json" }).reused,
+    false,
+  );
+});
 test("模型捏造的来源标记不能作为成功答案交付", async (t) => {
   const f = await fixture(t, (_req, res) =>
     sse(res, [{ delta: { content: "结论 [S99]" }, finish_reason: "stop" }]),
