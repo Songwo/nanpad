@@ -371,6 +371,7 @@ export const EN: Record<string, string> = {
   当前分组: "Current group",
   登录地址: "Sign-in URL",
   "读取中…": "Reading…",
+  账号信息: "Account details",
   复制域名: "Copy domain",
   改为平铺: "Switch to flat",
   更多操作: "More actions",

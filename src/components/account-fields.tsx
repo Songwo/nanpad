@@ -115,10 +115,12 @@ export function AccountFields({
         setLoaded(true);
         if (!rec) return;
         setStored(true);
-        if (rec.url) set("_url", rec.url);
-        if (rec.username) set("_username", rec.username);
-        if (rec.password) set("_password", rec.password);
-        if (rec.note) set("_note", rec.note);
+        // 只有表单里从未出现过的键才回填：用户抢先输入的值不能被迟到的
+        // 密钥库记录覆盖（异步预填与手输竞争时以手输为准）。
+        if (rec.url && !("_url" in form)) set("_url", rec.url);
+        if (rec.username && !("_username" in form)) set("_username", rec.username);
+        if (rec.password && !("_password" in form)) set("_password", rec.password);
+        if (rec.note && !("_note" in form)) set("_note", rec.note);
       } catch {
         if (alive) setLoaded(true);
       }
@@ -139,7 +141,13 @@ export function AccountFields({
           <UserRound className="size-4 text-muted" />
           <h3 className="text-meta font-semibold">{t(copy.title)}</h3>
           <span className="ml-auto text-2xs text-subtle">
-            {!unlocked ? t("密钥库已锁定") : stored ? t("已保存") : t("尚未保存")}
+            {!unlocked
+              ? t("密钥库已锁定")
+              : assetId && !loaded
+                ? t("读取中…")
+                : stored
+                  ? t("已保存")
+                  : t("尚未保存")}
           </span>
         </div>
 
@@ -160,7 +168,14 @@ export function AccountFields({
             </span>
           </div>
         ) : (
-          <div className="grid gap-3 sm:grid-cols-2">
+          <div className="grid gap-3 sm:grid-cols-2" aria-busy={Boolean(assetId) && !loaded}>
+            {/* 编辑已存在资产时，密钥库记录异步读取期间字段短暂为空；
+                禁用并提示，避免被误读成“密码没保存”。 */}
+            <fieldset
+              disabled={Boolean(assetId) && !loaded}
+              className="contents"
+              aria-label={t("账号信息")}
+            >
             {(kind !== "secret" || website) && (
               <>
                 <Field label={t("登录地址")}>
@@ -242,6 +257,7 @@ export function AccountFields({
                 </Button>
               </div>
             )}
+            </fieldset>
           </div>
         )}
 
