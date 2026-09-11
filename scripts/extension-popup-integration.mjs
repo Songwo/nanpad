@@ -146,15 +146,12 @@ try {
   assert.equal(await popup.getByLabel("密码", { exact: true }).inputValue(), "retained-on-failure");
   assert.deepEqual(await popup.evaluate(() => globalThis.chrome.storage.session.get(null)), {});
   assert.equal(bridge.list().length, 0);
-  // —— 自动采集：重新配对后打开开关，提交登录表单即送达（source=auto，页面有提示）。 ——
+  // —— 自动采集：默认开启，配对后提交登录表单即送达（source=auto，页面有提示）；关闭后立即停发。 ——
   await popup.getByLabel("桌面配对码").fill(bridge.beginPairing().code);
   await popup.getByRole("button", { name: "连接", exact: true }).click();
   await popup.getByText("已连接本机司南", { exact: true }).waitFor({ timeout: 10000 });
-  assert.equal(await popup.getByLabel("登录时自动采集").isChecked(), false);
-  await popup.getByLabel("登录时自动采集").check();
-  assert.deepEqual(await popup.evaluate(() => globalThis.chrome.storage.local.get(null)), {
-    nanpadAutoCapture: true,
-  });
+  assert.equal(await popup.getByLabel("登录时自动采集").isChecked(), true);
+  assert.deepEqual(await popup.evaluate(() => globalThis.chrome.storage.local.get(null)), {});
   await website.evaluate(() => {
     document
       .querySelector("form")
@@ -175,6 +172,18 @@ try {
     ),
     "自动采集后页面应出现结果提示",
   );
+  // 关闭开关 → 存 false → 内容脚本停发，再提交不再产生待确认记录。
+  await popup.getByLabel("登录时自动采集").uncheck();
+  assert.deepEqual(await popup.evaluate(() => globalThis.chrome.storage.local.get(null)), {
+    nanpadAutoCapture: false,
+  });
+  await website.evaluate(() => {
+    document
+      .querySelector("form")
+      .dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+  });
+  await new Promise((resolve) => setTimeout(resolve, 500));
+  assert.equal(bridge.list().length, 0, "关闭自动采集后不应再有新记录");
   // 请求计数只覆盖弹窗上下文：自动采集由后台服务发出，不经此监听器；
   // 其送达证据是上面的桥接队列（source=auto + 一次性取出凭据一致）。
   assert.equal(requests.filter((request) => request.pathname === "/v1/captures").length, 2);

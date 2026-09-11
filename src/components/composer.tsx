@@ -626,10 +626,13 @@ function persist(kind: AssetKind, id: string, form: Record<string, string>, exis
       break;
     }
     case "secret": {
+      const previous = existing as Secret | null;
       const item: Secret = {
+        ...previous,
         id,
         imageDataUrl: form.imageDataUrl || "",
         name: form.name,
+        folderId: form.folderId ?? previous?.folderId,
         kind: (form.kind as Secret["kind"]) || "api",
         hint: form.hint,
         // Kept empty on purpose: the real value is in the vault.

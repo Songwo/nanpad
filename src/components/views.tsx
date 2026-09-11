@@ -13,6 +13,7 @@ import {
 import { AssetWorkspace } from "./asset-workspace";
 import { AssetOrganizer } from "./asset-organizer";
 import { MailWorkspace } from "./mail-workspace";
+import { VaultWorkspace } from "./vault-workspace";
 import { useSettings } from "@/lib/settings";
 import { Area, AreaChart, ResponsiveContainer, Tooltip, XAxis } from "recharts";
 import { AiCard, CertCard, DomainCard, MailCard, SecretCard, ServerCard } from "./asset-card";
@@ -73,7 +74,7 @@ function ViewBody() {
     case "ai":
       return <AiView />;
     case "vault":
-      return <VaultView />;
+      return <VaultWorkspace />;
     case "certs":
       return <CertsView />;
     case "tags":
@@ -675,18 +676,6 @@ function AiView() {
         render={(s) => <AiCard key={s.id} data={s} />}
       />
     </div>
-  );
-}
-
-function VaultView() {
-  const list = useAppStore((s) => s.secrets);
-  const items = useListFilter(list, (s) => [s.name, s.kind, s.hint, tagsOf(s).join(" ")]);
-  return (
-    <AssetList
-      items={items}
-      empty={t("没有匹配的密钥。")}
-      render={(s) => <SecretCard key={s.id} data={s} />}
-    />
   );
 }
 

@@ -113,6 +113,8 @@ export interface AiAsset extends Taggable {
 export interface Secret extends Taggable {
   id: string;
   name: string;
+  /** 密钥分组归属（0.10.0）；空或指向已删除分组时视为未分组。 */
+  folderId?: string;
   kind: "api" | "ssh" | "password" | "token";
   hint: string;
   value: string;
@@ -154,6 +156,7 @@ export type AnyAsset =
 
 export interface Snapshot {
   mailFolders?: import("./mail-folders").MailFolder[];
+  secretFolders?: import("./secret-folders").SecretFolder[];
   links?: import("./operations").AssetLink[];
   servers: Server[];
   domains: Domain[];

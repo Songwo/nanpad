@@ -21,6 +21,7 @@ import type { AiAccount } from "./ai-accounts";
 import { subscriptionFromAccount } from "./ai-subscriptions";
 import { normalizeSnapshotImages } from "../../electron/services/image-data.mjs";
 import { normalizeMailFolders } from "./mail-folders";
+import { normalizeSecretFolders } from "./secret-folders";
 
 export interface ExpandState {
   kind: AssetKind;
@@ -156,6 +157,7 @@ export const useAppStore = create<AppState>()(
     (set, get) => ({
       ...initialSnapshot(),
       mailFolders: normalizeMailFolders(undefined),
+      secretFolders: normalizeSecretFolders(undefined),
       ...emptyUi,
       links: [],
       linkAssets: (from, to) =>
@@ -282,6 +284,7 @@ export const useAppStore = create<AppState>()(
           domains: snap.domains ?? [],
           mailboxes: snap.mailboxes ?? [],
           mailFolders: normalizeMailFolders(snap.mailFolders),
+          secretFolders: normalizeSecretFolders(snap.secretFolders),
           aiAssets: snap.aiAssets ?? [],
           secrets: snap.secrets ?? [],
           certs: snap.certs ?? [],
@@ -305,6 +308,7 @@ export const useAppStore = create<AppState>()(
           domains: withTags(saved.domains),
           mailboxes: withTags(saved.mailboxes),
           mailFolders: normalizeMailFolders(saved.mailFolders),
+          secretFolders: normalizeSecretFolders(saved.secretFolders),
           aiAssets: withTags(saved.aiAssets),
           secrets: withTags(saved.secrets),
           certs: withTags(saved.certs),
@@ -324,6 +328,7 @@ export const useAppStore = create<AppState>()(
         domains: s.domains,
         mailboxes: s.mailboxes,
         mailFolders: s.mailFolders,
+        secretFolders: s.secretFolders,
         aiAssets: s.aiAssets,
         secrets: s.secrets,
         certs: s.certs,
@@ -345,7 +350,7 @@ function upsert<T extends { id: string }>(list: T[], item: T): T[] {
   return next;
 }
 
-function collectionKey(kind: AssetKind): Exclude<keyof Snapshot, "links" | "mailFolders"> {
+function collectionKey(kind: AssetKind): Exclude<keyof Snapshot, "links" | "mailFolders" | "secretFolders"> {
   switch (kind) {
     case "server":
       return "servers";
@@ -369,6 +374,7 @@ export function snapshotOf(s: Snapshot): Snapshot {
     domains: s.domains,
     mailboxes: s.mailboxes,
     mailFolders: s.mailFolders,
+    secretFolders: s.secretFolders,
     aiAssets: s.aiAssets,
     secrets: s.secrets,
     certs: s.certs,

@@ -103,6 +103,20 @@ export const AGENT_TOOLS = [
       limit: { type: "integer", minimum: 1, maximum: 50 },
     },
   ),
+  tool(
+    "list_secret_folders",
+    "List all local secret groups (key organization folders), including empty groups and unfiled secrets, with counts by kind. These are Nanpad organization groups for credentials.",
+  ),
+  tool(
+    "list_secrets",
+    "List saved secrets by name, kind and local group membership. Use a folder ID from list_secret_folders to filter, or an empty folderId for unfiled. Omit folderId for all groups. Follow nextOffset for complete results. Returns metadata only; values and hints are never included.",
+    {
+      folderId: { type: "string", maxLength: 128 },
+      query: { type: "string", maxLength: 200 },
+      offset: { type: "integer", minimum: 0, maximum: 6000 },
+      limit: { type: "integer", minimum: 1, maximum: 50 },
+    },
+  ),
 ];
 const PROMPT = `You are Nanpad, an asset operations assistant. Answer in the user's language.
 Scope: only answer questions about the user's assets, credential metadata, mailboxes, AI subscriptions, the local knowledge base and how to use this workbench. For unrelated topics, briefly decline and remind the user what this assistant covers.
@@ -112,7 +126,7 @@ Recorded metrics are snapshots, not a live connection. Only check_mailbox can pr
 Use read-only tools to investigate follow-up questions. Never claim to execute SSH, renew subscriptions or change assets.
 For mailbox group/folder questions, use list_mail_folders for the complete local group directory, then list_mailboxes to inspect membership. Retrieval is only a partial ranking, never a complete inventory. Follow nextOffset when listing all matching accounts. Local account groups are not IMAP message folders; these tools cannot inspect server-side folders. A group count includes aliases and demo accounts; use their explicit counts/flags to distinguish them.
 Never request or output passwords, API keys or private keys. locate_credential returns a local UI location only; it never reads the vault and cannot confirm a credential exists.
-For secrets, use locate_credential and direct the user to the asset detail vault UI. Never invent values. Distinguish unread messages from new messages: newMessages=null means a first or reset baseline, not zero. Explain conclusions using available evidence.`;
+For secret group questions, use list_secret_folders for the complete group directory, then list_secrets to inspect membership. For individual secret values, use locate_credential and direct the user to the asset detail vault UI. Never invent values. Distinguish unread messages from new messages: newMessages=null means a first or reset baseline, not zero. Explain conclusions using available evidence.`;
 
 export class AgentService {
   constructor({ directory, secureStorage, getSnapshot, emit, fetchImpl = fetch, checkMailbox }) {
@@ -640,6 +654,31 @@ export class AgentService {
                   const text = JSON.stringify(result);
                   result.sources = cite([
                     { id: `mailbox-list:${hash(text)}`, title: "邮箱账号与本地分组", text },
+                  ]);
+                }
+              } else if (call.function.name === "list_secret_folders" && !Object.keys(args).length) {
+                result = { scope: "local_secret_groups", folders: index.secretFolders };
+                result.sources = cite([
+                  {
+                    id: "secret-folders:catalog",
+                    title: "本地密钥分组目录",
+                    text: JSON.stringify(result),
+                  },
+                ]);
+              } else if (call.function.name === "list_secrets" && validMailboxListArgs(args)) {
+                if (
+                  args.folderId !== undefined &&
+                  !index.secretFolders.some((folder) => folder.id === args.folderId)
+                )
+                  result = {
+                    error:
+                      "Local secret group not found. Use list_secret_folders to find a saved group ID.",
+                  };
+                else {
+                  result = index.listSecrets(args);
+                  const text2 = JSON.stringify(result);
+                  result.sources = cite([
+                    { id: `secret-list:${hash(text2)}`, title: "密钥目录与本地分组", text: text2 },
                   ]);
                 }
               } else if (call.function.name === "asset_summary") {

@@ -101,9 +101,34 @@ function normalizedMailFolders(value) {
   return folders;
 }
 
+/** 密钥分组归一化；与邮箱分组同规则，仅保留 id 与名称（颜色不进索引）。 */
+function normalizedSecretFolders(value) {
+  const defaults = [
+    { id: "work", name: "工作密钥" },
+    { id: "personal", name: "个人密钥" },
+  ];
+  if (!Array.isArray(value)) return defaults;
+  const folders = [];
+  for (const folder of value.slice(0, 100)) {
+    if (
+      !folder ||
+      typeof folder.id !== "string" ||
+      !folder.id ||
+      folder.id.length > 128 ||
+      typeof folder.name !== "string"
+    )
+      continue;
+    const name = folder.name.trim().slice(0, 40);
+    if (!name || folders.some((saved) => saved.id === folder.id || saved.name === name)) continue;
+    folders.push({ id: folder.id, name });
+  }
+  return folders;
+}
+
 export function assetDocuments(
   snapshot,
   mailFolders = normalizedMailFolders(snapshot.mailFolders),
+  secretFolders = normalizedSecretFolders(snapshot.secretFolders),
 ) {
   const docs = [];
   for (const [kind, collection] of Object.entries(COLLECTIONS)) {
@@ -131,6 +156,11 @@ export function assetDocuments(
       );
       if (kind === "mail") {
         const folder = mailFolders.find((entry) => entry.id === asset.folderId);
+        fields.folderId = folder?.id ?? "";
+        fields.folderName = folder?.name ?? "未分组";
+      }
+      if (kind === "secret") {
+        const folder = secretFolders.find((entry) => entry.id === asset.folderId);
         fields.folderId = folder?.id ?? "";
         fields.folderName = folder?.name ?? "未分组";
       }
@@ -188,7 +218,8 @@ export class LocalIndex {
    */
   constructor(snapshot, documents, saved = null) {
     const folders = normalizedMailFolders(snapshot.mailFolders);
-    const assets = assetDocuments(snapshot, folders);
+    const secretFolders = normalizedSecretFolders(snapshot.secretFolders);
+    const assets = assetDocuments(snapshot, folders, secretFolders);
     const mailboxes = assets.filter((doc) => doc.kind === "mail");
     this.mailFolders = [...folders, { id: "", name: "未分组" }].map((folder) => {
       const members = mailboxes.filter((doc) => doc.fields.folderId === folder.id);
@@ -205,7 +236,28 @@ export class LocalIndex {
       title: `${folder.name} / 邮箱收纳组`,
       text: `本地邮箱文件夹 收纳组 分组；不是 IMAP 服务端的收件箱、已发送等邮件目录。\n${JSON.stringify(folder)}`,
     }));
-    this.docs = [...assets, ...folderDocs, ...knowledgeChunks(documents)];
+    // 密钥分组目录：只统计名称、类型与数量；密钥值与提示永不进入索引。
+    const secrets = assets.filter((doc) => doc.kind === "secret");
+    this.secretFolders = [...secretFolders, { id: "", name: "未分组" }].map((folder) => {
+      const members = secrets.filter((doc) => doc.fields.folderId === folder.id);
+      return {
+        ...folder,
+        count: members.length,
+        passwordCount: members.filter((doc) => doc.fields.kind === "password").length,
+        keyCount: members.filter((doc) => doc.fields.kind !== "password").length,
+      };
+    });
+    const secretFolderDocs = this.secretFolders.map((folder) => ({
+      id: `secret-folder:${folder.id ? `saved:${folder.id}` : "unfiled"}`,
+      title: `${folder.name} / 密钥分组`,
+      text: `本地密钥分组 收纳组；条目为密钥元信息目录，不含密钥值。\n${JSON.stringify(folder)}`,
+    }));
+    this.docs = [
+      ...assets,
+      ...folderDocs,
+      ...secretFolderDocs,
+      ...knowledgeChunks(documents),
+    ];
     if (this.docs.length > 6000) throw new Error("本地索引超过 6000 个片段，请减少导入文档。");
     this.byId = new Map(this.docs.map((doc) => [doc.id, doc]));
     this.signature = docsSignature(this.docs);
@@ -257,6 +309,37 @@ export class LocalIndex {
         folderId: doc.fields.folderId,
         folderName: doc.fields.folderName,
         demo: doc.fields.demo === true,
+      })),
+    };
+  }
+  /** 按密钥分组分页列出密钥元信息目录；名称、类型与归属之外的字段一律不返回。 */
+  listSecrets({ folderId, query = "", offset = 0, limit = 25 } = {}) {
+    const term = query.trim().toLocaleLowerCase();
+    const matches = this.docs.filter(
+      (doc) =>
+        doc.kind === "secret" &&
+        doc.assetId &&
+        (folderId === undefined || doc.fields.folderId === folderId) &&
+        (!term ||
+          [doc.title, doc.fields.kind, doc.fields.folderName].some((value) =>
+            String(value ?? "")
+              .toLocaleLowerCase()
+              .includes(term),
+          )),
+    );
+    return {
+      scope: "local_secret_groups",
+      total: matches.length,
+      offset,
+      nextOffset: offset + limit < matches.length ? offset + limit : null,
+      secrets: matches.slice(offset, offset + limit).map((doc) => ({
+        sourceId: doc.id,
+        assetId: doc.assetId,
+        name: doc.title,
+        kind: doc.fields.kind ?? null,
+        folderId: doc.fields.folderId,
+        folderName: doc.fields.folderName,
+        lastRotated: doc.fields.lastRotated ?? null,
       })),
     };
   }

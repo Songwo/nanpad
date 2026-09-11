@@ -220,10 +220,13 @@ $("#disconnect").addEventListener("click", async () => {
 const autoToggle = $("#auto-capture");
 autoToggle.addEventListener("change", () => {
   // 偏好跟随浏览器本地保存；内容脚本通过 storage 监听即时生效。
-  void chrome.storage.local.set({ [autoKey]: autoToggle.checked });
+  // 默认开启：勾选时移除键回到默认，取消勾选时显式存 false。
+  void (autoToggle.checked
+    ? chrome.storage.local.remove(autoKey)
+    : chrome.storage.local.set({ [autoKey]: false }));
 });
 void chrome.storage.local.get(autoKey).then((stored) => {
-  autoToggle.checked = stored[autoKey] === true;
+  autoToggle.checked = stored[autoKey] !== false;
 });
 $("#capture").addEventListener("submit", async (event) => {
   event.preventDefault();

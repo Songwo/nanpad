@@ -4,7 +4,7 @@ import { createServer } from "node:http";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { AgentService, DEFAULT_CONFIG, normalizeBaseUrl } from "./agent-service.mjs";
+import { AGENT_TOOLS, AgentService, DEFAULT_CONFIG, normalizeBaseUrl } from "./agent-service.mjs";
 import { LocalIndex, assetDocuments, hash, knowledgeChunks } from "./rag.mjs";
 import { demoSnapshot, mergeDemo } from "./demo.mjs";
 import { notificationCandidates } from "./notifications.mjs";
@@ -979,4 +979,97 @@ test("真实 SDK 连续读取分组账号分页，每页引用独立且账号不
     2,
   );
   assert.equal(result.steps, 3);
+});
+
+// —— 密钥分组（0.10.0）——
+const groupedSecrets = () => ({
+  secretFolders: [
+    { id: "work", name: "生产密钥", color: "blue", secret: "private-folder-secret" },
+    { id: "personal", name: "个人密钥", color: "green" },
+    { id: "archive", name: "归档密钥", color: "rose" },
+  ],
+  secrets: [
+    {
+      id: "prod-api",
+      name: "生产 API",
+      folderId: "work",
+      kind: "api",
+      hint: "private-hint-must-not-index",
+      value: "private-secret-value",
+      notes: "private-note",
+      lastRotated: "2026-09-01T00:00:00.000Z",
+      tags: [],
+    },
+    { id: "site-login", name: "站点登录", folderId: "work", kind: "password", value: "", lastRotated: "2026-09-01T00:00:00.000Z", tags: [] },
+    { id: "personal-token", name: "个人令牌", folderId: "personal", kind: "token", value: "", lastRotated: "2026-09-01T00:00:00.000Z", tags: [] },
+    { id: "unfiled-key", name: "未分组密钥", kind: "ssh", value: "", lastRotated: "2026-09-01T00:00:00.000Z", tags: [] },
+    { id: "orphan-key", name: "孤儿密钥", folderId: "removed", kind: "api", value: "", lastRotated: "2026-09-01T00:00:00.000Z", tags: [] },
+  ],
+});
+test("密钥 RAG 包含分组归属与空组统计，密钥值不进入索引", () => {
+  const index = new LocalIndex(groupedSecrets(), []);
+  const doc = index.byId.get("asset:secret:prod-api");
+  assert.equal(doc.fields.folderId, "work");
+  assert.equal(doc.fields.folderName, "生产密钥");
+  assert.equal(index.byId.get("asset:secret:orphan-key").fields.folderName, "未分组");
+  assert.deepEqual(
+    index.secretFolders.find((folder) => folder.id === "work"),
+    { id: "work", name: "生产密钥", count: 2, passwordCount: 1, keyCount: 1 },
+  );
+  assert.equal(index.secretFolders.find((folder) => folder.id === "archive").count, 0);
+  assert.equal(index.secretFolders.find((folder) => folder.id === "").count, 2);
+  assert.ok(index.search("归档密钥").some((entry) => entry.id === "secret-folder:saved:archive"));
+  const serialized = JSON.stringify(index.docs);
+  for (const secret of [
+    "private-secret-value",
+    "private-hint-must-not-index",
+    "private-note",
+    "private-folder-secret",
+  ])
+    assert.equal(serialized.includes(secret), false, secret);
+});
+test("密钥分组索引兼容默认目录与无效导入", () => {
+  assert.deepEqual(
+    new LocalIndex({}, []).secretFolders.map((folder) => folder.id),
+    ["work", "personal", ""],
+  );
+  const index = new LocalIndex(
+    {
+      secretFolders: [
+        null,
+        { id: "a", name: " 生产 " },
+        { id: "a", name: "重复" },
+        { id: "b", name: "" },
+      ],
+    },
+    [],
+  );
+  assert.deepEqual(
+    index.secretFolders.map(({ id, name }) => ({ id, name })),
+    [
+      { id: "a", name: "生产" },
+      { id: "", name: "未分组" },
+    ],
+  );
+});
+test("密钥分组分页查询只返回元信息目录", () => {
+  const index = new LocalIndex(groupedSecrets(), []);
+  const work = index.listSecrets({ folderId: "work" });
+  assert.equal(work.total, 2);
+  assert.deepEqual(
+    work.secrets.map((item) => item.name),
+    ["生产 API", "站点登录"],
+  );
+  assert.equal(work.secrets[0].folderName, "生产密钥");
+  assert.equal(work.secrets[0].kind, "api");
+  assert.equal(work.nextOffset, null);
+  assert.equal(index.listSecrets({ query: "站点" }).total, 1);
+  assert.equal(index.listSecrets({ folderId: "missing" }).total, 0);
+});
+test("密钥分组工具已注册且只读元信息", () => {
+  assert.ok(AGENT_TOOLS.some((entry) => entry.function.name === "list_secret_folders"));
+  const listSecrets = AGENT_TOOLS.find((entry) => entry.function.name === "list_secrets");
+  assert.ok(listSecrets);
+  assert.match(listSecrets.function.description, /never included/i);
+  assert.ok(listSecrets.function.parameters.properties.folderId);
 });

@@ -6,7 +6,9 @@
   window.__nanpadSubmitCapture = true;
   const chrome = globalThis.chrome;
   const AUTO_KEY = "nanpadAutoCapture";
-  let enabled = false;
+  // 默认开启：仅在用户显式存过 false 时关闭（0.10.0 起随配对即生效）。
+  let enabled = true;
+  const sentKeys = new Set();
 
   // 与 form-capture.mjs 相同的排除规则：验证码 / 一次性代码 / 安全码不参与账号识别。
   const EXCLUDED =
@@ -28,9 +30,8 @@
     return 0;
   }
 
-  function formInputs(form) {
-    const inputs = [...form.querySelectorAll("input")];
-    return inputs.filter(
+  function usableInputs(root) {
+    return [...root.querySelectorAll("input")].filter(
       (input) =>
         !input.disabled &&
         input.type !== "hidden" &&
@@ -40,8 +41,7 @@
     );
   }
 
-  function collect(form) {
-    const inputs = formInputs(form);
+  function collect(inputs) {
     // 取第一个已填写的密码框作为登录密码；确认密码框通常在其后。
     const passwordInput = inputs.find((input) => input.type === "password");
     if (!passwordInput) return null;
@@ -59,6 +59,22 @@
       username,
       password: passwordInput.value.slice(0, 4096),
     };
+  }
+
+  function collectForm(form) {
+    return collect(usableInputs(form));
+  }
+
+  // 无 <form> 的脚本登录：从提交按钮向上找最近的包含已填密码框的容器。
+  function collectFormless(button) {
+    let scope = button.parentElement;
+    for (let depth = 0; depth < 6 && scope; depth++) {
+      const inputs = usableInputs(scope).filter((input) => scope.contains(input));
+      const capture = collect(inputs);
+      if (capture) return capture;
+      scope = scope.parentElement;
+    }
+    return null;
   }
 
   function toast(ok) {
@@ -80,6 +96,8 @@
   }
 
   async function deliver(capture) {
+    const key = `${capture.username}|${capture.password}`;
+    if (sentKeys.has(key)) return; // 同一页面重复提交（连点/重试）只发送一次
     let reply;
     try {
       reply = await chrome.runtime.sendMessage({
@@ -89,6 +107,7 @@
     } catch {
       reply = null;
     }
+    if (reply?.ok) sentKeys.add(key);
     toast(Boolean(reply?.ok));
   }
 
@@ -100,7 +119,7 @@
       if (!(form instanceof HTMLFormElement)) return;
       try {
         // 必须在事件回调内同步读取：提交后页面可能立即跳转。
-        const capture = collect(form);
+        const capture = collectForm(form);
         if (capture) void deliver(capture);
       } catch {
         /* 采集失败不打扰登录流程 */
@@ -109,16 +128,39 @@
     true,
   );
 
+  const SUBMIT_TEXT = /^(登录|登陆|立即登录|登 录|sign\s?in|log\s?in|login|continue)$/i;
+  document.addEventListener(
+    "click",
+    (event) => {
+      if (!enabled) return;
+      const target = event.target;
+      if (!(target instanceof Element)) return;
+      const button = target.closest('button, input[type="submit"], [role="button"]');
+      if (!button || button.closest("form")) return; // 有表单的走 submit 事件
+      const isSubmit = button instanceof HTMLInputElement;
+      const text = (button.textContent || button.value || "").trim();
+      if (!isSubmit && !SUBMIT_TEXT.test(text)) return;
+      try {
+        const capture = collectFormless(button);
+        if (capture) void deliver(capture);
+      } catch {
+        /* 同上 */
+      }
+    },
+    true,
+  );
+
   async function refresh() {
     try {
       const stored = await chrome.storage.local.get(AUTO_KEY);
-      enabled = stored[AUTO_KEY] === true;
+      enabled = stored[AUTO_KEY] !== false;
     } catch {
-      enabled = false;
+      enabled = true;
     }
   }
   void refresh();
   chrome.storage.onChanged.addListener((changes, area) => {
-    if (area === "local" && AUTO_KEY in changes) enabled = changes[AUTO_KEY].newValue === true;
+    if (area === "local" && AUTO_KEY in changes)
+      enabled = changes[AUTO_KEY].newValue !== false;
   });
 })();

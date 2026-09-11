@@ -98,7 +98,8 @@ test("超过长度限制的密码留空并标记，不能截断保存错误密�
 
 // —— 自动采集（submit-capture.mjs 内容脚本）——
 // 真实 HTTP 页面上执行脚本源码，用桩替换 chrome.*，验证提交瞬间的采集行为。
-async function withAutoCapture(t, html, enabled) {
+// `stored` 模拟 chrome.storage.local 中的开关值：undefined = 从未设置（默认开启）。
+async function withAutoCapture(t, html, stored) {
   const server = createServer((_req, res) => {
     res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
     res.end(html);
@@ -112,12 +113,15 @@ async function withAutoCapture(t, html, enabled) {
   const page = await browser.newPage();
   t.after(() => page.close());
   await page.goto(url);
-  await page.evaluate((on) => {
+  await page.evaluate((saved) => {
     window.__messages = [];
     window.__changedListeners = [];
     globalThis.chrome = {
       storage: {
-        local: { get: async () => ({ nanpadAutoCapture: on }) },
+        local: {
+          get: async () =>
+            saved === undefined ? {} : { nanpadAutoCapture: saved },
+        },
         onChanged: { addListener: (fn) => window.__changedListeners.push(fn) },
       },
       runtime: {
@@ -127,7 +131,7 @@ async function withAutoCapture(t, html, enabled) {
         },
       },
     };
-  }, enabled);
+  }, stored);
   await page.evaluate(submitCaptureSource);
   // 内容脚本的开关读取是异步的，等它完成再触发提交。
   await page.waitForTimeout(60);
@@ -145,12 +149,22 @@ async function submitForm(page, selector) {
   await page.waitForTimeout(150);
   return page.evaluate(() => window.__messages);
 }
+async function clickButton(page, selector) {
+  await page.evaluate(
+    (buttonSelector) => {
+      document.querySelector(buttonSelector).click();
+    },
+    selector,
+  );
+  await page.waitForTimeout(150);
+  return page.evaluate(() => window.__messages);
+}
 
-test("自动采集：提交含密码表单时读取账号密码并发送到后台", async (t) => {
+test("自动采集默认开启：提交含密码表单时读取账号密码并发送到后台", async (t) => {
   const { page, url } = await withAutoCapture(
     t,
     `<title>示例站</title><form><input name="user" value="alice@example.test"><input type="password" value="pw1"></form>`,
-    true,
+    undefined,
   );
   assert.deepEqual(await submitForm(page, "form"), [
     {
@@ -164,7 +178,7 @@ test("自动采集：提交含密码表单时读取账号密码并发送到后�
     },
   ]);
 });
-test("自动采集默认关闭：开关未开启时不监听表单提交", async (t) => {
+test("显式关闭开关后不监听任何提交", async (t) => {
   const { page } = await withAutoCapture(
     t,
     `<form><input value="u"><input type="password" value="p"></form>`,
@@ -172,18 +186,11 @@ test("自动采集默认关闭：开关未开启时不监听表单提交", async
   );
   assert.deepEqual(await submitForm(page, "form"), []);
 });
-test("无密码与验证码表单不采集，开关切换即时生效", async (t) => {
+test("无密码与验证码表单不采集，关闭开关即时生效", async (t) => {
   const { page, url } = await withAutoCapture(
     t,
     `<form id="no-pw"><input value="u"></form><form id="otp"><input value="u"><input name="otp" type="password" value="123"></form><form id="login"><input autocomplete="username" value="real"><input type="password" value="pw"></form>`,
-    false,
-  );
-  assert.deepEqual(await submitForm(page, "#login"), []);
-  // 模拟在弹窗中打开开关：storage 变化通知内容脚本。
-  await page.evaluate(() =>
-    window.__changedListeners.forEach((fn) =>
-      fn({ nanpadAutoCapture: { newValue: true } }, "local"),
-    ),
+    undefined,
   );
   assert.deepEqual(await submitForm(page, "#login"), [
     {
@@ -191,15 +198,46 @@ test("无密码与验证码表单不采集，开关切换即时生效", async (t
       capture: { url: `${new URL(url).origin}/`, title: "", username: "real", password: "pw" },
     },
   ]);
+  // 模拟在弹窗中关闭开关：storage 变化通知内容脚本。
+  await page.evaluate(() =>
+    window.__changedListeners.forEach((fn) =>
+      fn({ nanpadAutoCapture: { newValue: false } }, "local"),
+    ),
+  );
+  await page.evaluate(() => {
+    window.__messages.length = 0;
+  });
+  assert.deepEqual(await submitForm(page, "#login"), []);
   await submitForm(page, "#no-pw");
   await submitForm(page, "#otp");
+  assert.equal(await page.evaluate(() => window.__messages.length), 0);
+});
+test("无表单的脚本登录：点击登录按钮捕获就近的账号密码", async (t) => {
+  const { page, url } = await withAutoCapture(
+    t,
+    `<title>脚本站</title><div id="box"><input name="account" value="spa-user"><input type="password" value="spa-pass"><button type="button" id="go">登录</button></div>`,
+    undefined,
+  );
+  assert.deepEqual(await clickButton(page, "#go"), [
+    {
+      type: "nanpad-auto-capture",
+      capture: {
+        url: `${new URL(url).origin}/`,
+        title: "脚本站",
+        username: "spa-user",
+        password: "spa-pass",
+      },
+    },
+  ]);
+  // 连点去重：同一账号密码只发送一次。
+  await clickButton(page, "#go");
   assert.equal(await page.evaluate(() => window.__messages.length), 1);
 });
 test("自动采集在页面角落给出结果提示", async (t) => {
   const { page } = await withAutoCapture(
     t,
     `<form><input value="u"><input type="password" value="p"></form>`,
-    true,
+    undefined,
   );
   await submitForm(page, "form");
   assert.ok(
