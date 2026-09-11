@@ -1,10 +1,12 @@
 import { useEffect, useRef, useState } from "react";
-import { Copy, Link2, Loader2, Puzzle, Unplug } from "lucide-react";
+import { Copy, Download, ExternalLink, Link2, Loader2, Puzzle, Unplug } from "lucide-react";
 import { toast } from "sonner";
 import { desktop } from "@/lib/desktop";
 import { t } from "@/lib/i18n";
 import { useVault } from "@/lib/vault-state";
 import { Button } from "./ui/button";
+
+const RELEASES_URL = "https://github.com/Songwo/nanpad/releases/latest";
 
 export function ExtensionSettings() {
   const bridge = desktop()?.extension;
@@ -13,7 +15,28 @@ export function ExtensionSettings() {
   const [pairing, setPairing] = useState<{ code: string; expiresAt: number }>();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [version, setVersion] = useState("");
   const generation = useRef(0);
+
+  useEffect(() => {
+    void desktop()
+      ?.info()
+      .then((info) => setVersion(info.version))
+      .catch(() => {});
+  }, []);
+
+  // 与本机同版本的直链；拿不到版本或链接失败时回退到发布页。
+  async function downloadExtension() {
+    const url = version
+      ? `${RELEASES_URL}/download/Nanpad-${version}-browser-extension.zip`
+      : RELEASES_URL;
+    try {
+      await desktop()?.openExternal(url);
+      if (version) toast.success(t("已在浏览器开始下载；解压后在扩展管理页加载该目录。"));
+    } catch {
+      void desktop()?.openExternal(RELEASES_URL);
+    }
+  }
 
   useEffect(() => {
     if (!bridge) return;
@@ -80,6 +103,33 @@ export function ExtensionSettings() {
       <div className="flex items-center gap-3">
         <Puzzle className="size-5 text-muted" />
         <h3 className="text-lg font-semibold">{t("浏览器插件")}</h3>
+      </div>
+      <div className="rounded-xl bg-canvas p-4">
+        <div className="mb-2 flex flex-wrap items-center gap-2">
+          <span className="text-meta font-semibold">{t("还没有装插件？")}</span>
+          {version && (
+            <span className="text-2xs text-subtle">{t("与本机 v{0} 配套", version)}</span>
+          )}
+        </div>
+        <p className="mb-3 text-meta text-muted">
+          {t(
+            "① 点击下载并解压插件包；② 浏览器打开 chrome://extensions（Edge 为 edge://extensions）并开启开发者模式；③ 点击「加载已解压的扩展程序」，选择解压出的目录。",
+          )}
+        </p>
+        <div className="flex flex-wrap gap-2">
+          <Button size="sm" onClick={() => void downloadExtension()}>
+            <Download className="size-4" />
+            {t("下载浏览器插件")}
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => void desktop()?.openExternal(RELEASES_URL)}
+          >
+            <ExternalLink className="size-4" />
+            {t("打开 GitHub 发布页")}
+          </Button>
+        </div>
       </div>
       {!bridge ? (
         <p className="text-meta text-muted">{t("仅桌面版可用")}</p>

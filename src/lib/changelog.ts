@@ -13,6 +13,14 @@ export interface Release {
 
 export const RELEASES: Release[] = [
   {
+    version: "0.9.1",
+    date: "2026-09-11",
+    title: "插件下载入口",
+    changes: [
+      "「设置 → 浏览器插件」新增插件下载引导：一键下载与本机版本配套的插件包、三步安装说明和 GitHub 发布页入口。",
+    ],
+  },
+  {
     version: "0.9.0",
     date: "2026-09-10",
     title: "缓存与性能",

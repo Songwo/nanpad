@@ -139,6 +139,14 @@ export const EN: Record<string, string> = {
     "Questions, recent messages and retrieved excerpts are sent to your configured model. Asset credentials and free-form notes are excluded from retrieval.",
   模型名称: "Model name",
   自动采集: "Auto-captured",
+  "还没有装插件？": "Extension not installed yet?",
+  "与本机 v{0} 配套": "Matches this app (v{0})",
+  "① 点击下载并解压插件包；② 浏览器打开 chrome://extensions（Edge 为 edge://extensions）并开启开发者模式；③ 点击「加载已解压的扩展程序」，选择解压出的目录。":
+    "① Download and unzip the extension package; ② open chrome://extensions (Edge: edge://extensions) and enable Developer mode; ③ click “Load unpacked” and select the unzipped folder.",
+  下载浏览器插件: "Download browser extension",
+  "打开 GitHub 发布页": "Open GitHub releases",
+  "已在浏览器开始下载；解压后在扩展管理页加载该目录。":
+    "Download started in your browser; unzip it and load the folder on the extensions page.",
   存储: "Storage",
   "存储管理仅在桌面版可用。": "Storage management is desktop-only.",
   "缓存只影响速度，不影响数据：清理后首次访问会稍慢。资产、密钥库和凭据文件不属于缓存，不会被清理。":

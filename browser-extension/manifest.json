@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "司南 Nanpad - 保存网站账号",
-  "version": "0.9.0",
+  "version": "0.9.1",
   "description": "读取当前网页的登录表单并核对后保存到本机司南密钥库；可选开启登录时自动采集。",
   "permissions": [
     "activeTab",

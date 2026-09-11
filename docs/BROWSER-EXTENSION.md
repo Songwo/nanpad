@@ -4,7 +4,9 @@
 
 ## 安装
 
-1. 从 [GitHub Releases](https://github.com/Songwo/nanpad/releases) 下载 `Nanpad-0.8.0-setup.exe` 和 `Nanpad-0.8.0-browser-extension.zip`，使用同一版本的桌面端与插件。Windows 安装包未签名，可用同一 Release 的 `SHA256SUMS.txt` 核对文件。
+0.9.1 起可在「设置 → 浏览器插件」直接点击「下载浏览器插件」获取与本机版本配套的插件包，面板内附三步安装说明。
+
+1. 也可从 [GitHub Releases](https://github.com/Songwo/nanpad/releases) 手动下载 `Nanpad-0.9.1-setup.exe` 和 `Nanpad-0.9.1-browser-extension.zip`，使用同一版本的桌面端与插件。Windows 安装包未签名，可用同一 Release 的 `SHA256SUMS.txt` 核对文件。
 2. 安装并启动司南，完成姓名与主密码设置。将插件 ZIP 解压到一个后续不会删除或移动的目录。
 3. Chrome 打开 `chrome://extensions`，Edge 打开 `edge://extensions`，启用开发者模式，点击「加载已解压的扩展程序」，选择包含 `manifest.json` 的目录。
 4. 将司南扩展固定到工具栏。插件需要下面的桌面配对才能发送账号密码；默认不开启自动采集，仅加载插件不会记录任何登录。

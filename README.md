@@ -10,7 +10,7 @@
 
 ## 安装与首次使用
 
-1. 在 GitHub Releases 下载 `Nanpad-0.9.0-setup.exe`，适用于 Windows x64。
+1. 在 GitHub Releases 下载 `Nanpad-0.9.1-setup.exe`，适用于 Windows x64。
 2. 运行安装程序，选择安装位置。当前安装包未做代码签名，请核对发布者、下载地址和 Release 中的 SHA256 校验文件。
 3. 首次启动填写自己的名字，创建至少 10 个字符的主密码，并再次确认。主密码不能找回。
 4. 已有密钥库的用户填写姓名及原主密码即可继续，升级不会自动删除资产或演示记录。
@@ -146,7 +146,7 @@ npm run build
 npm run desktop:dist -- --win --x64 --publish never
 ```
 
-安装包输出到 `release/v版本号/`，本版为 `release/v0.9.0/`。`npm run extension:build` 生成配套浏览器扩展目录。打包排除后端测试文件；日常资产、私钥和登录令牌不属于构建输入。发布流程见 [发布说明](docs/RELEASING.md)，本版变化见 [v0.9.0 发布说明](docs/releases/v0.9.0.md)。
+安装包输出到 `release/v版本号/`，本版为 `release/v0.9.1/`。`npm run extension:build` 生成配套浏览器扩展目录。打包排除后端测试文件；日常资产、私钥和登录令牌不属于构建输入。发布流程见 [发布说明](docs/RELEASING.md)，本版变化见 [v0.9.1 发布说明](docs/releases/v0.9.1.md)。
 
 ## 项目结构
 
