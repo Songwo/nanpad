@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import ssh2 from "ssh2";
 import { SftpService } from "./sftp.mjs";
@@ -7,6 +7,37 @@ const { Client } = ssh2;
 
 const CONNECT_TIMEOUT = 15_000;
 const PROBE_TIMEOUT = 20_000;
+
+/**
+ * OpenSSH-style fingerprint of a raw host key buffer: SHA-256, base64, no padding.
+ *
+ * Same format `ssh-keygen -l` prints, so a suspicious fingerprint can be checked
+ * against the real server out of band before the user accepts the change.
+ */
+export function fingerprintOf(key) {
+  return `SHA256:${createHash("sha256").update(key).digest("base64").replace(/=+$/, "")}`;
+}
+
+/**
+ * In-memory TOFU store — what a SshManager without a wired-in store falls back to.
+ * Reconnects within one process are still verified, which is what the test suite
+ * exercises; the desktop app passes a vault-backed store so pins survive restarts
+ * and tampering with the on-disk ciphertext is rejected by the GCM auth tag.
+ */
+function memoryHostKeyStore() {
+  const known = new Map();
+  return {
+    async get(host, port) {
+      return known.get(`${host}:${port}`) ?? null;
+    },
+    async set(host, port, fingerprint) {
+      known.set(`${host}:${port}`, fingerprint);
+    },
+    async remove(host, port) {
+      known.delete(`${host}:${port}`);
+    },
+  };
+}
 
 /**
  * One shell script, one round trip, `key=value` back.
@@ -60,9 +91,11 @@ export class SshManager {
   /** @type {Map<string, {client: import("ssh2").Client, stream: any, serverId: string}>} */
   #sessions = new Map();
   #emit;
+  #hostKeys;
 
-  constructor(emit) {
+  constructor(emit, hostKeys = memoryHostKeyStore()) {
     this.#emit = emit;
+    this.#hostKeys = hostKeys;
   }
 
   async #connect(target, credential) {
@@ -83,6 +116,50 @@ export class SshManager {
           "ssh-rsa",
         ],
       },
+    };
+
+    // Trust on first use: the first handshake pins the server's host key
+    // fingerprint, every later connection must present the same key or the
+    // handshake is refused — the SSH equivalent of a browser's certificate
+    // pin. Without this, a man in the middle impersonating the server
+    // harvests the password or private key on their way to the real host.
+    let hostKeyFailure = null;
+    config.hostVerifier = (key, callback) => {
+      void (async () => {
+        const host = String(target.host || "");
+        const port = target.port || 22;
+        const fingerprint = fingerprintOf(key);
+        let known;
+        try {
+          known = await this.#hostKeys.get(host, port);
+        } catch (err) {
+          // A locked vault or a failing disk must not degrade into an
+          // unverified connection.
+          hostKeyFailure = err;
+          callback(false);
+          return;
+        }
+        if (typeof known !== "string" || !known) {
+          try {
+            await this.#hostKeys.set(host, port, fingerprint);
+          } catch (err) {
+            hostKeyFailure = err;
+            callback(false);
+            return;
+          }
+          callback(true);
+          return;
+        }
+        if (known === fingerprint) {
+          callback(true);
+          return;
+        }
+        hostKeyFailure = new Error(
+          `主机指纹已变更：${host}:${port} 此前记录 ${known}，本次收到 ${fingerprint}。` +
+            "服务器可能已重装，也可能连接正被劫持；确认服务器确实更换后，可在该资产的 SSH 凭据面板重置指纹。",
+        );
+        callback(false);
+      })();
     };
 
     if (!credential) throw new Error("没有找到该主机的凭据，请先在密钥库中保存");
@@ -109,7 +186,7 @@ export class SshManager {
     await new Promise((resolve, reject) => {
       const fail = (err) => {
         client.removeAllListeners();
-        reject(new Error(friendly(err)));
+        reject(hostKeyFailure ?? new Error(friendly(err)));
       };
       client.once("ready", () => {
         client.removeListener("error", fail);
@@ -119,6 +196,11 @@ export class SshManager {
       client.connect(config);
     });
     return client;
+  }
+
+  /** Forget the pinned host key so the next connection trust-on-first-use again. */
+  async resetHostKey(target) {
+    await this.#hostKeys.remove(String(target?.host || ""), target?.port || 22);
   }
 
   /** Open an interactive PTY. Output is pushed to the renderer as it arrives. */
@@ -262,6 +344,8 @@ function friendly(err) {
   if (/Connection lost before handshake/i.test(msg))
     return "对端未完成 SSH 握手：地址或端口可能不对";
   if (/Handshake failed/i.test(msg)) return "SSH 握手失败：双方没有共同的加密算法";
+  if (/Host denied \(verification failed\)/i.test(msg))
+    return "主机指纹校验失败，连接已拒绝";
   if (/Cannot parse privateKey|no matching key format/i.test(msg))
     return "私钥格式无法解析（若有口令请一并填写）";
   if (/Encrypted private key detected|passphrase/i.test(msg)) return "私钥已加密，需要填写口令";

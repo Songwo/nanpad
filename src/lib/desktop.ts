@@ -252,6 +252,8 @@ export interface DesktopBridge {
     open(target: SshTarget, size: { cols: number; rows: number }): Promise<{ sessionId: string }>;
     probe(target: SshTarget): Promise<HostProbe>;
     test(target: SshTarget, credential: SshCredential): Promise<{ ok: true; message: string }>;
+    /** Forget the pinned host key fingerprint so the next connection re-pins it. */
+    resetHostKey(target: { host: string; port?: number }): Promise<{ ok: true }>;
     close(sessionId: string): Promise<boolean>;
     write(sessionId: string, data: string): void;
     resize(sessionId: string, cols: number, rows: number): void;

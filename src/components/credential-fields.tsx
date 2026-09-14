@@ -53,8 +53,12 @@ export function CredentialFields({
   const [test, setTest] = useState<{ state: "idle" | "busy" | "ok" | "fail"; message?: string }>({
     state: "idle",
   });
+  const [resettingKey, setResettingKey] = useState(false);
 
   const kind = (form._authKind as CredentialKind) || "password";
+  // The main process builds this phrase when TOFU refuses a changed host key;
+  // matching on it is what offers the reset affordance.
+  const fingerprintChanged = test.state === "fail" && (test.message ?? "").includes("主机指纹已变更");
 
   // Only the kind is read back, so the panel can say "已保存" without
   // putting a decrypted password into the DOM.
@@ -99,6 +103,21 @@ export function CredentialFields({
       setTest({ state: "ok", message: res.message });
     } catch (err) {
       setTest({ state: "fail", message: err instanceof Error ? err.message : String(err) });
+    }
+  }
+
+  async function resetHostKeyAndRetest() {
+    setResettingKey(true);
+    try {
+      await bridge!.ssh.resetHostKey({
+        host: target.host,
+        port: Number(target.port) || 22,
+      });
+      await runTest();
+    } catch (err) {
+      setTest({ state: "fail", message: err instanceof Error ? err.message : String(err) });
+    } finally {
+      setResettingKey(false);
     }
   }
 
@@ -215,6 +234,18 @@ export function CredentialFields({
               )}
               {test.message}
             </span>
+          )}
+          {fingerprintChanged && (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={resettingKey || !target.host}
+              onClick={() => void resetHostKeyAndRetest()}
+            >
+              {resettingKey ? <Loader2 className="size-3.5 animate-spin" /> : null}
+              {t("重置指纹并重试")}
+            </Button>
           )}
         </div>
 

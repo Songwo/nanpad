@@ -24,8 +24,14 @@ Thumbs.db
 dist-desktop/
 release/
 
-# 含个人资料的旧截图仅保留在本机，不再进入公开仓库。
-/attachments/image.png
-/screenshots/oauth-panel.png
-/screenshots/agent-final.png
-/screenshots/mail-login.png
+# 含个人资料的旧截图仅保留在本机，不进入公开仓库。
+/attachments/
+# screenshots 只保留 README 引用的展示图；测试与截图脚本（scripts/*smoke*、
+# *integration*）产生的截图与 JSON 都是本地产物。新增展示图用
+# `git add -f screenshots/xxx.png` 显式加入。
+/screenshots/*
+!/screenshots/nanpad-v0*/
+!/screenshots/.gitkeep
+
+# i18n 工具运行时落在仓库根目录的中间产物
+/scratchpad-*.json

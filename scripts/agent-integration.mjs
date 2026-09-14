@@ -142,7 +142,8 @@ try {
   await page.getByRole("combobox", { name: "模型名称", exact: true }).fill("integration-model");
   await page.getByRole("textbox", { name: "API Key", exact: true }).fill("integration-only-key");
   await page.getByRole("button", { name: "读取模型", exact: true }).click();
-  await page.getByText("模型列表已更新", { exact: true }).waitFor();
+  // 0.9.0 起读取成功的提示带模型数量，不再是无参数的「模型列表已更新」。
+  await page.getByText(/已加载 \d+ 个模型/).waitFor();
   assert.ok(
     !(await readFile(join(directory, "agent-config.json"), "utf8")).includes(
       "integration-only-key",

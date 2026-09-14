@@ -138,6 +138,7 @@ contextBridge.exposeInMainWorld("sinan", {
     open: (target, size) => unwrap(ipcRenderer.invoke("ssh:open", target, size)),
     probe: (target) => unwrap(ipcRenderer.invoke("ssh:probe", target)),
     test: (target, credential) => unwrap(ipcRenderer.invoke("ssh:test", target, credential)),
+    resetHostKey: (target) => unwrap(ipcRenderer.invoke("ssh:reset-host-key", target)),
     close: (sessionId) => unwrap(ipcRenderer.invoke("ssh:close", sessionId)),
     write: (sessionId, data) => ipcRenderer.send("ssh:write", sessionId, data),
     resize: (sessionId, cols, rows) => ipcRenderer.send("ssh:resize", sessionId, cols, rows),

@@ -20,6 +20,17 @@ try {
     .getByRole("button", { name: "添加第一台主机", exact: true })
     .waitFor({ timeout: 30000 });
   assert.equal(await instance.evaluate(({ app }) => app.getPath("userData")), directory);
+  // 测试资产及曲线只写入本次创建的临时目录。必须在下方 capabilities 检查
+  // （首次 bridge.metrics.list）之前写入：0.9.0 起 MetricsStore 的解析结果
+  // 常驻内存，进程缓存了旧文件后就再也看不到外部写入。
+  const samples = new MetricsStore(join(directory, "metrics.json"));
+  for (let i = 0; i < 8; i++)
+    await samples.record("qa-host", {
+      at: new Date(Date.now() - (8 - i) * 60000).toISOString(),
+      cpu: 20 + i * 5,
+      memory: 40 + i,
+      disk: 30,
+    });
   const capabilities = await page.evaluate(async () => {
     const bridge = window.sinan;
     const info = await bridge.info();
@@ -45,15 +56,6 @@ try {
   assert.equal(capabilities.saved.locale, "en");
   assert.deepEqual(capabilities.history, []);
   assert.equal(capabilities.rejected, true);
-  // 测试资产及曲线只写入本次创建的临时目录。
-  const samples = new MetricsStore(join(directory, "metrics.json"));
-  for (let i = 0; i < 8; i++)
-    await samples.record("qa-host", {
-      at: new Date(Date.now() - (8 - i) * 60000).toISOString(),
-      cpu: 20 + i * 5,
-      memory: 40 + i,
-      disk: 30,
-    });
   await page.evaluate(async () =>
     window.sinan.store.save({
       version: 0,

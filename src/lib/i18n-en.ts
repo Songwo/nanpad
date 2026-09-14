@@ -690,6 +690,7 @@ export const EN: Record<string, string> = {
   "这个我还没学会。可以试试这些问法：": "I have not learned that one yet. Try asking:",
   "证书 {0} · {1} 天后到期": "Certificate {0} · expires in {1}d",
   "保存 SSH 凭据需要先解锁密钥库。": "Saving SSH credentials needs the vault unlocked first.",
+  重置指纹并重试: "Reset fingerprint and retry",
   "查看或保存账号密码需要先解锁密钥库。":
     "Reading or saving an account needs the vault unlocked first.",
   "未返回刷新令牌（可能未请求离线访问）":

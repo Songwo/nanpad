@@ -118,7 +118,15 @@ flowchart LR
 
 ## 开发与验证
 
-需要 Node.js 22、npm，以及可下载依赖的网络环境。
+需要 Node.js 22.6+、npm，以及可下载依赖的网络环境。
+
+`npm test` 会启动真实 Chromium 跑浏览器扩展测试，首次使用前需安装一次（约 200 MB，装入用户目录）：
+
+```bash
+npx playwright install chromium
+# 官方源较慢时可用国内镜像：
+PLAYWRIGHT_DOWNLOAD_HOST=https://cdn.npmmirror.com/binaries/playwright npx playwright install chromium
+```
 
 ```bash
 npm ci

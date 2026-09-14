@@ -1,0 +1,49 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+
+      # `npm test` launches Chromium (scripts/extension-form.test.mjs and the
+      # smoke suites), so the browser has to exist before the suite runs.
+      - run: npx playwright install chromium --with-deps
+
+      - run: npm ci
+
+      - run: npm run typecheck
+
+      - run: npm run lint
+
+      - run: npm run i18n:check
+
+      - run: npm run check:auth
+
+      - run: npm test
+
+      # Building the web bundle catches bundling and route-tree regressions
+      # that typecheck alone misses; db:migrate exits early without
+      # DATABASE_URL, so the step needs no secrets.
+      - run: npm run build

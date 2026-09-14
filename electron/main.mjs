@@ -119,6 +119,8 @@ function assertPublicVaultRecord(id) {
     throw new Error("请通过邮件推送设置管理此凭据。");
   }
   if (id.startsWith("mail-draft:")) throw new Error("请通过写信窗口管理邮件草稿。");
+  if (id.startsWith("ssh-host:"))
+    throw new Error("主机指纹由 SSH 连接校验管理，请在资产的 SSH 凭据面板重置。");
 }
 
 function showWindow() {
@@ -224,7 +226,10 @@ async function createWindow() {
       preload: join(here, "preload.cjs"),
       contextIsolation: true,
       nodeIntegration: false,
-      sandbox: false,
+      // The preload only uses contextBridge and ipcRenderer, which work under
+      // the sandbox; keeping it on means a compromised renderer starts from a
+      // smaller world even before process isolation is considered.
+      sandbox: true,
       spellcheck: false,
       backgroundThrottling: false,
     },
@@ -257,6 +262,18 @@ async function createWindow() {
     return { action: "deny" };
   });
 
+  // Same rule for in-page navigation: a `location.href = …` from Markdown,
+  // a stray dependency or an injected script must not carry the preload bridge
+  // off the app's own origin. The app never navigates on its own — desktop
+  // development may still move within the Vite server's origin, but a packaged
+  // build only ever shows the one bundled page.
+  win.webContents.on("will-navigate", (event, url) => {
+    if (url === win?.webContents.getURL()) return;
+    if (DEV_URL && sameOrigin(url, DEV_URL)) return;
+    event.preventDefault();
+    if (/^https?:/.test(url)) shell.openExternal(url);
+  });
+
   if (DEV_URL) {
     await win.loadURL(DEV_URL);
   } else {
@@ -266,6 +283,15 @@ async function createWindow() {
 
 function emit(channel, payload) {
   if (win && !win.isDestroyed()) win.webContents.send(channel, payload);
+}
+
+/** `new URL().origin` comparison that never throws on malformed urls. */
+function sameOrigin(a, b) {
+  try {
+    return new URL(a).origin === new URL(b).origin;
+  } catch {
+    return false;
+  }
 }
 
 /** Wrap a handler so the renderer always gets `{ok}` or `{ok:false, error}`. */
@@ -327,7 +353,23 @@ function registerIpc() {
   handle("ai-accounts:refresh", (id) => aiAccounts.refresh(id));
   handle("ai-accounts:remove", (id) => aiAccounts.remove(id));
   app.once("before-quit", () => aiAccounts.stop());
-  ssh = new SshManager(emit);
+  // Host key pins live in the vault: they are not secret, but the GCM auth
+  // tag makes the TOFU record tamper-evident, and SSH already requires the
+  // vault unlocked to read credentials.
+  ssh = new SshManager(emit, {
+    get: async (host, port) => {
+      if (!vault.unlocked) throw new Error("密钥库已锁定，无法校验主机指纹；请先解锁密钥库。");
+      const record = await vault.get(hostKeyId(host, port));
+      return typeof record?.fingerprint === "string" ? record.fingerprint : null;
+    },
+    set: async (host, port, fingerprint) => {
+      if (!vault.unlocked) throw new Error("密钥库已锁定，无法记录主机指纹；请先解锁密钥库。");
+      await vault.set(hostKeyId(host, port), { fingerprint });
+    },
+    remove: async (host, port) => {
+      await vault.remove(hostKeyId(host, port));
+    },
+  });
   metrics = new MetricsStore(join(app.getPath("userData"), "metrics.json"));
   mailboxes = new MailboxService({
     directory: app.getPath("userData"),
@@ -627,6 +669,19 @@ function registerIpc() {
   });
   // The credential form tests what is on screen, which is not saved yet.
   handle("ssh:test", (target, credential) => ssh.test(target, credential));
+  // A deliberately reinstalled server changes its host key, which TOFU then
+  // refuses; this is the user's conscious acceptance of the new key.
+  handle("ssh:reset-host-key", async (target) => {
+    if (!target || typeof target.host !== "string" || !target.host.trim()) {
+      throw new Error("主机地址不正确。");
+    }
+    await ssh.resetHostKey({
+      host: target.host,
+      port: Number(target.port) || 22,
+      username: target.username,
+    });
+    return { ok: true };
+  });
   handle("ssh:close", (sessionId) => {
     ssh.close(sessionId);
     return true;
@@ -709,6 +764,10 @@ function registerIpc() {
 }
 
 export const credentialId = (serverId) => `ssh:${serverId}`;
+
+/** Vault key for a server's pinned host key fingerprint — must match the renderer. */
+export const hostKeyId = (host, port) =>
+  `ssh-host:${String(host).trim().toLowerCase()}:${Number(port) || 22}`;
 
 const RELEASES_API = "https://api.github.com/repos/Songwo/nanpad/releases/latest";
 const RELEASES_PAGE = "https://github.com/Songwo/nanpad/releases";
@@ -877,7 +936,10 @@ function buildMenu() {
       label: label("视图", "View"),
       submenu: [
         { role: "reload", label: label("重新载入", "Reload") },
-        { role: "toggleDevTools", label: label("开发者工具", "Developer tools") },
+        // DevTools stay available in development only: in a packaged build the
+        // renderer can be walked into from the console, and the preload bridge
+        // reaches straight into the vault.
+        ...(app.isPackaged ? [] : [{ role: "toggleDevTools", label: label("开发者工具", "Developer tools") }]),
         { type: "separator" },
         { role: "resetZoom", label: label("实际大小", "Actual size") },
         { role: "zoomIn", label: label("放大", "Zoom in") },

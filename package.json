@@ -3,6 +3,9 @@
   "private": true,
   "sideEffects": false,
   "type": "module",
+  "engines": {
+    "node": ">=22.6"
+  },
   "overrides": {
     "nf3": "0.3.17"
   },
