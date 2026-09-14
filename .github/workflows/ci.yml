@@ -39,7 +39,20 @@ jobs:
 
       - run: npm run i18n:check
 
-      - run: npm run check:auth
+      # check:auth probes a *running* dev server's /__app-env, so boot one
+      # first — which doubles as a cold-start smoke of `npm run dev`.
+      - name: Check auth invariant against a live dev server
+        run: |
+          npm run dev &
+          DEV_PID=$!
+          for _ in $(seq 1 60); do
+            curl -sf http://127.0.0.1:8080/__app-env > /dev/null && break
+            sleep 1
+          done
+          npm run check:auth
+          STATUS=$?
+          kill $DEV_PID 2>/dev/null || true
+          exit $STATUS
 
       - run: npm test
 
