@@ -29,9 +29,12 @@ jobs:
 
       # `npm test` launches Chromium (scripts/extension-form.test.mjs and the
       # smoke suites), so the browser has to exist before the suite runs.
-      - run: npx playwright install chromium --with-deps
-
+      # This must come AFTER `npm ci`: npx resolves the project's own pinned
+      # Playwright, otherwise it silently downloads the latest one and
+      # installs a mismatched browser build.
       - run: npm ci
+
+      - run: npx playwright install chromium --with-deps
 
       - run: npm run typecheck
 
