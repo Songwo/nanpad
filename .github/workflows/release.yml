@@ -20,6 +20,8 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      - name: 安装 Electron 运行时
+        run: node node_modules/electron/install.js
       - name: 校验版本标签
         shell: pwsh
         run: |

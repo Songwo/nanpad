@@ -3,6 +3,13 @@
 > 本文件由 `node scripts/write-changelog.mjs` 从 `src/lib/changelog.ts` 生成，
 > 请改那个文件而不是这里 —— 应用内的「设置 → 更新日志」读的是同一份数据。
 
+## 1.0.1 — Windows 任务栏身份与发布修复
+
+*2026-09-22*
+
+- 为 Windows 窗口设置明确的任务栏身份、重启命令和图标资源，避免继承 Electron 开发运行器的图标。
+- Windows 发布流程显式安装 Electron 运行时，修复干净 Runner 缺少 electron/dist 导致打包失败。
+
 ## 1.0.0 — 数字资产工作空间：文档、节点与真实用量
 
 *2026-09-22*

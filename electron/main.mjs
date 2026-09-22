@@ -245,6 +245,20 @@ async function createWindow() {
     },
   });
 
+  if (process.platform === "win32") {
+    win.setAppDetails({
+      appId: "dev.songwo.nanpad",
+      appIconPath: app.isPackaged
+        ? join(process.resourcesPath, "icon.ico")
+        : join(here, "../build/icon.ico"),
+      appIconIndex: 0,
+      relaunchCommand: app.isPackaged
+        ? `"${process.execPath}"`
+        : `"${process.execPath}" "${join(here, "main.mjs")}"`,
+      relaunchDisplayName: "司南 Nanpad",
+    });
+  }
+
   win.once("ready-to-show", () => {
     if (!process.env.NANPAD_TEST_DATA_DIR) win?.show();
   });

@@ -13,6 +13,15 @@ export interface Release {
 
 export const RELEASES: Release[] = [
   {
+    version: "1.0.1",
+    date: "2026-09-22",
+    title: "Windows 任务栏身份与发布修复",
+    changes: [
+      "为 Windows 窗口设置明确的任务栏身份、重启命令和图标资源，避免继承 Electron 开发运行器的图标。",
+      "Windows 发布流程显式安装 Electron 运行时，修复干净 Runner 缺少 electron/dist 导致打包失败。",
+    ],
+  },
+  {
     version: "1.0.0",
     date: "2026-09-22",
     title: "数字资产工作空间：文档、节点与真实用量",
