@@ -46,6 +46,8 @@ function useViewCollection(): Array<Partial<Taggable>> {
         ? [...servers, ...domains, ...mailboxes, ...aiAssets, ...secrets, ...certs]
         : [];
     case "agent":
+    case "nodes":
+    default:
       return [];
   }
 }

@@ -1,3 +1,4 @@
+import { hostedImageUrl } from "./hosted-image.mjs";
 export const MAX_UPLOAD_BYTES = 8 * 1024 * 1024;
 export const MAX_IMAGE_BYTES = 1024 * 1024;
 export const MAX_IMAGE_EDGE = 512;
@@ -173,7 +174,10 @@ export function normalizeSnapshotImages(
       }
       if (!("imageDataUrl" in asset)) return next;
       try {
-        return { ...next, imageDataUrl: normalize(asset.imageDataUrl) };
+        return {
+          ...next,
+          imageDataUrl: hostedImageUrl(asset.imageDataUrl) || normalize(asset.imageDataUrl),
+        };
       } catch (error) {
         if (strict) throw error;
         delete next.imageDataUrl;

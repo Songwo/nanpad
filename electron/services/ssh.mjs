@@ -92,10 +92,12 @@ export class SshManager {
   #sessions = new Map();
   #emit;
   #hostKeys;
+  #createClient;
 
-  constructor(emit, hostKeys = memoryHostKeyStore()) {
+  constructor(emit, hostKeys = memoryHostKeyStore(), createClient = () => new Client()) {
     this.#emit = emit;
     this.#hostKeys = hostKeys;
+    this.#createClient = createClient;
   }
 
   async #connect(target, credential) {
@@ -182,18 +184,30 @@ export class SshManager {
       throw new Error(`不支持的认证方式：${credential.kind}`);
     }
 
-    const client = new Client();
+    const client = this.#createClient();
     await new Promise((resolve, reject) => {
+      let settled = false;
       const fail = (err) => {
-        client.removeAllListeners();
+        if (settled) return;
+        settled = true;
+        client.removeListener("ready", ready);
         reject(hostKeyFailure ?? new Error(friendly(err)));
+        client.destroy();
       };
-      client.once("ready", () => {
-        client.removeListener("error", fail);
+      const ready = () => {
+        settled = true;
         resolve();
-      });
-      client.once("error", fail);
-      client.connect(config);
+      };
+      // 保留连接级监听：ssh2 在失败后的关闭过程中可能再次发出 error。
+      // 就绪后的业务错误由命令、终端及 SFTP 各自处理。
+      client.on("error", fail);
+      client.once("close", () => fail(new Error("SSH 连接已关闭")));
+      client.once("ready", ready);
+      try {
+        client.connect(config);
+      } catch (err) {
+        fail(err);
+      }
     });
     return client;
   }
@@ -209,9 +223,36 @@ export class SshManager {
     const sessionId = randomUUID();
 
     const stream = await new Promise((resolve, reject) => {
-      client.shell({ term: "xterm-256color", cols: size.cols, rows: size.rows }, (err, s) =>
-        err ? reject(new Error(friendly(err))) : resolve(s),
-      );
+      let settled = false;
+      const cleanup = () => {
+        client.removeListener("error", fail);
+        client.removeListener("close", closed);
+      };
+      const fail = (err) => {
+        if (settled) return;
+        settled = true;
+        cleanup();
+        reject(new Error(friendly(err)));
+        client.destroy();
+      };
+      const closed = () => fail(new Error("SSH 连接已中断，终端未打开"));
+      client.once("error", fail);
+      client.once("close", closed);
+      try {
+        client.shell({ term: "xterm-256color", cols: size.cols, rows: size.rows }, (err, s) => {
+          if (err) return fail(err);
+          if (settled) {
+            s.on("error", () => {});
+            s.end();
+            return;
+          }
+          settled = true;
+          cleanup();
+          resolve(s);
+        });
+      } catch (err) {
+        fail(err);
+      }
     });
 
     stream.on("data", (chunk) =>
@@ -220,6 +261,10 @@ export class SshManager {
     stream.stderr?.on("data", (chunk) =>
       this.#emit("ssh:data", { sessionId, chunk: chunk.toString("utf8") }),
     );
+    stream.on("error", (err) => {
+      this.#emit("ssh:data", { sessionId, chunk: `\r\n${friendly(err)}\r\n` });
+      client.destroy();
+    });
     stream.on("close", () => {
       this.#sessions.delete(sessionId);
       client.end();
@@ -281,21 +326,37 @@ export class SshManager {
 
   #exec(client, command, timeout) {
     return new Promise((resolve, reject) => {
-      const timer = setTimeout(() => reject(new Error("命令执行超时")), timeout);
-      client.exec(command, (err, stream) => {
-        if (err) {
-          clearTimeout(timer);
-          reject(new Error(friendly(err)));
-          return;
-        }
-        let out = "";
-        stream.on("data", (d) => (out += d.toString("utf8")));
-        stream.stderr.on("data", () => {});
-        stream.on("close", () => {
-          clearTimeout(timer);
-          resolve(out);
+      let settled = false;
+      const finish = (err, value) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        client.removeListener("error", fail);
+        client.removeListener("close", closed);
+        if (err) reject(new Error(friendly(err)));
+        else resolve(value);
+      };
+      const fail = (err) => finish(err);
+      const closed = () => finish(new Error("SSH 连接已中断，命令未完成"));
+      const timer = setTimeout(() => finish(new Error("命令执行超时")), timeout);
+      client.once("error", fail);
+      client.once("close", closed);
+      try {
+        client.exec(command, (err, stream) => {
+          if (err) return finish(err);
+          stream.on("error", fail);
+          if (settled) {
+            stream.end();
+            return;
+          }
+          let out = "";
+          stream.on("data", (d) => (out += d.toString("utf8")));
+          stream.stderr.on("data", () => {});
+          stream.on("close", () => finish(null, out));
         });
-      });
+      } catch (err) {
+        finish(err);
+      }
     });
   }
 }
@@ -344,8 +405,7 @@ function friendly(err) {
   if (/Connection lost before handshake/i.test(msg))
     return "对端未完成 SSH 握手：地址或端口可能不对";
   if (/Handshake failed/i.test(msg)) return "SSH 握手失败：双方没有共同的加密算法";
-  if (/Host denied \(verification failed\)/i.test(msg))
-    return "主机指纹校验失败，连接已拒绝";
+  if (/Host denied \(verification failed\)/i.test(msg)) return "主机指纹校验失败，连接已拒绝";
   if (/Cannot parse privateKey|no matching key format/i.test(msg))
     return "私钥格式无法解析（若有口令请一并填写）";
   if (/Encrypted private key detected|passphrase/i.test(msg)) return "私钥已加密，需要填写口令";

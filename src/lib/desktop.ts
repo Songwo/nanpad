@@ -147,6 +147,14 @@ export interface PersistedFile extends Snapshot {
 }
 
 export interface DesktopBridge {
+  images: import("./image-bed").ImageBedBridge;
+  nodes: {
+    check(
+      node: import("./types").ProxyNode,
+    ): Promise<{ checkedAt: string; latencyMs: number | null; error: string }>;
+  };
+  usage: import("./usage").UsageBridge;
+  documents: import("./documents").DocumentsBridge;
   extension: {
     status(): Promise<{
       running: boolean;

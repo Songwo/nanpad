@@ -1,0 +1,158 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>司南 Nanpad — 让数字资产有处安放</title>
+    <meta
+      name="description"
+      content="开源的个人数字资产桌面工作台。服务器、图文文档、自建节点、流量与 AI 用量，集中管理。Windows 免费下载。"
+    />
+    <link rel="canonical" href="https://songwo.github.io/nanpad/" />
+    <link rel="icon" href="./icon.png" />
+    <meta property="og:title" content="司南 Nanpad · 你的数字工作空间" />
+    <meta property="og:description" content="主机、文档、节点与真实用量，一个本地工作台。" />
+    <meta property="og:image" content="https://songwo.github.io/nanpad/overview.png" />
+    <meta property="og:type" content="website" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <link rel="stylesheet" href="./style.css" />
+  </head>
+  <body>
+    <a class="skip" href="#main">跳到正文</a>
+    <header class="wrap">
+      <a class="brand" href="./"
+        ><img src="./icon.png" width="36" height="36" alt="" />司南 <span>Nanpad</span></a
+      >
+      <nav aria-label="网站导航">
+        <a href="#features">功能</a><a href="#faq">常见问题</a
+        ><a href="https://github.com/Songwo/nanpad">GitHub ↗</a>
+      </nav>
+    </header>
+    <main id="main">
+      <section class="hero wrap">
+        <p class="eyebrow">OPEN SOURCE · LOCAL FIRST · v1.0</p>
+        <h1>让数字资产<br />有处安放。</h1>
+        <p class="intro">
+          服务器的状态、部署时的笔记、每月的订阅与用量。<br />把散落的数字生活，收进一个自己的工作台。
+        </p>
+        <div class="actions">
+          <a class="button primary" href="https://github.com/Songwo/nanpad/releases/latest"
+            >下载 Windows 版 <span>↓</span></a
+          ><a class="button" href="https://github.com/Songwo/nanpad"
+            >喜欢这个项目？Star on GitHub ↗</a
+          >
+        </div>
+        <p class="fine">Windows x64 · 开源免费 · 无需安装 Node.js</p>
+        <figure class="product">
+          <img
+            src="./overview.png"
+            width="1480"
+            height="940"
+            alt="司南资产总览：资产摘要、待处理事项和服务器列表"
+            fetchpriority="high"
+          />
+          <figcaption>真实应用界面 · 展示数据，不含私人资产</figcaption>
+        </figure>
+      </section>
+      <section class="wrap section" id="features">
+        <p class="eyebrow">A PLACE FOR YOUR DIGITAL LIFE</p>
+        <h2>从「放在哪里了」<br />到「都在这里」。</h2>
+        <div class="features">
+          <article>
+            <span class="number">01 / 基础设施</span>
+            <h3>主机与节点，心中有数</h3>
+            <p>
+              SSH 终端、SFTP、主机指标、域名与证书到期提醒。导入 VLESS、VMess、Trojan、SS 和 HY2
+              分享链接。
+            </p>
+          </article>
+          <article>
+            <span class="number">02 / 图文资料</span>
+            <h3>把经验留在资产旁</h3>
+            <p>
+              独立文档，也能关联多项资产。记录部署过程、粘贴照片、收藏链接，自动保存；可选对接图床。
+            </p>
+          </article>
+          <article>
+            <span class="number">03 / 真实用量</span>
+            <h3>看清流量与 Token</h3>
+            <p>
+              接入 3x-ui、机场订阅及支持的 API
+              用量接口。记录采集历史，失败保留上次数据，未知值不假装成零。
+            </p>
+          </article>
+          <article>
+            <span class="number">04 / 本机工作台</span>
+            <h3>自己的资料，自己掌握</h3>
+            <p>
+              资产和文档保存在本机；凭据独立加密。邮箱、密钥分组、搜索和 AI 辅助问答，都在同一处。
+            </p>
+          </article>
+        </div>
+      </section>
+      <section class="statement">
+        <div class="wrap">
+          <p class="eyebrow">BUILT IN THE OPEN</p>
+          <h2>一个人也值得<br />拥有顺手的工具。</h2>
+          <p>
+            司南为独立开发者、自建服务爱好者，以及想把数字生活整理清楚的人而做。<br />欢迎试用、提交问题，或贡献一个让日常更顺手的改进。
+          </p>
+          <a class="button primary" href="https://github.com/Songwo/nanpad/issues">反馈与建议 ↗</a>
+        </div>
+      </section>
+      <section class="wrap section faq" id="faq">
+        <h2>开始之前，你可能想知道</h2>
+        <details>
+          <summary>免费吗？支持什么系统？</summary>
+          <p>
+            司南是开源项目。目前提供 Windows x64 安装包；macOS 和 Linux
+            尚未提供经过验证的正式安装包。
+          </p>
+        </details>
+        <details>
+          <summary>数据会上传吗？</summary>
+          <p>
+            资产、文档与用量历史默认保存在本机。启用图床会上传所选图片；连接邮箱、面板或 AI
+            服务会请求相应服务。使用远端 AI 问答时，相关上下文会发送给你配置的模型。请阅读安全说明。
+          </p>
+        </details>
+        <details>
+          <summary>ChatGPT / Claude 订阅等于 API Token 用量吗？</summary>
+          <p>
+            不等于。订阅账号记录接口能提供的额度快照；API
+            用量采集依赖组织查询权限。网页订阅不提供的数据不会被估算成精确 Token。
+          </p>
+        </details>
+        <details>
+          <summary>安装时为什么会有系统提示？</summary>
+          <p>
+            目前 Windows 安装包没有代码签名。请从本仓库 Releases 下载，并对照随版本提供的 SHA256
+            校验文件。升级前建议按安全文档备份。
+          </p>
+        </details>
+        <details>
+          <summary>在哪里开始使用？</summary>
+          <p>
+            下载后创建本机资料和主密码，再添加第一项资产。详见
+            <a href="https://github.com/Songwo/nanpad/blob/main/docs/USER-GUIDE.md">使用教程</a> 与
+            <a href="https://github.com/Songwo/nanpad/blob/main/docs/SECURITY.md">安全与备份</a>。
+          </p>
+        </details>
+      </section>
+      <section class="wrap closing">
+        <h2>少找一会儿，多做一点。</h2>
+        <p>如果司南解决了你的一个小麻烦，欢迎给项目一颗 Star。</p>
+        <div class="actions">
+          <a class="button primary" href="https://github.com/Songwo/nanpad/releases/latest"
+            >下载并开始使用 ↓</a
+          ><a class="button" href="https://github.com/Songwo/nanpad">支持开源 · Star ↗</a>
+        </div>
+      </section>
+    </main>
+    <footer class="wrap">
+      <span>司南 Nanpad · Made by Songwo</span
+      ><a href="https://github.com/Songwo/nanpad/blob/main/CHANGELOG.md">更新日志 ↗</a
+      ><a href="https://github.com/Songwo/nanpad">查看源码 ↗</a>
+    </footer>
+  </body>
+</html>

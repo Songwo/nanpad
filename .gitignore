@@ -35,3 +35,9 @@ release/
 
 # i18n 工具运行时落在仓库根目录的中间产物
 /scratchpad-*.json
+
+# 本机诊断文件，不用于发布
+/screen_check.png
+/tray_crop.png
+/scripts/test-win.mjs
+/public/openai-preview.html

@@ -529,6 +529,9 @@ function persist(kind: AssetKind, id: string, form: Record<string, string>, exis
         diskTotalKb: prev?.diskTotalKb,
         probedAt: prev?.probedAt,
         probeError: prev?.probeError,
+        docs: prev?.docs,
+        nodes: prev?.nodes,
+        customSecrets: prev?.customSecrets,
       };
       s.upsertServer(item);
       break;

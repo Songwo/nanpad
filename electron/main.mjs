@@ -1,3 +1,7 @@
+import { ImageBed } from "./services/image-bed.mjs";
+import { checkNode } from "./services/node-check.mjs";
+import { UsageStore } from "./services/usage.mjs";
+import { DocumentsStore } from "./services/documents.mjs";
 import {
   app,
   BrowserWindow,
@@ -41,6 +45,8 @@ const normalizeImage = createImageNormalizer(nativeImage);
 // entry, so Electron would call itself "Electron" and put the user's assets in
 // a directory named after the runtime. Pin it before anything reads a path.
 app.setName("Nanpad");
+// 驱动不兼容时可显式启用软件渲染，默认保留硬件加速。
+if (process.env.NANPAD_DISABLE_GPU === "1") app.disableHardwareAcceleration();
 // 桌面集成测试使用独立目录，避免读取或覆盖用户的资产与密钥库。
 if (!app.isPackaged && process.env.NANPAD_TEST_DATA_DIR)
   app.setPath("userData", process.env.NANPAD_TEST_DATA_DIR);
@@ -124,10 +130,15 @@ function assertPublicVaultRecord(id) {
 }
 
 function showWindow() {
-  if (!win || win.isDestroyed()) return;
+  if (!win || win.isDestroyed()) {
+    void createWindow();
+    return;
+  }
   if (win.isMinimized()) win.restore();
   win.show();
+  win.setAlwaysOnTop(true);
   win.focus();
+  win.setAlwaysOnTop(false);
 }
 
 function notifyAttention() {
@@ -208,9 +219,8 @@ async function createWindow() {
     minWidth: 1040,
     minHeight: 680,
     show: false,
-    backgroundColor: "#f4f5f5",
-    // electron-builder stamps the icon into the packaged exe, but a dev window
-    // would otherwise sit in the taskbar wearing Electron's own atom.
+    backgroundColor: "#0e1114",
+    // 窗口和托盘使用 PNG；ICO 用于 Windows 可执行文件及安装快捷方式。
     icon: app.isPackaged
       ? join(process.resourcesPath, "icon.png")
       : join(here, "../build/icon.png"),
@@ -231,7 +241,7 @@ async function createWindow() {
       // smaller world even before process isolation is considered.
       sandbox: true,
       spellcheck: false,
-      backgroundThrottling: false,
+      backgroundThrottling: true,
     },
   });
 
@@ -279,6 +289,13 @@ async function createWindow() {
   } else {
     await win.loadFile(join(here, "../dist-desktop/index.html"));
   }
+  if (!process.env.NANPAD_TEST_DATA_DIR) {
+    win?.restore();
+    win?.show();
+    win?.setAlwaysOnTop(true);
+    win?.focus();
+    win?.setAlwaysOnTop(false);
+  }
 }
 
 function emit(channel, payload) {
@@ -306,6 +323,18 @@ function handle(channel, fn) {
 }
 
 function registerIpc() {
+  const images = new ImageBed({
+    file: join(app.getPath("userData"), "image-bed.json"),
+    secureStorage: safeStorage,
+    fetchImpl: (...args) => net.fetch(...args),
+    decode: (value) => !nativeImage.createFromDataURL(value).isEmpty(),
+  });
+  for (const method of ["status", "configure", "upload"])
+    handle("images:" + method, (...args) => images[method](...args));
+  handle("nodes:check", checkNode);
+  const documents = new DocumentsStore(join(app.getPath("userData"), "documents"));
+  for (const method of ["list", "get", "save", "remove"])
+    handle("documents:" + method, (...args) => documents[method](...args));
   handle("capture:list", () => captures.list());
   handle("capture:discard", (id) => {
     captures.discard(id);
@@ -350,7 +379,57 @@ function registerIpc() {
   handle("ai-accounts:status", (id) => aiAccounts.status(id));
   handle("ai-accounts:finish", (id, code) => aiAccounts.finish(id, code));
   handle("ai-accounts:cancel", (id) => aiAccounts.cancel(id));
-  handle("ai-accounts:refresh", (id) => aiAccounts.refresh(id));
+  const usage = new UsageStore(join(app.getPath("userData"), "usage-history.json"), vault);
+  for (const method of ["list", "add", "remove", "refresh"])
+    handle("usage:" + method, (...args) => usage[method](...args));
+  handle("ai-accounts:refresh", async (id) => {
+    try {
+      const account = await aiAccounts.refresh(id);
+      await usage.recordAccount(account);
+      return account;
+    } catch (error) {
+      await usage.markFailure("oauth:" + id, error.message);
+      throw error;
+    }
+  });
+  let usageRefresh = null;
+  const refreshUsage = () => {
+    if (usageRefresh) return usageRefresh;
+    usageRefresh = (async () => {
+      if (!vault.unlocked) throw new Error("请先解锁密钥库");
+      const failures = [];
+      const state = await usage.list();
+      for (const source of state.sources.filter((s) => s.type !== "oauth")) {
+        try {
+          await usage.refresh(source.id);
+        } catch (e) {
+          failures.push(source.name + "：" + e.message);
+        }
+      }
+      for (const account of await aiAccounts.list()) {
+        try {
+          await usage.recordAccount(await aiAccounts.refresh(account.id));
+        } catch (e) {
+          await usage.markFailure("oauth:" + account.id, e.message);
+          failures.push(account.provider + "：" + e.message);
+        }
+      }
+      return { failures };
+    })().finally(() => {
+      usageRefresh = null;
+    });
+    return usageRefresh;
+  };
+  handle("usage:refresh-all", refreshUsage);
+  const usageTimer = setInterval(() => {
+    if (
+      vault.unlocked &&
+      BrowserWindow.getAllWindows().some((w) => w.isVisible() && !w.isMinimized())
+    )
+      void refreshUsage().catch(() => {});
+  }, 300000);
+  usageTimer.unref();
+  app.once("before-quit", () => clearInterval(usageTimer));
   handle("ai-accounts:remove", (id) => aiAccounts.remove(id));
   app.once("before-quit", () => aiAccounts.stop());
   // Host key pins live in the vault: they are not secret, but the GCM auth
@@ -876,10 +955,11 @@ if (!app.requestSingleInstanceLock()) {
     registerIpc();
     await extensionBridge.start();
     try {
-      const icon = nativeImage.createFromPath(
-        app.isPackaged ? join(process.resourcesPath, "icon.png") : join(here, "../build/icon.png"),
-      );
-      tray = new Tray(icon.resize({ width: 20, height: 20 }));
+      const iconPath = app.isPackaged
+        ? join(process.resourcesPath, "icon.png")
+        : join(here, "../build/icon.png");
+      const icon = nativeImage.createFromPath(iconPath);
+      tray = new Tray(process.platform === "win32" ? icon : icon.resize({ width: 20, height: 20 }));
       tray.on("double-click", showWindow);
       tray.on("click", showWindow);
       updateTray();
@@ -939,7 +1019,9 @@ function buildMenu() {
         // DevTools stay available in development only: in a packaged build the
         // renderer can be walked into from the console, and the preload bridge
         // reaches straight into the vault.
-        ...(app.isPackaged ? [] : [{ role: "toggleDevTools", label: label("开发者工具", "Developer tools") }]),
+        ...(app.isPackaged
+          ? []
+          : [{ role: "toggleDevTools", label: label("开发者工具", "Developer tools") }]),
         { type: "separator" },
         { role: "resetZoom", label: label("实际大小", "Actual size") },
         { role: "zoomIn", label: label("放大", "Zoom in") },

@@ -1,0 +1,44 @@
+name: Windows 正式版
+on:
+  push:
+    tags: ['v*']
+permissions:
+  contents: read
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 35
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: 校验版本标签
+        shell: pwsh
+        run: |
+          $version = (Get-Content package.json | ConvertFrom-Json).version
+          if ("v$version" -ne $env:GITHUB_REF_NAME) { throw 'Version tag mismatch' }
+      - run: npx playwright install chromium
+      - run: npm run typecheck
+      - run: npm run lint
+      - run: npm run i18n:check
+      - run: npm test
+      - run: npm run desktop:dist
+      - name: 校验文件与发布
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $version = (Get-Content package.json | ConvertFrom-Json).version
+          $directory = "release/v$version"
+          $installer = "$directory/Nanpad-$version-setup.exe"
+          $hash = (Get-FileHash $installer -Algorithm SHA256).Hash.ToLower()
+          "$hash  Nanpad-$version-setup.exe" | Set-Content "$directory/SHA256SUMS.txt" -Encoding utf8
+          gh release create "v$version" $installer "$directory/SHA256SUMS.txt" --verify-tag --title "司南 Nanpad $version" --notes-file "docs/releases/v$version.md"

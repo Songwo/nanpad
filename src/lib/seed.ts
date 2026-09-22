@@ -27,6 +27,49 @@ export const SEED_SERVERS: Server[] = [
     uptime: "47 天",
     lastSeen: new Date(Date.now() - 42_000).toISOString(),
     notes: "主站与 API 网关。Cloudflare 回源，夜间 02:00 备份到 hz-backup。",
+    docs: `# 东京生产网关运维备忘
+
+## 1. 核心服务架构
+- **Nginx 1.26**: 反向代理与 HTTP/3 终止
+- **Xray Core**: VLESS + Reality 内部隧道
+- **Prometheus Exporter**: 端口 9100
+
+## 2. 关键指令
+\`\`\`bash
+# 查看网络健康
+systemctl status nginx xray
+curl -I https://47.74.18.102:443
+\`\`\`
+`,
+    nodes: [
+      {
+        id: "nod_tokyo_01",
+        name: "Tokyo-VLESS-Reality",
+        protocol: "vless",
+        host: "47.74.18.102",
+        port: 443,
+        uuid: "27b68140-5b72-4d28-89c5-8bc6b5a37f01",
+        network: "tcp",
+        security: "reality",
+        sni: "gateway.icloud.com",
+        pbk: "7l2v7q3k9x0z1y2a3b4c5d6e7f8g9h0i1j2k3l4m5n6",
+        sid: "1a2b3c4d",
+        flow: "xtls-rprx-vision",
+        latencyMs: 38,
+      },
+    ],
+    customSecrets: [
+      {
+        id: "sec_tokyo_01",
+        key: "XRAY_REALITY_PRIVATE_KEY",
+        value: "uA8wK9xL2pQ1rT4vW7yZ0bC3dE6fG9hI2jK5mN8oP1=",
+      },
+      {
+        id: "sec_tokyo_02",
+        key: "NGINX_INTERNAL_TOKEN",
+        value: "tokyo_prod_gw_992147102a9",
+      },
+    ],
   },
   {
     id: "srv_hk",
@@ -45,6 +88,19 @@ export const SEED_SERVERS: Server[] = [
     uptime: "12 天",
     lastSeen: new Date(Date.now() - 8_000).toISOString(),
     notes: "边缘节点，CPU 持续偏高。计划本周扩容 2C。",
+    nodes: [
+      {
+        id: "nod_hk_01",
+        name: "HK-Trojan-Fast",
+        protocol: "trojan",
+        host: "43.129.55.71",
+        port: 8443,
+        password: "fast_edge_secret_hk",
+        security: "tls",
+        sni: "hk-edge.nanpad.io",
+        latencyMs: 29,
+      },
+    ],
   },
   {
     id: "srv_sg",

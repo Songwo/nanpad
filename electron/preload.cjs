@@ -23,6 +23,25 @@ function on(channel, handler) {
 }
 
 contextBridge.exposeInMainWorld("sinan", {
+  images: {
+    status: () => unwrap(ipcRenderer.invoke("images:status")),
+    configure: (input) => unwrap(ipcRenderer.invoke("images:configure", input)),
+    upload: (input) => unwrap(ipcRenderer.invoke("images:upload", input)),
+  },
+  nodes: { check: (node) => unwrap(ipcRenderer.invoke("nodes:check", node)) },
+  usage: {
+    list: () => unwrap(ipcRenderer.invoke("usage:list")),
+    add: (value) => unwrap(ipcRenderer.invoke("usage:add", value)),
+    remove: (id) => unwrap(ipcRenderer.invoke("usage:remove", id)),
+    refresh: (id) => unwrap(ipcRenderer.invoke("usage:refresh", id)),
+    refreshAll: () => unwrap(ipcRenderer.invoke("usage:refresh-all")),
+  },
+  documents: {
+    list: () => unwrap(ipcRenderer.invoke("documents:list")),
+    get: (id) => unwrap(ipcRenderer.invoke("documents:get", id)),
+    save: (doc) => unwrap(ipcRenderer.invoke("documents:save", doc)),
+    remove: (id) => unwrap(ipcRenderer.invoke("documents:remove", id)),
+  },
   capture: {
     list: () => unwrap(ipcRenderer.invoke("capture:list")),
     discard: (id) => unwrap(ipcRenderer.invoke("capture:discard", id)),

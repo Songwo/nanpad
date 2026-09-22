@@ -1,3 +1,6 @@
+import { hostedImageUrl } from "../../electron/services/hosted-image.mjs";
+import { uploadImage } from "@/lib/image-bed";
+import { ImageBedSettings } from "./image-bed-settings";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { ImagePlus, Loader2, Trash2, UserRound } from "lucide-react";
 import { safeImageDataUrl } from "../../electron/services/image-data.mjs";
@@ -7,10 +10,11 @@ import { t } from "@/lib/i18n";
 import { Button } from "./ui/button";
 
 export function AssetImage({ value, fallback }: { value?: string; fallback: ReactNode }) {
-  const image = useMemo(() => safeImageDataUrl(value), [value]);
+  const image = useMemo(() => hostedImageUrl(value) || safeImageDataUrl(value), [value]);
   const [failed, setFailed] = useState<string | null>(null);
   return image && failed !== image ? (
     <img
+      referrerPolicy="no-referrer"
       src={image}
       alt={t("资产图片")}
       className="size-10 shrink-0 rounded-md object-cover"
@@ -40,7 +44,7 @@ export function ImagePicker({
   const alive = useRef(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
-  const image = useMemo(() => safeImageDataUrl(value), [value]);
+  const image = useMemo(() => hostedImageUrl(value) || safeImageDataUrl(value), [value]);
   const label = customLabel ?? t(avatar ? "个人头像" : "资产图片");
   useEffect(() => {
     alive.current = true;
@@ -83,7 +87,8 @@ export function ImagePicker({
             setError("");
             try {
               const result = await prepareImage(file, avatar ? 256 : 512);
-              if (alive.current) onChange(result);
+              const saved = avatar ? result : await uploadImage(result, file.name, "asset");
+              if (alive.current) onChange(saved);
             } catch (cause) {
               if (alive.current) setError(cause instanceof Error ? cause.message : String(cause));
             } finally {
@@ -122,6 +127,7 @@ export function ImagePicker({
           </Button>
         )}
       </div>
+      {!avatar && <ImageBedSettings />}
       {error && (
         <p role="alert" className="text-meta text-crit">
           {error}

@@ -61,7 +61,11 @@ export function AppShell() {
   const hydrated = useAppStore((s) => s.hydrated);
   const assetLayout = useSettings((s) => s.assetLayout);
   const wideWorkspace =
-    hydrated && assetLayout !== "cards" && view !== "agent" && view !== "terminal";
+    (hydrated && assetLayout !== "cards" && view !== "agent" && view !== "terminal") ||
+    view === "docs" ||
+    view === "usage" ||
+    view === "nodes" ||
+    view === "overview";
   const setCommandOpen = useAppStore((s) => s.setCommandOpen);
   const openComposer = useAppStore((s) => s.openComposer);
   const vaultUnlocked = useVault((s) => s.unlocked);
@@ -111,7 +115,7 @@ export function AppShell() {
     if (!isDesktop() || !vaultUnlocked) return;
     let cancelled = false;
     const sweep = () => {
-      if (!cancelled) void refreshAll("server");
+      if (!cancelled && document.visibilityState === "visible") void refreshAll("server");
     };
     sweep();
     const t = window.setInterval(sweep, 90_000);
@@ -135,7 +139,8 @@ export function AppShell() {
       if (
         e.key === "/" &&
         !(e.target instanceof HTMLInputElement) &&
-        !(e.target instanceof HTMLTextAreaElement)
+        !(e.target instanceof HTMLTextAreaElement) &&
+        !(e.target instanceof HTMLElement && e.target.isContentEditable)
       ) {
         e.preventDefault();
         setCommandOpen(true);
@@ -169,8 +174,13 @@ export function AppShell() {
           {/* One scroll container for the two columns, so both sticky headers
             resolve against the same viewport. */}
           <div className="min-h-0 flex-1 overflow-y-auto">
-            <div className="mx-auto flex w-full max-w-7xl items-start">
-              <main className="@container min-w-0 flex-1 xl:border-r xl:border-line">
+            <div className="mx-auto flex w-full max-w-[1560px] items-start px-1 md:px-3">
+              <main
+                className={cn(
+                  "@container min-w-0 flex-1",
+                  !wideWorkspace && "xl:border-r xl:border-line",
+                )}
+              >
                 <TopTabs />
                 <MainView />
               </main>

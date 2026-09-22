@@ -1,58 +1,64 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { subscriptionCost } from "@/lib/subscription-cost";
+const DocumentsWorkspace = lazy(() =>
+  import("./documents-workspace").then((m) => ({ default: m.DocumentsWorkspace })),
+);
+const UsageWorkspace = lazy(() =>
+  import("./usage-workspace").then((m) => ({ default: m.UsageWorkspace })),
+);
+import { lazy, Suspense, useMemo, type ReactNode } from "react";
 import { useShallow } from "zustand/react/shallow";
-import {
-  AlertTriangle,
-  Check,
-  Search,
-  SquareTerminal,
-  X,
-  LayoutGrid,
-  Table2,
-  Network,
-} from "lucide-react";
-import { AssetWorkspace } from "./asset-workspace";
+import { Search, SquareTerminal, X, LayoutGrid, Table2, Network } from "lucide-react";
+const AssetWorkspace = lazy(() =>
+  import("./asset-workspace").then((module) => ({ default: module.AssetWorkspace })),
+);
+import { Overview } from "./overview";
+import { NAV } from "./sidebar";
 import { AssetOrganizer } from "./asset-organizer";
-import { MailWorkspace } from "./mail-workspace";
-import { VaultWorkspace } from "./vault-workspace";
+const MailWorkspace = lazy(() =>
+  import("./mail-workspace").then((module) => ({ default: module.MailWorkspace })),
+);
+const VaultWorkspace = lazy(() =>
+  import("./vault-workspace").then((module) => ({ default: module.VaultWorkspace })),
+);
 import { useSettings } from "@/lib/settings";
-import { Area, AreaChart, ResponsiveContainer, Tooltip, XAxis } from "recharts";
 import { AiCard, CertCard, DomainCard, MailCard, SecretCard, ServerCard } from "./asset-card";
-import { AgentView } from "./agent-view";
-import { LogoMark } from "./logo";
+const AgentView = lazy(() =>
+  import("./agent-view").then((module) => ({ default: module.AgentView })),
+);
 import { GroupHeading, TagBar } from "./tag-bar";
 import { RefreshAllButton } from "./refresh-button";
-import { useAlerts } from "./right-rail";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
-import { CountUp, TimeAgo } from "./ui/time-ago";
+import { CountUp } from "./ui/time-ago";
 import { isDesktop } from "@/lib/desktop";
 import { useLive } from "@/lib/live";
-import type { ProbeKind } from "@/lib/probes";
-import {
-  attentionOf,
-  chipClass,
-  dotClass,
-  healthScore,
-  KIND_LABEL,
-  STATUS_LABEL,
-} from "@/lib/status";
+import { GlobalNodesHub } from "./ui/global-nodes-hub";
+import { type ProbeKind } from "@/lib/probes";
+import { attentionOf, dotClass, KIND_LABEL } from "@/lib/status";
 import { useAppStore } from "@/lib/store";
 import { groupByTag, matchesTags, tagIndex, tagsOf } from "@/lib/tags";
 import type { AssetKind, Status, Taggable, ViewId } from "@/lib/types";
 import { cn, formatUsd } from "@/lib/utils";
-import { t, getLocale } from "@/lib/i18n";
+import { t } from "@/lib/i18n";
 
 export function MainView() {
   const view = useAppStore((s) => s.view);
-  const filter = useAppStore((s) => s.filter);
   // Re-keying replays the entrance, so switching views reads as a change of
   // place rather than a silent content swap.
   return (
     <div
-      key={`${view}:${filter}`}
+      key={view}
       className={cn("view-in", view === "agent" && "flex min-h-[calc(100dvh-13rem)] flex-col")}
     >
-      <ViewBody />
+      <Suspense
+        fallback={
+          <div className="p-6 text-sm text-muted" role="status">
+            {t("正在加载…")}
+          </div>
+        }
+      >
+        <ViewBody />
+      </Suspense>
     </div>
   );
 }
@@ -62,11 +68,21 @@ function ViewBody() {
   const layout = useSettings((s) => s.assetLayout);
   const hydrated = useAppStore((s) => s.hydrated);
   if (view === "mail") return <MailWorkspace />;
-  if (hydrated && view !== "agent" && view !== "terminal" && layout !== "cards")
+  if (
+    hydrated &&
+    ["servers", "domains", "ai", "certs", "tags"].includes(view) &&
+    layout !== "cards"
+  )
     return <AssetWorkspace />;
   switch (view) {
+    case "docs":
+      return <DocumentsWorkspace />;
+    case "usage":
+      return <UsageWorkspace />;
     case "overview":
       return <Overview />;
+    case "nodes":
+      return <NodesView />;
     case "servers":
       return <ServersView />;
     case "domains":
@@ -86,147 +102,148 @@ function ViewBody() {
   }
 }
 
+function NodesView() {
+  return (
+    <div className="mx-4 mt-5 space-y-5 pb-24">
+      <GlobalNodesHub />
+    </div>
+  );
+}
+
 export function TopTabs() {
   const view = useAppStore((s) => s.view);
-  // Everything in this header narrows a list; the agent has no list.
-  if (view === "agent") return null;
-  return <ListHeader />;
+  const item = NAV.find((entry) => entry.id === view);
+  const openComposer = useAppStore((s) => s.openComposer);
+  return (
+    <div className="sticky top-0 z-20 border-b border-line bg-canvas">
+      <div className="flex min-h-16 items-center justify-between gap-3 px-4 md:px-6">
+        <h1 className="text-xl font-semibold tracking-tight">{t(item?.label ?? "资产总览")}</h1>
+        {item?.kind && (
+          <Button size="sm" onClick={() => openComposer(item.kind!)}>
+            {t("添加资产")}
+          </Button>
+        )}
+      </div>
+      {["servers", "domains", "ai", "certs", "tags", "vault", "mail"].includes(view) && (
+        <ListHeader />
+      )}
+    </div>
+  );
 }
 
 function ListHeader() {
-  const locale = getLocale();
   const view = useAppStore((s) => s.view);
   const filter = useAppStore((s) => s.filter);
   const setFilter = useAppStore((s) => s.setFilter);
   const query = useAppStore((s) => s.query);
   const setQuery = useAppStore((s) => s.setQuery);
   const setCommandOpen = useAppStore((s) => s.setCommandOpen);
-  const title = TITLE[view];
+  const title = TITLE[view] || { all: "全部", attention: "需处理" };
   const layout = useSettings((s) => s.assetLayout);
   const setLayout = useSettings((s) => s.setAssetLayout);
   const hydrated = useAppStore((s) => s.hydrated);
   const counts = useAppStore(useShallow(attentionOf));
-  // The badge counts what *this* tab would filter to, not the whole estate.
   const pending = counts[BADGE_KEY[view]];
-  const bar = useRef<HTMLDivElement>(null);
-  const [indicator, setIndicator] = useState<{ x: number; w: number } | null>(null);
-
-  // The underline is one element that slides between labels; measuring the
-  // label (not the flex-1 button) keeps it hugging the text like the tab it
-  // belongs to.
-  useEffect(() => {
-    const root = bar.current;
-    if (!root) return;
-    const measure = () => {
-      const label = root.querySelector<HTMLElement>('[data-active="true"] [data-label]');
-      if (!label) return;
-      const r = label.getBoundingClientRect();
-      const p = root.getBoundingClientRect();
-      setIndicator({ x: r.left - p.left, w: r.width });
-    };
-    measure();
-    const ro = new ResizeObserver(measure);
-    ro.observe(root);
-    return () => ro.disconnect();
-  }, [filter, view, locale]);
 
   return (
-    <div className="sticky top-0 z-20 border-b border-line bg-canvas/85 backdrop-blur-md">
-      <div ref={bar} className="relative flex h-14 items-stretch">
-        <Tab active={filter === "all"} onClick={() => setFilter("all")}>
-          {t(title.all)}
-        </Tab>
-        <Tab active={filter === "attention"} onClick={() => setFilter("attention")}>
-          {t(title.attention)}
-          {pending > 0 && (
-            <span className="ml-2 inline-flex min-w-5 items-center justify-center rounded-full bg-crit px-1.5 text-2xs font-semibold tabular-nums text-card">
-              {pending}
-            </span>
-          )}
-        </Tab>
-        <span
-          className="tab-indicator"
-          style={{
-            width: indicator?.w ?? 0,
-            transform: `translateX(${indicator?.x ?? 0}px)`,
-            opacity: indicator ? 1 : 0,
-          }}
-        />
+    <div className="bg-canvas/80 px-4 py-2 space-y-2 border-b border-line">
+      <div className="flex items-center justify-between gap-3">
+        {/* Compact pill tabs for filter */}
+        <div className="flex items-center gap-1.5 text-xs font-medium">
+          <button
+            type="button"
+            onClick={() => setFilter("all")}
+            className={cn(
+              "px-3 py-1 rounded-full transition-colors cursor-pointer text-xs",
+              filter === "all"
+                ? "bg-ink text-card font-semibold"
+                : "text-muted hover:text-ink hover:bg-surface",
+            )}
+          >
+            {t(title.all)}
+          </button>
+          <button
+            type="button"
+            onClick={() => setFilter("attention")}
+            className={cn(
+              "px-3 py-1 rounded-full transition-colors cursor-pointer flex items-center gap-1.5 text-xs",
+              filter === "attention"
+                ? "bg-ink text-card font-semibold"
+                : "text-muted hover:text-ink hover:bg-surface",
+            )}
+          >
+            <span>{t(title.attention)}</span>
+            {pending > 0 && (
+              <span className="inline-flex min-w-4 items-center justify-center rounded-full bg-crit px-1 text-[10px] font-bold text-white leading-none">
+                {pending}
+              </span>
+            )}
+          </button>
+        </div>
+
+        {/* Layout switch */}
+        {view !== "terminal" && view !== "mail" && (
+          <div className="flex items-center gap-1" role="group" aria-label={t("显示方式")}>
+            {(
+              [
+                { mode: "cards", label: "卡片视图", Icon: LayoutGrid },
+                { mode: "table", label: "表格视图", Icon: Table2 },
+                { mode: "graph", label: "关系图", Icon: Network },
+              ] as const
+            ).map(({ mode, label, Icon }) => (
+              <button
+                key={mode}
+                type="button"
+                aria-label={t(label)}
+                title={t(label)}
+                aria-pressed={(hydrated ? layout : "cards") === mode}
+                onClick={() => setLayout(mode)}
+                className={cn(
+                  "flex size-7 items-center justify-center rounded-lg border border-line text-muted transition-colors cursor-pointer hover:bg-surface hover:text-ink",
+                  (hydrated ? layout : "cards") === mode &&
+                    "bg-surface text-ink border-line-strong",
+                )}
+              >
+                <Icon className="size-3.5" />
+              </button>
+            ))}
+            <AssetOrganizer />
+          </div>
+        )}
       </div>
-      <div className="flex items-center gap-2 px-4 pb-2 pt-2">
+
+      <div className="flex items-center gap-2">
         <div className="relative min-w-0 flex-1">
-          <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-subtle" />
+          <Search className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted" />
           <Input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder={t("筛选当前列表")}
-            className="h-9 bg-card pl-9"
+            className="h-8 bg-card pl-8 text-xs"
           />
         </div>
         <RefreshAllButton kind={PROBE_KIND[view]} />
         <Button
           variant="outline"
           size="sm"
-          className="xl:hidden"
+          className="xl:hidden h-8 text-xs"
           onClick={() => setCommandOpen(true)}
         >
           ⌘K
         </Button>
       </div>
-      {view !== "terminal" && view !== "mail" && (
-        <div className="layout-switch" role="group" aria-label={t("显示方式")}>
-          {(
-            [
-              { mode: "cards", label: "卡片视图", Icon: LayoutGrid },
-              { mode: "table", label: "表格视图", Icon: Table2 },
-              { mode: "graph", label: "关系图", Icon: Network },
-            ] as const
-          ).map(({ mode, label, Icon }) => (
-            <button
-              key={mode}
-              type="button"
-              aria-label={t(label)}
-              title={t(label)}
-              aria-pressed={(hydrated ? layout : "cards") === mode}
-              onClick={() => setLayout(mode)}
-            >
-              <Icon className="size-4" />
-            </button>
-          ))}
-          <AssetOrganizer />
-        </div>
-      )}
+
       <TagBar />
     </div>
   );
 }
 
-function Tab({
-  active,
-  onClick,
-  children,
-}: {
-  active: boolean;
-  onClick: () => void;
-  children: ReactNode;
-}) {
-  return (
-    <button
-      type="button"
-      className="relative flex flex-1 items-center justify-center text-body font-medium text-muted transition-colors duration-150 ease-out hover:bg-line/70 data-[active=true]:text-ink"
-      data-active={active}
-      onClick={onClick}
-    >
-      <span data-label className={cn("inline-flex items-center px-1 py-4", active && "font-bold")}>
-        {children}
-      </span>
-    </button>
-  );
-}
-
 /** Which live probe the refresh button in this view should run. */
 const PROBE_KIND: Record<ViewId, ProbeKind | null> = {
+  docs: null,
+  usage: null,
   overview: "server",
+  nodes: "server",
   servers: "server",
   domains: "domain",
   mail: null,
@@ -239,7 +256,10 @@ const PROBE_KIND: Record<ViewId, ProbeKind | null> = {
 };
 
 const BADGE_KEY: Record<ViewId, keyof ReturnType<typeof attentionOf>> = {
+  docs: "total",
+  usage: "total",
   overview: "total",
+  nodes: "total",
   servers: "servers",
   domains: "domains",
   mail: "mail",
@@ -253,6 +273,7 @@ const BADGE_KEY: Record<ViewId, keyof ReturnType<typeof attentionOf>> = {
 
 const TITLE: Record<string, { all: string; attention: string }> = {
   overview: { all: "为你准备", attention: "需处理" },
+  nodes: { all: "全部自建节点", attention: "需处理" },
   servers: { all: "全部主机", attention: "异常" },
   domains: { all: "全部域名", attention: "即将到期" },
   mail: { all: "全部邮箱", attention: "需处理" },
@@ -263,288 +284,6 @@ const TITLE: Record<string, { all: string; attention: string }> = {
   agent: { all: "问答", attention: "需处理" },
   terminal: { all: "会话", attention: "离线主机" },
 };
-
-function TipBanner() {
-  return (
-    <div className="mx-4 mt-3 rounded-xl bg-banner px-4 py-3 text-meta text-ink shadow-card">
-      <p className="mb-1.5 text-2xs font-semibold tracking-wide text-muted">{t("重点提示")}</p>
-      <ul className="space-y-1">
-        <li className="flex items-start gap-2">
-          <Check className="mt-0.5 size-3.5 shrink-0 text-ok" strokeWidth={2.4} />
-
-          {t("黄色 = 到期 / 高负载 / 用量；红色 = 离线或不足 7 天。")}
-        </li>
-        <li className="flex items-start gap-2">
-          <Check className="mt-0.5 size-3.5 shrink-0 text-ok" strokeWidth={2.4} />
-
-          {t("点开白色卡片放大详情；服务器可开玻璃 SSH 终端")}
-          {isDesktop() ? t("（真实连接）。") : t("（浏览器内模拟）。")}
-        </li>
-      </ul>
-    </div>
-  );
-}
-
-/** Nothing recorded yet — say what this thing is and what to do first. */
-function FirstRun() {
-  const openComposer = useAppStore((s) => s.openComposer);
-  return (
-    <div className="stagger-in mx-4 mb-24 mt-6 space-y-4">
-      <section className="rounded-2xl bg-card p-6 shadow-card">
-        <LogoMark className="size-10" />
-        <h2 className="mt-4 text-xl font-semibold tracking-tight">{t("开始记录你的资产")}</h2>
-        <p className="mt-2 max-w-prose text-meta leading-relaxed text-muted">
-          {t(
-            "司南把服务器、域名、邮箱、AI 订阅、密钥和证书收在一块盘面上，替你盯住到期和异常。\r\n          录入之后，主机指标通过 SSH 实时采集，域名走 WHOIS，证书直接握手读取——都是真实数据。",
-          )}
-        </p>
-        <div className="mt-5 flex flex-wrap gap-2">
-          <Button onClick={() => openComposer("server")}>{t("添加第一台主机")}</Button>
-          <Button variant="outline" onClick={() => openComposer("domain")}>
-            {t("添加域名")}
-          </Button>
-          <Button variant="outline" onClick={() => openComposer("cert")}>
-            {t("添加证书")}
-          </Button>
-        </div>
-      </section>
-
-      <section className="rounded-xl bg-banner px-5 py-4 text-meta leading-relaxed text-muted">
-        <p className="mb-2 text-2xs font-semibold tracking-wide text-muted">
-          {t("几件值得先知道的事")}
-        </p>
-        <ul className="space-y-1.5">
-          <li className="flex items-start gap-2">
-            <Check className="mt-0.5 size-3.5 shrink-0 text-ok" strokeWidth={2.4} />
-
-            {t("SSH 密码和私钥存在本机加密的密钥库里，第一次保存时会让你设一个主密码。")}
-          </li>
-          <li className="flex items-start gap-2">
-            <Check className="mt-0.5 size-3.5 shrink-0 text-ok" strokeWidth={2.4} />
-
-            {t("资产写在本机的数据文件中，随时可以导出成 JSON；凭据不会跟着导出。")}
-          </li>
-          <li className="flex items-start gap-2">
-            <Check className="mt-0.5 size-3.5 shrink-0 text-ok" strokeWidth={2.4} />
-
-            {t("⌘K 全局搜索，⌘N 新建，点开卡片看详情，主机可以直接开真实 SSH 会话。")}
-          </li>
-        </ul>
-      </section>
-    </div>
-  );
-}
-
-function Overview() {
-  const servers = useAppStore((s) => s.servers);
-  const aiAssets = useAppStore((s) => s.aiAssets);
-  const activity = useAppStore((s) => s.activity);
-  const filter = useAppStore((s) => s.filter);
-  const empty = useAppStore(
-    (s) =>
-      s.servers.length +
-        s.domains.length +
-        s.mailboxes.length +
-        s.aiAssets.length +
-        s.secrets.length +
-        s.certs.length ===
-      0,
-  );
-  const score = useAppStore(healthScore);
-  const att = useAppStore(useShallow(attentionOf));
-  const alerts = useAlerts();
-  const spend = aiAssets.reduce((a, x) => a + x.monthlyUsd, 0);
-  const online = servers.filter((s) => s.status === "online").length;
-
-  const spendSeries = [
-    { m: t("4月"), v: Math.round(spend * 0.72) },
-    { m: t("5月"), v: Math.round(spend * 0.8) },
-    { m: t("6月"), v: Math.round(spend * 0.86) },
-    { m: t("7月"), v: Math.round(spend * 0.9) },
-    { m: t("8月"), v: Math.round(spend * 0.96) },
-    { m: t("9月"), v: spend },
-  ];
-
-  if (empty) return <FirstRun />;
-
-  if (filter === "attention") {
-    return (
-      <div>
-        <TipBanner />
-        <section className="stagger-in mx-4 mt-4 space-y-2 pb-24">
-          {alerts.length === 0 ? (
-            <Empty text={t("目前没有需要处理的项目。")} />
-          ) : (
-            alerts.map((a) => (
-              <AlertRow key={a.id} title={a.title} detail={a.detail} status={a.status} />
-            ))
-          )}
-        </section>
-      </div>
-    );
-  }
-
-  return (
-    <div className="pb-24">
-      <TipBanner />
-
-      <section className="stagger-in mx-4 mt-4 grid grid-cols-2 gap-3 @2xl:grid-cols-4">
-        <Stat
-          label={t("健康分")}
-          value={<CountUp value={score} />}
-          hint={score >= 80 ? t("运转良好") : t("有事项待处理")}
-          tone={score >= 80 ? "online" : score >= 60 ? "warning" : "offline"}
-        />
-        <Stat
-          label={t("主机在线")}
-          value={
-            <>
-              <CountUp value={online} />/{servers.length}
-            </>
-          }
-          hint={t("{0} 台异常", att.servers)}
-          tone={att.servers ? "warning" : "online"}
-        />
-        <Stat
-          label={t("AI 月费")}
-          value={<CountUp value={spend} format={formatUsd} />}
-          hint={t("{0} 个订阅", aiAssets.length)}
-          tone="online"
-        />
-        <Stat
-          label={t("待处理")}
-          value={<CountUp value={att.total} />}
-          hint={t("证书 / 域名 / 负载")}
-          tone={att.total ? "warning" : "online"}
-        />
-      </section>
-
-      <section className="mx-4 mt-4 rounded-xl bg-card p-4 shadow-card">
-        <div className="mb-3 flex items-baseline justify-between">
-          <h2 className="font-semibold tracking-tight">{t("AI 支出趋势")}</h2>
-          <span className="text-2xs text-subtle">{t("近 6 个月 · 美元")}</span>
-        </div>
-        <div className="h-44">
-          <ResponsiveContainer width="100%" height="100%">
-            <AreaChart data={spendSeries} margin={{ top: 4, right: 14, bottom: 0, left: 14 }}>
-              <defs>
-                <linearGradient id="spend" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor="var(--color-ink)" stopOpacity={0.22} />
-                  <stop offset="100%" stopColor="var(--color-ink)" stopOpacity={0} />
-                </linearGradient>
-              </defs>
-              <XAxis
-                dataKey="m"
-                tick={{ fontSize: 11, fill: "var(--color-subtle)" }}
-                axisLine={false}
-                tickLine={false}
-                dy={4}
-                interval={0}
-                padding={{ left: 6, right: 6 }}
-              />
-              <Tooltip
-                cursor={{ stroke: "var(--color-line-strong)", strokeWidth: 1 }}
-                contentStyle={{
-                  border: "none",
-                  borderRadius: 8,
-                  fontSize: 12,
-                  boxShadow: "var(--shadow-card)",
-                }}
-                formatter={(v) => [formatUsd(Number(v)), t("支出")]}
-              />
-              <Area
-                type="monotone"
-                dataKey="v"
-                stroke="var(--color-ink)"
-                strokeWidth={1.8}
-                fill="url(#spend)"
-                animationDuration={700}
-                activeDot={{ r: 3.5, fill: "var(--color-ink)", strokeWidth: 0 }}
-              />
-            </AreaChart>
-          </ResponsiveContainer>
-        </div>
-      </section>
-
-      {/* Below xl the rail is gone, so the same two panels ride along here. */}
-      {alerts.length > 0 && (
-        <section className="mx-4 mt-4 xl:hidden">
-          <h2 className="mb-2 px-1 text-meta font-medium text-muted">{t("需要留意")}</h2>
-          <div className="space-y-2">
-            {alerts.slice(0, 4).map((a) => (
-              <AlertRow key={a.id} title={a.title} detail={a.detail} status={a.status} />
-            ))}
-          </div>
-        </section>
-      )}
-
-      <section className="mx-4 mt-4 rounded-xl bg-card p-4 shadow-card xl:hidden">
-        <h2 className="mb-3 font-semibold tracking-tight">{t("最近动态")}</h2>
-        <ul className="space-y-3">
-          {activity.slice(0, 6).map((a) => (
-            <li key={a.id} className="flex gap-2">
-              <span className="mt-1.5 size-1.5 shrink-0 rounded-full bg-ink/40" />
-              <div className="min-w-0">
-                <p className="text-meta leading-snug">{a.text}</p>
-                <TimeAgo iso={a.at} className="text-2xs text-subtle" />
-              </div>
-            </li>
-          ))}
-        </ul>
-      </section>
-
-      <section className="mx-4 mt-5">
-        <h2 className="mb-2 px-1 text-meta font-medium text-muted">{t("主机")}</h2>
-        <div className="stagger-in grid gap-3 @2xl:grid-cols-2">
-          {servers.slice(0, 4).map((s) => (
-            <ServerCard key={s.id} data={s} />
-          ))}
-        </div>
-      </section>
-    </div>
-  );
-}
-
-function Stat({
-  label,
-  value,
-  hint,
-  tone,
-}: {
-  label: string;
-  value: ReactNode;
-  hint: string;
-  tone: Status;
-}) {
-  return (
-    <div className="rounded-xl bg-card p-4 shadow-card">
-      <div className="flex items-center gap-2 text-2xs font-medium text-muted">
-        <span className={dotClass(tone)} />
-        {label}
-      </div>
-      <div className="mt-2 text-2xl font-semibold tabular-nums tracking-tight">{value}</div>
-      <div className="mt-1 text-2xs text-subtle">{hint}</div>
-    </div>
-  );
-}
-
-function AlertRow({ title, detail, status }: { title: string; detail: string; status: Status }) {
-  return (
-    <div className="flex items-center gap-3 rounded-xl bg-card px-4 py-3 shadow-card">
-      <AlertTriangle
-        className={cn("size-4 shrink-0", status === "offline" ? "text-crit" : "text-warn")}
-      />
-      <div className="min-w-0 flex-1">
-        <p className="truncate font-medium">{title}</p>
-        <p className="truncate text-2xs text-muted">{detail}</p>
-      </div>
-      <span className={chipClass(status)}>
-        <span className={dotClass(status)} />
-        {t(STATUS_LABEL[status])}
-      </span>
-    </div>
-  );
-}
 
 function match(q: string, ...parts: Array<string | number | undefined>) {
   if (!q.trim()) return true;
@@ -656,15 +395,20 @@ function DomainsView() {
 
 function AiView() {
   const list = useAppStore((s) => s.aiAssets);
-  const spend = list.reduce((a, x) => a + x.monthlyUsd, 0);
-  const missingPrice = list.filter((item) => item.monthlyUsdKnown === false).length;
+  const cost = subscriptionCost(list);
+  const spend = cost.total;
+  const missingPrice = cost.missing;
   const items = useListFilter(list, (s) => [s.name, s.provider, s.plan, tagsOf(s).join(" ")]);
   return (
     <div>
       <div className="mx-4 mt-3 rounded-xl bg-card px-4 py-3 shadow-card">
         <p className="text-2xs text-muted">{t("本月订阅合计")}</p>
         <p className="text-xl font-semibold tabular-nums">
-          <CountUp value={spend} format={formatUsd} />
+          {cost.known === 0 && missingPrice > 0 ? (
+            t("月费未填写")
+          ) : (
+            <CountUp value={spend} format={formatUsd} />
+          )}
         </p>
         {missingPrice > 0 && (
           <p className="mt-1 text-2xs text-muted">{t("另有 {0} 个订阅未提供月费", missingPrice)}</p>

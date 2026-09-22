@@ -2,15 +2,24 @@
 
 个人数字资产工作台，将主机、域名、邮箱、AI 订阅、密钥和证书集中到一个桌面应用中。资产保存在本机；通过 SSH、DNS、TLS 和服务商 API 读取实际状态，通过你配置的模型进行有来源的问答。
 
-[下载安装包](https://github.com/Songwo/nanpad/releases/latest) · [使用教程](docs/USER-GUIDE.md) · [产品介绍](docs/PRODUCT.md) · [AI 服务授权](docs/AI-ACCOUNTS.md) · [模型与本地 RAG](docs/AGENT-RAG.md) · [安全与备份](docs/SECURITY.md) · [更新日志](CHANGELOG.md)
+[产品主页](https://songwo.github.io/nanpad/) · [下载安装包](https://github.com/Songwo/nanpad/releases/latest) · [使用教程](docs/USER-GUIDE.md) · [产品介绍](docs/PRODUCT.md) · [AI 服务授权](docs/AI-ACCOUNTS.md) · [模型与本地 RAG](docs/AGENT-RAG.md) · [安全与备份](docs/SECURITY.md) · [更新日志](CHANGELOG.md)
 
 [社区友链 · LINUX DO](https://linux.do/) · 真诚、友善、团结、专业。
 
-![Nanpad 桌面界面](screenshots/dark-overview.png)
+![Nanpad 桌面界面](site/overview.png)
+
+喜欢司南的话，欢迎 [Star 本项目](https://github.com/Songwo/nanpad)、提交 Issue 或贡献改进。
+
+## 1.0 新增
+
+- 图文文档：独立保存、多资产关联、粘贴与拖入图片，可选连接图床。
+- 自建节点：分享链接导入、手动编辑、导出与真实连通检测。
+- 用量记录：3x-ui、机场流量、支持的 API Token 查询及订阅额度快照。
+- 可靠性：SSH 错误收尾、后台探测去重、编辑保护与未知费用提示。
 
 ## 安装与首次使用
 
-1. 在 GitHub Releases 下载 `Nanpad-0.10.0-setup.exe`，适用于 Windows x64。
+1. 在 GitHub Releases 下载 `Nanpad-1.0.0-setup.exe`，适用于 Windows x64。
 2. 运行安装程序，选择安装位置。当前安装包未做代码签名，请核对发布者、下载地址和 Release 中的 SHA256 校验文件。
 3. 首次启动填写自己的名字，创建至少 10 个字符的主密码，并再次确认。主密码不能找回。
 4. 已有密钥库的用户填写姓名及原主密码即可继续，升级不会自动删除资产或演示记录。
@@ -63,7 +72,7 @@
 
 邮箱列表或阅读器中的账号头像可直接打开「邮箱头像与分组」，一次修改图片和归属。阅读邮件时点击发件人头像，可为该地址保存本地图片，每个邮箱最多 32 个；没有图片时显示首字母。应用不会自动向外部头像服务查询邮箱地址。发件人头像及对应地址随邮箱资产保存，不属于加密凭据。
 
-支持本地 PNG、JPEG、WebP，单文件不超过 8 MiB；原图最长边不超过 8192 像素、总像素不超过 2400 万。应用在本机将头像缩至最长边 256 像素、资产图缩至 512 像素，并重编码为 PNG，每张保存的图片不超过 1 MiB。图片随个人资料或资产保存在本机，不使用远程图片链接。
+支持本地 PNG、JPEG、WebP，单文件不超过 8 MiB；原图最长边不超过 8192 像素、总像素不超过 2400 万。应用在本机将头像缩至最长边 256 像素、资产图缩至 512 像素，并重编码为 PNG，每张保存的图片不超过 1 MiB。个人头像保存在本机。文档与资产封面可选启用图床，图片将上传到用户配置的服务并保存 HTTPS 地址；图床 Key 由系统安全存储加密保存。未启用图床时仍使用本地图片。
 
 ## 本地 RAG 与 Agent
 

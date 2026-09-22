@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { createJSONStorage, persist, type StateStorage } from "zustand/middleware";
+import { selectiveStorage } from "./selective-storage";
 import { desktop, isDesktop } from "./desktop";
 import { EMPTY_SNAPSHOT, SEED_ACTIVITY, SEED_SNAPSHOT } from "./seed";
 import type {
@@ -238,6 +239,9 @@ export const useAppStore = create<AppState>()(
 
       remove: (kind, id) => {
         const key = collectionKey(kind);
+        const removed = (
+          get()[key] as { id: string; name?: string; address?: string; cn?: string }[]
+        ).find((x) => x.id === id);
         set({
           [key]: (get()[key] as { id: string }[]).filter((x) => x.id !== id),
           links: get().links.filter(
@@ -247,7 +251,7 @@ export const useAppStore = create<AppState>()(
           ),
           expanded: null,
         } as Partial<AppState>);
-        get().log(t("已移除 {0}", id), kind);
+        get().log(t("已移除 {0}", removed?.name ?? removed?.address ?? removed?.cn ?? id), kind);
       },
 
       patchServerMetrics: (id, patch) =>
@@ -294,7 +298,9 @@ export const useAppStore = create<AppState>()(
     {
       name: "sinan-assets-v1",
       skipHydration: true,
-      storage: createJSONStorage(pickStorage),
+      storage: selectiveStorage(
+        createJSONStorage<Snapshot & { activity: ActivityItem[] }>(pickStorage)!,
+      ),
       // Records written before tags existed have no `tags` array, and every
       // reader treats it as required. Normalise once, on the way in.
       merge: (persisted, current) => {
@@ -350,7 +356,9 @@ function upsert<T extends { id: string }>(list: T[], item: T): T[] {
   return next;
 }
 
-function collectionKey(kind: AssetKind): Exclude<keyof Snapshot, "links" | "mailFolders" | "secretFolders"> {
+function collectionKey(
+  kind: AssetKind,
+): Exclude<keyof Snapshot, "links" | "mailFolders" | "secretFolders"> {
   switch (kind) {
     case "server":
       return "servers";

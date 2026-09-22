@@ -96,13 +96,81 @@ test("SSH 主机指纹存储不可用时拒绝连接而不是放行", { timeout:
   });
   try {
     await assert.rejects(
-      manager.test(
-        { id: "fixture", host: "127.0.0.1", port, username: "tester" },
-        CREDENTIAL,
-      ),
+      manager.test({ id: "fixture", host: "127.0.0.1", port, username: "tester" }, CREDENTIAL),
       /密钥库已锁定/,
     );
   } finally {
     await s.stop();
   }
+});
+import { EventEmitter } from "node:events";
+
+class BrokenClient extends EventEmitter {
+  destroyed = false;
+  connect() {
+    queueMicrotask(() => {
+      this.emit("error", new Error("ECONNRESET"));
+      this.emit("error", new Error("Connection lost before handshake"));
+      this.emit("close");
+    });
+  }
+  destroy() {
+    this.destroyed = true;
+  }
+  end() {
+    this.destroy();
+  }
+}
+
+test("SSH 首次失败及关闭时的二次错误均被处理", async () => {
+  const client = new BrokenClient();
+  const manager = new SshManager(
+    () => {},
+    undefined,
+    () => client,
+  );
+  await assert.rejects(
+    manager.test({ host: "fixture", username: "tester" }, CREDENTIAL),
+    /连接被重置/,
+  );
+  assert.equal(client.destroyed, true);
+  assert.doesNotThrow(() => client.emit("error", new Error("Connection lost before handshake")));
+});
+
+test("SSH 命令执行中断立即失败，保留关闭阶段错误监听", async () => {
+  const client = new BrokenClient();
+  client.connect = () => queueMicrotask(() => client.emit("ready"));
+  client.exec = () =>
+    queueMicrotask(() => {
+      client.emit("error", new Error("ECONNRESET"));
+      client.emit("error", new Error("Connection lost before handshake"));
+      client.emit("close");
+    });
+  const manager = new SshManager(
+    () => {},
+    undefined,
+    () => client,
+  );
+  await assert.rejects(
+    manager.probe({ host: "fixture", username: "tester" }, CREDENTIAL),
+    /连接被重置/,
+  );
+  assert.equal(client.destroyed, true);
+});
+
+test("SSH 终端打开失败关闭连接且不丢失后续错误监听", async () => {
+  const client = new BrokenClient();
+  client.connect = () => queueMicrotask(() => client.emit("ready"));
+  client.shell = (_options, callback) => callback(new Error("shell rejected"));
+  const manager = new SshManager(
+    () => {},
+    undefined,
+    () => client,
+  );
+  await assert.rejects(
+    manager.openShell({ host: "fixture", username: "tester" }, CREDENTIAL),
+    /shell rejected/,
+  );
+  assert.equal(client.destroyed, true);
+  assert.doesNotThrow(() => client.emit("error", new Error("ECONNRESET")));
 });

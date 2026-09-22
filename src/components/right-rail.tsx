@@ -11,7 +11,10 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { useMemo, type ReactNode } from "react";
-import { AgentHistory } from "./agent-view";
+import { lazy, Suspense } from "react";
+const AgentHistory = lazy(() =>
+  import("./agent-view").then((module) => ({ default: module.AgentHistory })),
+);
 import { CalendarExport } from "./operations-panel";
 import { TimeAgo } from "./ui/time-ago";
 import { isDesktop } from "@/lib/desktop";
@@ -158,7 +161,11 @@ export function RightRail({ className }: { className?: string }) {
 
         {/* The agent's own history is more useful here than the standing
             picture while you are mid-conversation. */}
-        {view === "agent" && <AgentHistory />}
+        {view === "agent" && (
+          <Suspense fallback={null}>
+            <AgentHistory />
+          </Suspense>
+        )}
 
         <Panel
           title={t("需要留意")}

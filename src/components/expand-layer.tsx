@@ -1,4 +1,15 @@
-import { Pencil, Trash2, X } from "lucide-react";
+import { AssetDocuments } from "./asset-documents";
+import {
+  Activity,
+  BookOpen,
+  FolderArchive,
+  KeyRound,
+  Pencil,
+  Trash2,
+  Wrench,
+  X,
+  Zap,
+} from "lucide-react";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { AiCard, CertCard, DomainCard, MailCard, SecretCard, ServerCard } from "./asset-card";
 import { AccountPanel } from "./account-panel";
@@ -6,11 +17,15 @@ import { MailStatus } from "./mail-status";
 import { AiAccountsPanel } from "./ai-accounts";
 import { AssetRelations, MetricHistory, SftpBrowser } from "./operations-panel";
 import { RefreshOneButton } from "./refresh-button";
+import { ServerNodesPanel } from "./server-nodes-panel";
+import { ServerDocsPanel } from "./server-docs-panel";
+import { ServerSecretsPanel } from "./server-secrets-panel";
+import { ServerOpsToolbox } from "./server-ops-toolbox";
 import { Button } from "./ui/button";
 import { cardRect, flipTransform, reduceMotion } from "@/lib/motion";
 import { PROBEABLE, type ProbeKind } from "@/lib/probes";
 import { useAppStore, type ExpandState } from "@/lib/store";
-import type { AssetKind } from "@/lib/types";
+import type { AssetKind, Server } from "@/lib/types";
 import { t } from "@/lib/i18n";
 
 const ENTER_MS = 340;
@@ -28,9 +43,20 @@ export function ExpandLayer() {
   const openComposer = useAppStore((s) => s.openComposer);
   const remove = useAppStore((s) => s.remove);
   const aiAssets = useAppStore((s) => s.aiAssets);
+  const servers = useAppStore((s) => s.servers);
 
   const [visible, setVisible] = useState<ExpandState | null>(null);
   const [shown, setShown] = useState(false);
+  const [serverTab, setServerTab] = useState<
+    "overview" | "nodes" | "docs" | "secrets" | "ops" | "files"
+  >("overview");
+  const currentServer =
+    visible?.kind === "server" ? servers.find((s) => s.id === visible.id) : null;
+
+  useEffect(() => {
+    setServerTab("overview");
+  }, [visible?.id]);
+
   const panel = useRef<HTMLDivElement>(null);
   const accountSection = useRef<HTMLDivElement>(null);
   const closing = useRef(false);
@@ -148,24 +174,154 @@ export function ExpandLayer() {
             </Button>
           </div>
         </div>
+
+        {/* Server Sub-Tabs Bar */}
+        {visible.kind === "server" && currentServer && (
+          <div className="flex border-b border-line bg-surface-subtle/40 px-3 py-1.5 gap-1 overflow-x-auto text-xs">
+            <button
+              type="button"
+              onClick={() => setServerTab("overview")}
+              className={`btn-pill px-3 py-1 flex items-center gap-1.5 font-medium transition-colors cursor-pointer ${
+                serverTab === "overview"
+                  ? "bg-card text-ink shadow-xs border border-line"
+                  : "text-muted hover:text-ink"
+              }`}
+            >
+              <Activity className="size-3.5 text-muted" />
+              <span>{t("监控概览")}</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setServerTab("nodes")}
+              className={`btn-pill px-3 py-1 flex items-center gap-1.5 font-medium transition-colors cursor-pointer ${
+                serverTab === "nodes"
+                  ? "bg-card text-ink shadow-xs border border-line"
+                  : "text-muted hover:text-ink"
+              }`}
+            >
+              <Zap className="size-3.5 text-emerald-400" />
+              <span>{t("自建节点")}</span>
+              {Boolean(currentServer.nodes?.length) && (
+                <span className="rounded-full bg-emerald-500/20 text-emerald-400 px-1.5 py-0.2 text-[10px] font-mono">
+                  {currentServer.nodes!.length}
+                </span>
+              )}
+            </button>
+            <button
+              type="button"
+              onClick={() => setServerTab("docs")}
+              className={`btn-pill px-3 py-1 flex items-center gap-1.5 font-medium transition-colors cursor-pointer ${
+                serverTab === "docs"
+                  ? "bg-card text-ink shadow-xs border border-line"
+                  : "text-muted hover:text-ink"
+              }`}
+            >
+              <BookOpen className="size-3.5 text-sky-400" />
+              <span>{t("服务文档")}</span>
+              {Boolean(currentServer.docs?.trim()) && (
+                <span className="size-1.5 rounded-full bg-sky-400" />
+              )}
+            </button>
+            <button
+              type="button"
+              onClick={() => setServerTab("secrets")}
+              className={`btn-pill px-3 py-1 flex items-center gap-1.5 font-medium transition-colors cursor-pointer ${
+                serverTab === "secrets"
+                  ? "bg-card text-ink shadow-xs border border-line"
+                  : "text-muted hover:text-ink"
+              }`}
+            >
+              <KeyRound className="size-3.5 text-amber-400" />
+              <span>{t("绑定密钥")}</span>
+              {Boolean(currentServer.customSecrets?.length) && (
+                <span className="rounded-full bg-amber-500/20 text-amber-400 px-1.5 py-0.2 text-[10px] font-mono">
+                  {currentServer.customSecrets!.length}
+                </span>
+              )}
+            </button>
+            <button
+              type="button"
+              onClick={() => setServerTab("ops")}
+              className={`btn-pill px-3 py-1 flex items-center gap-1.5 font-medium transition-colors cursor-pointer ${
+                serverTab === "ops"
+                  ? "bg-card text-ink shadow-xs border border-line"
+                  : "text-muted hover:text-ink"
+              }`}
+            >
+              <Wrench className="size-3.5 text-amber-400" />
+              <span>{t("运维工具")}</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setServerTab("files")}
+              className={`btn-pill px-3 py-1 flex items-center gap-1.5 font-medium transition-colors cursor-pointer ${
+                serverTab === "files"
+                  ? "bg-card text-ink shadow-xs border border-line"
+                  : "text-muted hover:text-ink"
+              }`}
+            >
+              <FolderArchive className="size-3.5 text-muted" />
+              <span>{t("文件SFTP")}</span>
+            </button>
+          </div>
+        )}
+
         <div className="max-h-[min(70vh,640px)] overflow-y-auto">
-          <ExpandedBody kind={visible.kind} id={visible.id} />
-          {visible.kind === "server" && (
-            <MetricHistory key={`metrics:${visible.id}`} serverId={visible.id} />
-          )}
-          {visible.kind === "server" && (
-            <SftpBrowser key={`files:${visible.id}`} serverId={visible.id} />
-          )}
-          <AssetRelations key={`links:${visible.kind}:${visible.id}`} asset={visible} />
-          {(visible.kind !== "ai" ||
-            !aiAssets.find((item) => item.id === visible.id)?.oauthAccountId) && (
-            <div ref={accountSection} tabIndex={-1} aria-label={t("凭据位置")}>
-              <AccountPanel
-                key={`${visible.kind}:${visible.id}`}
-                assetId={visible.id}
-                kind={visible.kind}
-              />
-            </div>
+          {visible.kind === "server" && currentServer ? (
+            <>
+              {serverTab === "overview" && (
+                <>
+                  <ExpandedBody kind={visible.kind} id={visible.id} />
+                  <MetricHistory key={`metrics:${visible.id}`} serverId={visible.id} />
+                  <AssetRelations key={`links:${visible.kind}:${visible.id}`} asset={visible} />
+                  <AssetDocuments asset={visible} />
+                  <div ref={accountSection} tabIndex={-1} aria-label={t("凭据位置")}>
+                    <AccountPanel
+                      key={`${visible.kind}:${visible.id}`}
+                      assetId={visible.id}
+                      kind={visible.kind}
+                    />
+                  </div>
+                </>
+              )}
+              {serverTab === "nodes" && (
+                <ServerNodesPanel key={`nodes:${visible.id}`} server={currentServer} />
+              )}
+              {serverTab === "docs" && (
+                <ServerDocsPanel key={`docs:${visible.id}`} server={currentServer} />
+              )}
+              {serverTab === "secrets" && (
+                <ServerSecretsPanel key={`secrets:${visible.id}`} server={currentServer} />
+              )}
+              {serverTab === "ops" && (
+                <ServerOpsToolbox key={`ops:${visible.id}`} server={currentServer} />
+              )}
+              {serverTab === "files" && (
+                <SftpBrowser key={`files:${visible.id}`} serverId={visible.id} />
+              )}
+            </>
+          ) : (
+            <>
+              <ExpandedBody kind={visible.kind} id={visible.id} />
+              {visible.kind === "server" && (
+                <MetricHistory key={`metrics:${visible.id}`} serverId={visible.id} />
+              )}
+              {visible.kind === "server" && (
+                <SftpBrowser key={`files:${visible.id}`} serverId={visible.id} />
+              )}
+              <AssetRelations key={`links:${visible.kind}:${visible.id}`} asset={visible} />
+              <AssetDocuments asset={visible} />
+              {(visible.kind !== "ai" ||
+                !aiAssets.find((item) => item.id === visible.id)?.oauthAccountId) && (
+                <div ref={accountSection} tabIndex={-1} aria-label={t("凭据位置")}>
+                  <AccountPanel
+                    key={`${visible.kind}:${visible.id}`}
+                    assetId={visible.id}
+                    kind={visible.kind}
+                  />
+                </div>
+              )}
+            </>
           )}
         </div>
       </div>

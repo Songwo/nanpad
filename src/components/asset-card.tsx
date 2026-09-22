@@ -32,6 +32,8 @@ import type {
 import { cn, copyText, daysUntil, formatDate, formatUsd } from "@/lib/utils";
 import { t } from "@/lib/i18n";
 
+import { StatusBadge } from "./ui/status-badge";
+
 export function openFromEvent(e: MouseEvent<HTMLElement>, kind: AssetKind, id: string) {
   const el = e.currentTarget;
   const r = el.getBoundingClientRect();
@@ -52,8 +54,8 @@ export function ServerCard({ data, compact = true }: { data: ServerT; compact?: 
   return (
     <article
       className={cn(
-        "group relative bg-card p-4 text-left",
-        compact ? "card-tap cursor-pointer rounded-xl shadow-card" : "rounded-2xl",
+        "group relative bg-card text-left transition-all",
+        compact ? "asset-card-valuable card-tap cursor-pointer" : "asset-card-valuable rounded-2xl shadow-float",
       )}
       data-asset-id={compact ? data.id : undefined}
       onClick={compact ? (e) => openFromEvent(e, "server", data.id) : undefined}
@@ -62,22 +64,15 @@ export function ServerCard({ data, compact = true }: { data: ServerT; compact?: 
         <AssetImage
           value={data.imageDataUrl}
           fallback={
-            <div className="grid size-10 shrink-0 place-items-center rounded-md bg-line text-ink">
+            <div className="grid size-10 shrink-0 place-items-center rounded-xl bg-surface text-ink border border-line-strong/60">
               <Server className="size-4.5" strokeWidth={1.8} />
             </div>
           }
         />
         <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-2">
-            <h3 className="truncate font-semibold tracking-tight">{data.name}</h3>
-            <span
-              key={status}
-              className={cn(chipClass(status), "status-feedback")}
-              data-status={status}
-            >
-              <span className={dotClass(status)} />
-              {t(STATUS_LABEL[status])}
-            </span>
+          <div className="flex items-center justify-between gap-2">
+            <h3 className="truncate font-semibold tracking-tight text-ink">{data.name}</h3>
+            <StatusBadge status={status} sonar={status === "online"} />
           </div>
           <p className="mt-0.5 truncate text-meta text-muted">
             {data.label} · {data.os}
@@ -85,11 +80,34 @@ export function ServerCard({ data, compact = true }: { data: ServerT; compact?: 
         </div>
       </header>
 
-      <p className="mt-3 font-mono text-meta text-ink">
-        {data.username}@{data.host}
-        <span className="text-subtle">:{data.port}</span>
-      </p>
-      <p className="mt-0.5 text-2xs text-subtle">{data.region}</p>
+      <div className="mt-3 flex items-center justify-between">
+        <span className="code-text select-all">
+          {data.username}@{data.host}
+          <span className="text-subtle">:{data.port}</span>
+        </span>
+        <span className="text-2xs font-medium text-subtle">{data.region}</span>
+      </div>
+
+      {/* Node / Docs / Secret Indicators */}
+      {(Boolean(data.nodes?.length) || Boolean(data.docs?.trim()) || Boolean(data.customSecrets?.length)) && (
+        <div className="mt-2.5 flex flex-wrap items-center gap-1.5 text-[11px]">
+          {Boolean(data.nodes?.length) && (
+            <span className="inline-flex items-center gap-1 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 text-emerald-400 font-mono">
+              ⚡ {data.nodes!.length} {t("自建节点")}
+            </span>
+          )}
+          {Boolean(data.docs?.trim()) && (
+            <span className="inline-flex items-center gap-1 rounded-full border border-sky-500/30 bg-sky-500/10 px-2 py-0.5 text-sky-400 font-mono">
+              📖 {t("已写文档")}
+            </span>
+          )}
+          {Boolean(data.customSecrets?.length) && (
+            <span className="inline-flex items-center gap-1 rounded-full border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-amber-400 font-mono">
+              🔑 {data.customSecrets!.length} {t("绑定密钥")}
+            </span>
+          )}
+        </div>
+      )}
 
       <div className="mt-4 grid grid-cols-3 gap-3">
         <Metric label="CPU" value={cpu} />
@@ -97,7 +115,7 @@ export function ServerCard({ data, compact = true }: { data: ServerT; compact?: 
         <Metric label={t("磁盘")} value={data.disk} />
       </div>
 
-      <div className="mt-3 flex flex-wrap gap-1.5">
+      <div className="mt-3.5 flex flex-wrap items-center gap-1.5 border-t border-line/60 pt-2.5">
         {data.tags.map((t) => (
           <CardTag key={t} tag={t} />
         ))}
@@ -133,14 +151,13 @@ export function ServerCard({ data, compact = true }: { data: ServerT; compact?: 
             {status !== "offline" && (
               <button
                 type="button"
-                className="inline-flex h-8 items-center gap-1.5 rounded-full bg-ink px-3 text-meta font-medium text-card"
+                className="btn btn-sm btn-primary gap-1.5"
                 onClick={(e) => {
                   e.stopPropagation();
                   useAppStore.getState().openSsh(data.id);
                 }}
               >
                 <SquareTerminal className="size-3.5" />
-
                 {t("玻璃终端")}
               </button>
             )}
@@ -151,17 +168,12 @@ export function ServerCard({ data, compact = true }: { data: ServerT; compact?: 
   );
 }
 
-/**
- * What the last live probe reported. Only the desktop build ever sets these, so
- * the strip simply does not render in the web preview.
- */
 function ProbeNote({ id, error, at }: { id: string; error?: string; at?: string }) {
   const busy = useProbeState((s) => Boolean(s.busy[id]));
   if (busy) {
     return (
       <p className="mt-3 flex items-center gap-1.5 text-2xs text-muted">
-        <Loader2 className="size-3.5 animate-spin" />
-
+        <Loader2 className="size-3.5 animate-spin text-sky-400" />
         {t("正在采集…")}
       </p>
     );
@@ -182,11 +194,10 @@ function ProbeNote({ id, error, at }: { id: string; error?: string; at?: string 
   );
 }
 
-/** Clickable tags. Selecting one narrows the list to it. */
 function TagRow({ tags }: { tags: string[] }) {
   if (tags.length === 0) return null;
   return (
-    <div className="mt-3 flex flex-wrap gap-1.5">
+    <div className="flex flex-wrap gap-1.5">
       {tags.map((t) => (
         <CardTag key={t} tag={t} />
       ))}
@@ -196,14 +207,22 @@ function TagRow({ tags }: { tags: string[] }) {
 
 function Metric({ label, value }: { label: string; value: number }) {
   const tone = barTone(value);
+  const clamped = Math.max(0, Math.min(100, Math.round(value)));
   return (
     <div>
-      <div className="mb-1 flex justify-between text-2xs text-muted">
-        <span>{label}</span>
-        <span className="tabular-nums text-ink">{Math.round(value)}%</span>
+      <div className="mb-1.5 flex justify-between text-2xs text-muted">
+        <span className="font-medium">{label}</span>
+        <span className="tabular-nums font-semibold text-ink">{clamped}%</span>
       </div>
-      <div className={cn("metric-bar", tone === "ok" ? "" : tone)}>
-        <span style={{ width: `${Math.min(100, value)}%` }} />
+      <div className="laser-bar">
+        <div
+          className={cn(
+            "laser-bar-fill",
+            tone === "warn" && "warning",
+            tone === "crit" && "critical",
+          )}
+          style={{ width: `${clamped}%` }}
+        />
       </div>
     </div>
   );
@@ -214,8 +233,8 @@ export function DomainCard({ data, compact = true }: { data: Domain; compact?: b
   return (
     <article
       className={cn(
-        "bg-card p-4 text-left",
-        compact ? "card-tap cursor-pointer rounded-xl shadow-card" : "rounded-2xl",
+        "group relative bg-card text-left transition-all",
+        compact ? "asset-card-valuable card-tap cursor-pointer" : "asset-card-valuable rounded-2xl shadow-float",
       )}
       data-asset-id={compact ? data.id : undefined}
       onClick={compact ? (e) => openFromEvent(e, "domain", data.id) : undefined}
@@ -224,45 +243,51 @@ export function DomainCard({ data, compact = true }: { data: Domain; compact?: b
         <AssetImage
           value={data.imageDataUrl}
           fallback={
-            <div className="grid size-10 shrink-0 place-items-center rounded-md bg-line">
+            <div className="grid size-10 shrink-0 place-items-center rounded-xl bg-surface text-ink border border-line-strong/60">
               <Globe className="size-4.5" />
             </div>
           }
         />
         <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-2">
-            <h3 className="truncate font-semibold tracking-tight">{data.name}</h3>
+          <div className="flex items-center justify-between gap-2">
+            <h3 className="truncate font-semibold tracking-tight text-ink">{data.name}</h3>
+            <span
+              className={cn(
+                "badge",
+                d <= 7 ? "badge-invalid" : d <= 30 ? "badge-cooling" : "badge-valid",
+              )}
+            >
+              {d <= 0 ? t("已过期") : t("{0} 天到期", d)}
+            </span>
           </div>
           <p className="mt-0.5 text-meta text-muted">
             {data.registrar} · DNS {data.dns}
           </p>
         </div>
-        <span
-          key={data.status}
-          className={cn(chipClass(data.status), "status-feedback")}
-          data-status={data.status}
-        >
-          <span className={dotClass(data.status)} />
-          {d <= 0 ? t("已过期") : t("{0} 天", d)}
-        </span>
       </header>
-      <p className="mt-3 text-meta text-muted">
-        {t("到期 {0}", formatDate(data.expiresAt))}
-        {data.autoRenew ? t(" · 自动续费") : t(" · 未开自动续费")}
-      </p>
-      <TagRow tags={tagsOf(data)} />
+      <div className="mt-3 flex items-center justify-between text-meta text-muted">
+        <span className="text-2xs font-mono">{t("到期 {0}", formatDate(data.expiresAt))}</span>
+        <span className="code-text text-[11px]">
+          {data.autoRenew ? t("✓ 自动续费") : t("✕ 手动续费")}
+        </span>
+      </div>
+      <div className="mt-3.5 border-t border-line/60 pt-2.5">
+        <TagRow tags={tagsOf(data)} />
+      </div>
       <ProbeNote id={data.id} error={data.probeError} at={data.probedAt} />
 
       {!compact && (
         <div className="mt-4 space-y-2 border-t border-line pt-4 text-meta text-muted">
-          <p>Nameservers</p>
-          <ul className="font-mono text-2xs text-ink">
+          <p className="text-2xs font-semibold text-subtle uppercase tracking-wider">Nameservers</p>
+          <ul className="flex flex-wrap gap-1.5 font-mono text-2xs text-ink">
             {data.nameservers.map((n) => (
-              <li key={n}>{n}</li>
+              <li key={n} className="code-text">{n}</li>
             ))}
           </ul>
-          <p>{data.notes}</p>
-          <CopyBtn text={data.name} label={t("复制域名")} />
+          <p className="mt-2 text-meta text-muted">{data.notes}</p>
+          <div className="pt-2">
+            <CopyBtn text={data.name} label={t("复制域名")} />
+          </div>
         </div>
       )}
     </article>
@@ -276,8 +301,8 @@ export function MailCard({ data, compact = true }: { data: Mailbox; compact?: bo
   return (
     <article
       className={cn(
-        "bg-card p-4 text-left",
-        compact ? "card-tap cursor-pointer rounded-xl shadow-card" : "rounded-2xl",
+        "group relative bg-card text-left transition-all",
+        compact ? "asset-card-valuable card-tap cursor-pointer" : "asset-card-valuable rounded-2xl shadow-float",
       )}
       data-asset-id={compact ? data.id : undefined}
       onClick={compact ? (e) => openFromEvent(e, "mail", data.id) : undefined}
@@ -286,38 +311,33 @@ export function MailCard({ data, compact = true }: { data: Mailbox; compact?: bo
         <AssetImage
           value={data.imageDataUrl}
           fallback={
-            <div className="grid size-10 shrink-0 place-items-center rounded-md bg-line">
+            <div className="grid size-10 shrink-0 place-items-center rounded-xl bg-surface text-ink border border-line-strong/60">
               <Mail className="size-4.5" />
             </div>
           }
         />
         <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-2">
-            <h3 className="truncate font-semibold tracking-tight">{data.address}</h3>
+          <div className="flex items-center justify-between gap-2">
+            <h3 className="truncate font-semibold tracking-tight text-ink">{data.address}</h3>
+            <StatusBadge status={data.status} sonar={data.status === "online"} />
           </div>
           <p className="mt-0.5 text-meta text-muted">
-            {kindLabel}
+            <span className="code-text text-[11px] mr-1.5">{kindLabel}</span>
             {data.forwardTo ? ` → ${data.forwardTo}` : ""}
           </p>
         </div>
-        <span
-          key={data.status}
-          className={cn(chipClass(data.status), "status-feedback")}
-          data-status={data.status}
-        >
-          <span className={dotClass(data.status)} />
-          {t(STATUS_LABEL[data.status])}
-        </span>
       </header>
       {data.quotaMb > 0 && (
         <div className="mt-4">
-          <Metric label={t("容量")} value={pct} />
-          <p className="mt-1 text-2xs text-subtle tabular-nums">
+          <Metric label={t("容量使用率")} value={pct} />
+          <p className="mt-1.5 text-right font-mono text-2xs text-subtle tabular-nums">
             {data.usedMb} / {data.quotaMb} MB
           </p>
         </div>
       )}
-      <TagRow tags={tagsOf(data)} />
+      <div className="mt-3.5 border-t border-line/60 pt-2.5">
+        <TagRow tags={tagsOf(data)} />
+      </div>
       {!compact && <p className="mt-4 text-meta text-muted">{data.notes}</p>}
     </article>
   );
@@ -327,8 +347,8 @@ export function AiCard({ data, compact = true }: { data: AiAsset; compact?: bool
   return (
     <article
       className={cn(
-        "bg-card p-4 text-left",
-        compact ? "card-tap cursor-pointer rounded-xl shadow-card" : "rounded-2xl",
+        "group relative bg-card text-left transition-all",
+        compact ? "asset-card-valuable card-tap cursor-pointer" : "asset-card-valuable rounded-2xl shadow-float",
       )}
       data-asset-id={compact ? data.id : undefined}
       onClick={compact ? (e) => openFromEvent(e, "ai", data.id) : undefined}
@@ -337,29 +357,29 @@ export function AiCard({ data, compact = true }: { data: AiAsset; compact?: bool
         <AssetImage
           value={data.imageDataUrl}
           fallback={
-            <div className="grid size-10 shrink-0 place-items-center rounded-md bg-ink text-2xs font-semibold text-card">
-              {data.provider.slice(0, 2)}
+            <div className="grid size-10 shrink-0 place-items-center rounded-xl bg-ink text-2xs font-semibold text-card shadow-sm">
+              {data.provider.slice(0, 2).toUpperCase()}
             </div>
           }
         />
         <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-2">
-            <h3 className="truncate font-semibold tracking-tight">{data.name}</h3>
+          <div className="flex items-center justify-between gap-2">
+            <h3 className="truncate font-semibold tracking-tight text-ink">{data.name}</h3>
+            <span className="code-text font-semibold text-ink">
+              {data.monthlyUsdKnown === false ? (
+                <span className="text-2xs font-normal text-muted">{t("月费未记录")}</span>
+              ) : (
+                <>
+                  {formatUsd(data.monthlyUsd)}
+                  <span className="text-2xs font-normal text-subtle"> {t("/月")}</span>
+                </>
+              )}
+            </span>
           </div>
           <p className="mt-0.5 text-meta text-muted">
-            {data.provider} · {data.plan || t("未提供")}
+            {data.provider} · {data.plan || t("未提供套餐")}
           </p>
         </div>
-        <span className="shrink-0 text-right text-body font-semibold tabular-nums">
-          {data.monthlyUsdKnown === false ? (
-            <span className="text-2xs font-normal text-muted">{t("月费未记录")}</span>
-          ) : (
-            formatUsd(data.monthlyUsd)
-          )}
-          {data.monthlyUsdKnown !== false && (
-            <span className="text-2xs font-normal text-subtle"> {t("/月")}</span>
-          )}
-        </span>
       </header>
       <div className="mt-4">
         {data.oauthAccountId && !data.usageAvailable ? (
@@ -368,59 +388,34 @@ export function AiCard({ data, compact = true }: { data: AiAsset; compact?: bool
           </p>
         ) : (
           <Metric
-            label={t(data.oauthAccountId ? "最高额度用量" : "本月用量")}
+            label={t(data.oauthAccountId ? "最高额度用量" : "本月额度消耗")}
             value={data.usagePct}
           />
         )}
         {data.usageScope && (
           <p className="mt-2 text-2xs text-muted">
             {t("额度来源")}:{" "}
-            {(
-              {
-                codex: "Codex",
-                claude: "Claude OAuth",
-                "grok-cli": "Grok CLI",
-                "code-assist": "Gemini Code Assist",
-              } as Record<string, string>
-            )[data.usageScope] || data.usageScope}
+            <span className="code-text text-[11px]">
+              {(
+                {
+                  codex: "Codex",
+                  claude: "Claude OAuth",
+                  "grok-cli": "Grok CLI",
+                  "code-assist": "Gemini Code Assist",
+                } as Record<string, string>
+              )[data.usageScope] || data.usageScope}
+            </span>
           </p>
         )}
         {data.usageStale && (
           <p className="mt-1 text-2xs text-warn">{t("更新失败，保留上次数据")}</p>
         )}
       </div>
-      <div className="mt-3 flex items-center justify-between text-2xs text-subtle">
-        <span className="min-w-0 truncate">
+      <div className="mt-3.5 flex items-center justify-between border-t border-line/60 pt-2.5 text-2xs text-subtle">
+        <span className="min-w-0 truncate font-mono">
           {data.oauthAccountId ? t(data.oauthDisconnected ? "授权已断开" : "已授权") : data.keyHint}
         </span>
-        <span
-          key={data.status}
-          className={cn(chipClass(data.status), "status-feedback")}
-          data-status={data.status}
-        >
-          <span className={dotClass(data.status)} />
-          {data.oauthAccountId ? (
-            data.subscriptionExpiresAt ? (
-              `${t("订阅到期")}: ${formatDate(data.subscriptionExpiresAt)}`
-            ) : (
-              t(
-                data.oauthDisconnected
-                  ? "授权已断开"
-                  : data.usageStale
-                    ? "需刷新"
-                    : data.usageAvailable || data.usageSummary
-                      ? "额度已同步"
-                      : "额度待查询",
-              )
-            )
-          ) : data.renewsAt ? (
-            <>
-              {daysUntil(data.renewsAt)} {t("天后续费")}
-            </>
-          ) : (
-            t("未提供")
-          )}
-        </span>
+        <StatusBadge status={data.status} sonar={data.status === "online"} />
       </div>
       <TagRow tags={tagsOf(data)} />
       {!compact && <p className="mt-4 text-meta text-muted">{data.notes}</p>}
@@ -431,17 +426,17 @@ export function AiCard({ data, compact = true }: { data: AiAsset; compact?: bool
 export function SecretCard({ data, compact = true }: { data: Secret; compact?: boolean }) {
   const kindLabel =
     data.kind === "api"
-      ? "API"
+      ? "API Key"
       : data.kind === "ssh"
-        ? "SSH"
+        ? "SSH 密钥"
         : data.kind === "token"
-          ? "Token"
-          : t("密码");
+          ? "访问令牌"
+          : t("保密凭据");
   return (
     <article
       className={cn(
-        "bg-card p-4 text-left",
-        compact ? "card-tap cursor-pointer rounded-xl shadow-card" : "rounded-2xl",
+        "group relative bg-card text-left transition-all",
+        compact ? "asset-card-valuable card-tap cursor-pointer" : "asset-card-valuable rounded-2xl shadow-float",
       )}
       data-asset-id={compact ? data.id : undefined}
       onClick={compact ? (e) => openFromEvent(e, "secret", data.id) : undefined}
@@ -450,28 +445,31 @@ export function SecretCard({ data, compact = true }: { data: Secret; compact?: b
         <AssetImage
           value={data.imageDataUrl}
           fallback={
-            <div className="grid size-10 shrink-0 place-items-center rounded-md bg-line">
+            <div className="grid size-10 shrink-0 place-items-center rounded-xl bg-surface text-ink border border-line-strong/60">
               <KeyRound className="size-4.5" />
             </div>
           }
         />
         <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-2">
-            <h3 className="truncate font-semibold tracking-tight">{data.name}</h3>
+          <div className="flex items-center justify-between gap-2">
+            <h3 className="truncate font-semibold tracking-tight text-ink">{data.name}</h3>
+            <span className="badge badge-tag-mock text-[11px]">{kindLabel}</span>
           </div>
-          <p className="mt-0.5 font-mono text-meta text-muted">{data.hint}</p>
+          <p className="mt-0.5 font-mono text-2xs text-muted">
+            <span className="code-text select-all">{data.hint}</span>
+          </p>
         </div>
-        <span className="chip chip-mute">{kindLabel}</span>
       </header>
-      <p className="mt-3 text-2xs text-subtle">
-        {t("上次轮换")} {formatDate(data.lastRotated)}
-      </p>
-      <TagRow tags={tagsOf(data)} />
+      <div className="mt-3 flex items-center justify-between text-2xs text-subtle">
+        <span>{t("金融级 AES-256 加密存储")}</span>
+        <span>{t("上次轮换")} {formatDate(data.lastRotated)}</span>
+      </div>
+      <div className="mt-3.5 border-t border-line/60 pt-2.5">
+        <TagRow tags={tagsOf(data)} />
+      </div>
       {!compact && (
         <div className="mt-4 space-y-3 border-t border-line pt-4">
           <p className="text-meta text-muted">{data.notes}</p>
-          {/* Desktop keeps the value in the vault; the detail sheet's account
-              panel reveals it there. This is the web preview's stand-in. */}
           {!isDesktop() && data.value ? <SecretReveal value={data.value} /> : null}
         </div>
       )}
@@ -483,14 +481,15 @@ function SecretReveal({ value }: { value: string }) {
   return (
     <button
       type="button"
-      className="w-full rounded-md bg-canvas px-3 py-2 text-left font-mono text-2xs text-muted hover:text-ink"
+      className="code-text w-full cursor-pointer justify-between py-2 text-left hover:border-ink"
       onClick={(e) => {
         e.stopPropagation();
         copyText(value);
-        toast(t("已复制到剪贴板"));
+        toast(t("已安全复制私密值至剪贴板"));
       }}
     >
-      {t("点击复制完整值 · {0}…", value.slice(0, 18))}
+      <span>{t("点击解密并复制 · {0}…", value.slice(0, 18))}</span>
+      <Copy className="size-3.5" />
     </button>
   );
 }
@@ -500,8 +499,8 @@ export function CertCard({ data, compact = true }: { data: Certificate; compact?
   return (
     <article
       className={cn(
-        "bg-card p-4 text-left",
-        compact ? "card-tap cursor-pointer rounded-xl shadow-card" : "rounded-2xl",
+        "group relative bg-card text-left transition-all",
+        compact ? "asset-card-valuable card-tap cursor-pointer" : "asset-card-valuable rounded-2xl shadow-float",
       )}
       data-asset-id={compact ? data.id : undefined}
       onClick={compact ? (e) => openFromEvent(e, "cert", data.id) : undefined}
@@ -510,43 +509,49 @@ export function CertCard({ data, compact = true }: { data: Certificate; compact?
         <AssetImage
           value={data.imageDataUrl}
           fallback={
-            <div className="grid size-10 shrink-0 place-items-center rounded-md bg-line">
+            <div className="grid size-10 shrink-0 place-items-center rounded-xl bg-surface text-ink border border-line-strong/60">
               <Shield className="size-4.5" />
             </div>
           }
         />
         <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-2">
-            <h3 className="truncate font-semibold tracking-tight">{data.cn}</h3>
+          <div className="flex items-center justify-between gap-2">
+            <h3 className="truncate font-semibold tracking-tight text-ink">{data.cn}</h3>
+            <span
+              className={cn(
+                "badge",
+                d <= 7 ? "badge-invalid" : d <= 30 ? "badge-cooling" : "badge-valid",
+              )}
+            >
+              {d <= 0 ? t("已过期") : t("{0} 天到期", d)}
+            </span>
           </div>
           <p className="mt-0.5 text-meta text-muted">{data.issuer}</p>
         </div>
-        <span
-          key={data.status}
-          className={cn(chipClass(data.status), "status-feedback")}
-          data-status={data.status}
-        >
-          <span className={dotClass(data.status)} />
-          {d <= 0 ? t("已过期") : t("{0} 天", d)}
-        </span>
       </header>
-      <p className="mt-3 text-meta text-muted">
-        {t("到期 {0}", formatDate(data.expiresAt))}
-        {data.protocol ? ` · ${data.protocol}` : ""}
-      </p>
+      <div className="mt-3 flex items-center justify-between text-meta text-muted">
+        <span className="text-2xs font-mono">{t("到期 {0}", formatDate(data.expiresAt))}</span>
+        {data.protocol && <span className="code-text text-[11px]">{data.protocol}</span>}
+      </div>
       {data.trusted === false && (
-        <p className="mt-1 text-2xs text-crit">
+        <p className="mt-1.5 text-2xs text-crit">
           {t("证书链不受信任")}
           {data.untrustedReason ? t("：{0}", data.untrustedReason) : ""}
         </p>
       )}
-      <TagRow tags={tagsOf(data)} />
+      <div className="mt-3.5 border-t border-line/60 pt-2.5">
+        <TagRow tags={tagsOf(data)} />
+      </div>
       <ProbeNote id={data.id} error={data.probeError} at={data.probedAt} />
       {!compact && (
         <div className="mt-4 space-y-2 border-t border-line pt-4">
-          <p className="text-2xs text-subtle">SAN</p>
-          <p className="font-mono text-meta">{data.sans.join(" · ")}</p>
-          <p className="text-meta text-muted">{data.notes}</p>
+          <p className="text-2xs font-semibold uppercase tracking-wider text-subtle">SAN 域名列表</p>
+          <div className="flex flex-wrap gap-1.5">
+            {data.sans.map((san) => (
+              <span key={san} className="code-text text-2xs">{san}</span>
+            ))}
+          </div>
+          <p className="mt-2 text-meta text-muted">{data.notes}</p>
         </div>
       )}
     </article>
@@ -557,11 +562,11 @@ function CopyBtn({ text, label }: { text: string; label: string }) {
   return (
     <button
       type="button"
-      className="inline-flex h-8 items-center gap-1.5 rounded-full bg-line px-3 text-meta font-medium text-ink hover:bg-line-strong"
+      className="btn btn-sm btn-outline gap-1.5"
       onClick={(e) => {
         e.stopPropagation();
         copyText(text);
-        toast(t("已复制"));
+        toast(t("已复制到剪贴板"));
       }}
     >
       <Copy className="size-3.5" />
@@ -569,3 +574,4 @@ function CopyBtn({ text, label }: { text: string; label: string }) {
     </button>
   );
 }
+

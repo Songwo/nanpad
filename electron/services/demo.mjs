@@ -42,6 +42,52 @@ export function demoSnapshot(now = Date.now()) {
     disk,
     uptime: `${18 + i * 13} 天`,
     lastSeen: date(-0.002),
+    nodes:
+      i === 0
+        ? [
+            {
+              id: `demo-node-0`,
+              name: "香港 BGP - VLESS Reality 旗舰节点",
+              protocol: "vless",
+              host: "192.0.2.10",
+              port: 443,
+              uuid: "1b9d6bcd-bbfd-4b2d-9b5d-ab8dfbbd4bed",
+              flow: "xtls-rprx-vision",
+              security: "reality",
+              sni: "yahoo.com",
+              pbk: "wA8cR_examplePublicKeyReality1234567890abcdef",
+              sid: "6ba7b810",
+              latencyMs: 28,
+            },
+          ]
+        : i === 1
+          ? [
+              {
+                id: `demo-node-1`,
+                name: "香港 CN2 - VMess 备用直连",
+                protocol: "vmess",
+                host: "192.0.2.11",
+                port: 8443,
+                uuid: "2c8e7ade-aace-3c1b-8a4c-bc7efaae3afe",
+                security: "auto",
+                network: "ws",
+                path: "/vmess-ws",
+                sni: "api.starbridge.example",
+                latencyMs: 35,
+              },
+            ]
+          : [],
+    docs:
+      i === 0
+        ? "# Xray VLESS Reality 运维手册\n\n- 节点类型: VLESS + Reality + xtls-rprx-vision\n- 回源目标 (Dest): yahoo.com:443\n- 服务端状态检查命令: `systemctl status xray`\n\n```json\n{\n  \"inbounds\": [{\n    \"port\": 443,\n    \"protocol\": \"vless\"\n  }]\n}\n```"
+        : "",
+    customSecrets:
+      i === 0
+        ? [
+            { id: "sec-demo-1", key: "REALITY_PRIVATE_KEY", value: "u9A_examplePrivateKeyReality_secret789", isSecret: true },
+            { id: "sec-demo-2", key: "XRAY_SERVICE_PORT", value: "443", isSecret: false },
+          ]
+        : [],
   }));
   const domains = [
     ["starbridge.example", 210, true],

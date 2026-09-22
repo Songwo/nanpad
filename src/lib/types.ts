@@ -1,7 +1,10 @@
 export type Status = "online" | "warning" | "offline";
 
 export type ViewId =
+  | "docs"
+  | "usage"
   | "overview"
+  | "nodes"
   | "servers"
   | "domains"
   | "mail"
@@ -31,6 +34,36 @@ export interface ProbeMeta {
   probeError?: string;
 }
 
+export type ProxyProtocol = "vless" | "vmess" | "trojan" | "ss" | "hysteria2";
+
+export interface ProxyNode {
+  id: string;
+  name: string;
+  protocol: ProxyProtocol;
+  host: string;
+  port: number;
+  uuid?: string;
+  password?: string;
+  network?: "tcp" | "ws" | "grpc" | "h2";
+  security?: "none" | "tls" | "reality";
+  sni?: string;
+  path?: string;
+  pbk?: string;
+  sid?: string;
+  flow?: string;
+  latencyMs?: number;
+  checkedAt?: string;
+  checkError?: string;
+  rawUri?: string;
+}
+
+export interface BoundSecretItem {
+  id: string;
+  key: string;
+  value: string;
+  vaultSecretId?: string;
+}
+
 export interface Server extends ProbeMeta, Taggable {
   id: string;
   name: string;
@@ -53,6 +86,9 @@ export interface Server extends ProbeMeta, Taggable {
   loadavg?: string;
   memTotalKb?: number;
   diskTotalKb?: number;
+  docs?: string;
+  nodes?: ProxyNode[];
+  customSecrets?: BoundSecretItem[];
 }
 
 export interface Domain extends ProbeMeta, Taggable {

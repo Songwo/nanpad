@@ -1,3 +1,4 @@
+import { ProbeFlights, currentProbeAsset } from "./probe-guard";
 import { create } from "zustand";
 import { desktop, formatUptime } from "./desktop";
 import { useLive } from "./live";
@@ -22,6 +23,8 @@ export const useProbeState = create<ProbeState>((set) => ({
     }),
 }));
 
+const flights = new ProbeFlights();
+
 const busy = (id: string, on: boolean) => useProbeState.getState().set(id, on);
 
 /** A host is "warning" while it is loaded, "offline" only when unreachable. */
@@ -39,7 +42,11 @@ function hostStatus(cpu?: number, memory?: number, disk?: number): Status {
  * why it is red, and the caller (a "refresh all" sweep) must not stop at the
  * first unreachable box.
  */
-export async function refreshServer(server: Server): Promise<void> {
+export function refreshServer(server: Server): Promise<void> {
+  return flights.run("server:" + server.id, () => probeServer(server));
+}
+
+async function probeServer(server: Server): Promise<void> {
   if (server.demo) return;
   const bridge = desktop();
   if (!bridge) return;
@@ -52,14 +59,20 @@ export async function refreshServer(server: Server): Promise<void> {
       port: server.port,
       username: server.username,
     });
+    const current = currentProbeAsset(useAppStore.getState().servers, server, [
+      "host",
+      "port",
+      "username",
+    ]);
+    if (!current) return;
     const next: Server = {
-      ...server,
-      os: probe.os ?? server.os,
+      ...current,
+      os: probe.os ?? current.os,
       kernel: probe.kernel,
-      cpu: probe.cpu ?? server.cpu,
-      memory: probe.memory ?? server.memory,
-      disk: probe.disk ?? server.disk,
-      uptime: formatUptime(probe.uptimeSeconds) ?? server.uptime,
+      cpu: probe.cpu ?? current.cpu,
+      memory: probe.memory ?? current.memory,
+      disk: probe.disk ?? current.disk,
+      uptime: formatUptime(probe.uptimeSeconds) ?? current.uptime,
       loadavg: probe.loadavg,
       memTotalKb: probe.memTotalKb,
       diskTotalKb: probe.diskTotalKb,
@@ -72,8 +85,15 @@ export async function refreshServer(server: Server): Promise<void> {
     // The cards read live metrics from here, so keep the two in step.
     useLive.getState().set(server.id, next.cpu, next.memory);
   } catch (err) {
+    const current = currentProbeAsset(useAppStore.getState().servers, server, [
+      "host",
+      "port",
+      "username",
+    ]);
+    if (!current) return;
+
     store.upsertServer({
-      ...server,
+      ...current,
       status: "offline",
       probedAt: new Date().toISOString(),
       probeError: message(err),
@@ -83,7 +103,11 @@ export async function refreshServer(server: Server): Promise<void> {
   }
 }
 
-export async function refreshDomain(domain: Domain): Promise<void> {
+export function refreshDomain(domain: Domain): Promise<void> {
+  return flights.run("domain:" + domain.id, () => probeDomain(domain));
+}
+
+async function probeDomain(domain: Domain): Promise<void> {
   if (domain.demo) return;
   const bridge = desktop();
   if (!bridge) return;
@@ -91,14 +115,16 @@ export async function refreshDomain(domain: Domain): Promise<void> {
   const store = useAppStore.getState();
   try {
     const probe = await bridge.domain.probe(domain.name);
-    const expiresAt = probe.expiresAt ?? domain.expiresAt;
+    const current = currentProbeAsset(useAppStore.getState().domains, domain, ["name"]);
+    if (!current) return;
+    const expiresAt = probe.expiresAt ?? current.expiresAt;
     store.upsertDomain({
-      ...domain,
-      registrar: probe.registrar ?? domain.registrar,
+      ...current,
+      registrar: probe.registrar ?? current.registrar,
       expiresAt,
-      dns: probe.dns ?? domain.dns,
-      nameservers: probe.nameservers.length ? probe.nameservers : domain.nameservers,
-      autoRenew: probe.autoRenew ?? domain.autoRenew,
+      dns: probe.dns ?? current.dns,
+      nameservers: probe.nameservers.length ? probe.nameservers : current.nameservers,
+      autoRenew: probe.autoRenew ?? current.autoRenew,
       statuses: probe.statuses,
       createdAt: probe.createdAt,
       status: expiryStatus(expiresAt),
@@ -106,8 +132,11 @@ export async function refreshDomain(domain: Domain): Promise<void> {
       probeError: undefined,
     });
   } catch (err) {
+    const current = currentProbeAsset(useAppStore.getState().domains, domain, ["name"]);
+    if (!current) return;
+
     store.upsertDomain({
-      ...domain,
+      ...current,
       probedAt: new Date().toISOString(),
       probeError: message(err),
     });
@@ -121,7 +150,11 @@ export function certHost(cert: Certificate): string {
   return (cert.host ?? cert.cn).replace(/^\*\./, "");
 }
 
-export async function refreshCert(cert: Certificate): Promise<void> {
+export function refreshCert(cert: Certificate): Promise<void> {
+  return flights.run("cert:" + cert.id, () => probeCert(cert));
+}
+
+async function probeCert(cert: Certificate): Promise<void> {
   if (cert.demo) return;
   const bridge = desktop();
   if (!bridge) return;
@@ -129,8 +162,10 @@ export async function refreshCert(cert: Certificate): Promise<void> {
   const store = useAppStore.getState();
   try {
     const probe = await bridge.cert.probe(certHost(cert), cert.port ?? 443);
+    const current = currentProbeAsset(useAppStore.getState().certs, cert, ["host", "cn", "port"]);
+    if (!current) return;
     store.upsertCert({
-      ...cert,
+      ...current,
       cn: probe.cn || cert.cn,
       issuer: probe.issuer,
       expiresAt: probe.expiresAt,
@@ -144,8 +179,11 @@ export async function refreshCert(cert: Certificate): Promise<void> {
       probeError: undefined,
     });
   } catch (err) {
+    const current = currentProbeAsset(useAppStore.getState().certs, cert, ["host", "cn", "port"]);
+    if (!current) return;
+
     store.upsertCert({
-      ...cert,
+      ...current,
       probedAt: new Date().toISOString(),
       probeError: message(err),
     });
