@@ -1,3 +1,4 @@
+import { windowsAppId, migrateLegacyWindowsShortcut } from "./services/windows-identity.mjs";
 import { ImageBed } from "./services/image-bed.mjs";
 import { checkNode } from "./services/node-check.mjs";
 import { UsageStore } from "./services/usage.mjs";
@@ -247,7 +248,7 @@ async function createWindow() {
 
   if (process.platform === "win32") {
     win.setAppDetails({
-      appId: "dev.songwo.nanpad",
+      appId: windowsAppId(app.isPackaged),
       appIconPath: app.isPackaged
         ? join(process.resourcesPath, "icon.ico")
         : join(here, "../build/icon.ico"),
@@ -948,7 +949,18 @@ if (!app.requestSingleInstanceLock()) {
   app.whenReady().then(async () => {
     if (app.isPackaged && !process.argv.some((arg) => arg.startsWith("--user-data-dir=")))
       app.setAsDefaultProtocolClient("nanpad");
-    app.setAppUserModelId("dev.songwo.nanpad");
+    app.setAppUserModelId(windowsAppId(app.isPackaged));
+    if (process.platform === "win32" && !process.env.NANPAD_TEST_DATA_DIR) {
+      try {
+        await migrateLegacyWindowsShortcut({
+          programsDirectory: join(app.getPath("appData"), "Microsoft/Windows/Start Menu/Programs"),
+          backupDirectory: join(app.getPath("userData"), "shortcut-backups"),
+          readShortcut: (path) => shell.readShortcutLink(path),
+        });
+      } catch (error) {
+        console.warn("windows-shortcut:migration", error.message);
+      }
+    }
     try {
       const saved = JSON.parse(
         await readFile(join(app.getPath("userData"), "preferences.json"), "utf8"),
