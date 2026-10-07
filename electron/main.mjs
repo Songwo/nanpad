@@ -4,7 +4,11 @@ import {
   readZoomPercent,
   zoomCommandForKey,
 } from "./services/display.mjs";
-import { windowsAppId, migrateLegacyWindowsShortcut } from "./services/windows-identity.mjs";
+import {
+  windowsAppId,
+  initializeAppIdentity,
+  migrateLegacyWindowsShortcut,
+} from "./services/windows-identity.mjs";
 import { ImageBed } from "./services/image-bed.mjs";
 import { checkNode } from "./services/node-check.mjs";
 import { UsageStore } from "./services/usage.mjs";
@@ -51,15 +55,10 @@ import { mergeDemo, DEMO_KNOWLEDGE } from "./services/demo.mjs";
 const here = dirname(fileURLToPath(import.meta.url));
 const normalizeImage = createImageNormalizer(nativeImage);
 
-// Launched as `electron electron/main.mjs` there is no package.json beside the
-// entry, so Electron would call itself "Electron" and put the user's assets in
-// a directory named after the runtime. Pin it before anything reads a path.
-app.setName("Nanpad");
+// 固定旧资料路径后再设置系统显示名，防止任务栏和通知重新生成旧 Nanpad 入口。
+initializeAppIdentity(app, { testDataDirectory: process.env.NANPAD_TEST_DATA_DIR });
 // 驱动不兼容时可显式启用软件渲染，默认保留硬件加速。
 if (process.env.NANPAD_DISABLE_GPU === "1") app.disableHardwareAcceleration();
-// 桌面集成测试使用独立目录，避免读取或覆盖用户的资产与密钥库。
-if (!app.isPackaged && process.env.NANPAD_TEST_DATA_DIR)
-  app.setPath("userData", process.env.NANPAD_TEST_DATA_DIR);
 
 /**
  * Our version, not Electron's.

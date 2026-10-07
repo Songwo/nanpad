@@ -13,6 +13,16 @@ export interface Release {
 
 export const RELEASES: Release[] = [
   {
+    version: "1.2.3",
+    date: "2026-10-07",
+    title: "修复 Windows 任务栏继续显示旧图标",
+    changes: [
+      "知屿使用独立的 Windows 任务栏分组身份，避免沿用旧 Nanpad 分组的名称和图标绑定；桌面、开始菜单与运行窗口保持一致。",
+      "系统显示名与通知来源改为知屿 Zhiyu，同时固定原 Nanpad 数据和会话目录；保留安装身份与显式用户目录，已有资料和浏览器会话继续使用。",
+      "正式发布新增窗口任务栏属性校验，检查实际 AppUserModelID、图标路径、重启命令和显示名，补充资料路径兼容回归测试。",
+    ],
+  },
+  {
     version: "1.2.2",
     date: "2026-10-07",
     title: "修复彩色 Logo 与 Windows 快捷方式图标",

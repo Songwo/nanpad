@@ -22,6 +22,8 @@ try {
     timeout: 45000,
   });
   assert.equal(await instance.evaluate(({ app }) => app.getPath("userData")), directory);
+  assert.equal(await instance.evaluate(({ app }) => app.getPath("sessionData")), directory);
+  assert.equal(await instance.evaluate(({ app }) => app.getName()), "知屿 Zhiyu");
   const page = await instance.firstWindow();
   const pageErrors = [];
   page.on("pageerror", (error) => pageErrors.push(error.message));
@@ -68,8 +70,34 @@ try {
     ),
   );
   assert.equal(executableIcon.ok, true);
+  const windowIdentity = await instance.evaluate(({ BrowserWindow }) => ({
+    handle: BrowserWindow.getAllWindows()[0].getNativeWindowHandle().readBigUInt64LE(0).toString(),
+    resources: process.resourcesPath,
+  }));
+  const taskbar = JSON.parse(
+    execFileSync(
+      "pwsh",
+      [
+        "-NoProfile",
+        "-File",
+        resolve("scripts/windows-taskbar-check.ps1"),
+        "-WindowHandle",
+        windowIdentity.handle,
+        "-ExpectedAppId",
+        "dev.songwo.zhiyu",
+        "-ExpectedIconPath",
+        join(windowIdentity.resources, "zhiyu.ico"),
+        "-ExpectedExecutable",
+        executable,
+      ],
+      { encoding: "utf8", windowsHide: true },
+    ),
+  );
+  assert.equal(taskbar.ok, true);
   assert.deepEqual(pageErrors, []);
-  console.log(JSON.stringify({ ok: true, isolated: true, colors, executableIcon, pageErrors }));
+  console.log(
+    JSON.stringify({ ok: true, isolated: true, colors, executableIcon, taskbar, pageErrors }),
+  );
 } finally {
   await instance?.close();
   await rm(directory, { recursive: true, force: true, maxRetries: 8, retryDelay: 250 });

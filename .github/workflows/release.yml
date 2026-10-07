@@ -33,7 +33,7 @@ jobs:
       - run: npm run i18n:check
       - run: npm test
       - run: npm run desktop:dist
-      - name: 验证正式版彩色图标
+      - name: 验证正式版彩色图标与任务栏分组
         shell: pwsh
         run: |
           $version = (Get-Content package.json | ConvertFrom-Json).version

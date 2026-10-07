@@ -1,12 +1,15 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { mkdtemp, writeFile, readFile, stat, rm } from "node:fs/promises";
+import { statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { windowsAppId, migrateLegacyWindowsShortcut } from "./windows-identity.mjs";
+import * as identity from "./windows-identity.mjs";
 test("Windows 开发版与正式版使用不同应用身份", () => {
   assert.notEqual(windowsAppId(false), windowsAppId(true));
-  assert.equal(windowsAppId(true), "dev.songwo.nanpad");
+  assert.equal(windowsAppId(true), "dev.songwo.zhiyu");
+  assert.notEqual(windowsAppId(true), "dev.songwo.nanpad", "不再复用旧任务栏分组缓存");
 });
 test("只备份抢占司南身份的 Electron 快捷方式，重复运行无副作用", async () => {
   const directory = await mkdtemp(join(tmpdir(), "nanpad-identity-"));
@@ -16,7 +19,7 @@ test("只备份抢占司南身份的 Electron 快捷方式，重复运行无副�
     backupDirectory: join(directory, "backups"),
     readShortcut: () => ({
       target: "C:\\runtime\\electron.exe",
-      appUserModelId: windowsAppId(true),
+      appUserModelId: "dev.songwo.nanpad",
     }),
   };
   try {
@@ -29,6 +32,69 @@ test("只备份抢占司南身份的 Electron 快捷方式，重复运行无副�
     await rm(directory, { recursive: true, force: true });
   }
 });
+
+async function appFixture(t, { packaged = true, customPaths = false } = {}) {
+  const root = await mkdtemp(join(tmpdir(), "zhiyu-identity-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const paths = customPaths
+    ? { userData: join(root, "custom-profile"), sessionData: join(root, "custom-session") }
+    : {};
+  const overrides = { ...paths };
+  let name = "Electron";
+  return {
+    root,
+    paths,
+    app: {
+      isPackaged: packaged,
+      getName: () => name,
+      setName: (value) => {
+        name = value;
+      },
+      getPath: (key) => overrides[key] ?? join(root, name),
+      setPath: (key, value) => {
+        assert.ok(statSync(value).isDirectory(), "Electron 路径覆盖前目录必须存在");
+        overrides[key] = value;
+      },
+    },
+  };
+}
+
+test("显示名更改为知屿后仍使用原 Nanpad 数据与会话目录", async (t) => {
+  const { app, root } = await appFixture(t);
+  identity.initializeAppIdentity(app, { platform: "win32" });
+  assert.equal(app.getName(), "知屿 Zhiyu");
+  assert.equal(app.getPath("userData"), join(root, "Nanpad"));
+  assert.equal(app.getPath("sessionData"), join(root, "Nanpad"));
+});
+
+test("品牌更名保留显式用户目录与独立会话目录，正式版忽略开发环境覆盖", async (t) => {
+  const { app, root, paths } = await appFixture(t, { customPaths: true });
+  const ignored = join(root, "untrusted-test-path");
+  identity.initializeAppIdentity(app, { testDataDirectory: ignored });
+  assert.equal(app.getPath("userData"), paths.userData);
+  assert.equal(app.getPath("sessionData"), paths.sessionData);
+  await assert.rejects(stat(ignored), { code: "ENOENT" });
+});
+
+test("开发测试的数据和会话都留在隔离目录，避免更名时写入真实资料", async (t) => {
+  const { app, root } = await appFixture(t, { packaged: false });
+  const isolated = join(root, "isolated-profile");
+  identity.initializeAppIdentity(app, { testDataDirectory: isolated, platform: "win32" });
+  assert.equal(app.getName(), "知屿 Zhiyu");
+  assert.equal(app.getPath("userData"), isolated);
+  assert.equal(app.getPath("sessionData"), isolated);
+  await assert.rejects(stat(join(root, "Nanpad")), { code: "ENOENT" });
+});
+
+for (const platform of ["darwin", "linux"]) {
+  test(`${platform} 保留原应用名称与系统密钥存储身份`, async (t) => {
+    const { app, root } = await appFixture(t);
+    identity.initializeAppIdentity(app, { platform });
+    assert.equal(app.getName(), "Nanpad");
+    assert.equal(app.getPath("userData"), join(root, "Nanpad"));
+    assert.equal(app.getPath("sessionData"), join(root, "Nanpad"));
+  });
+}
 test("其他应用、独立开发身份与正式版快捷方式保持原样", async () => {
   const directory = await mkdtemp(join(tmpdir(), "nanpad-identity-"));
   const file = join(directory, "Electron.lnk");
