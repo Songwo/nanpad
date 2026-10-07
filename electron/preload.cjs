@@ -35,6 +35,9 @@ contextBridge.exposeInMainWorld("sinan", {
     remove: (id) => unwrap(ipcRenderer.invoke("usage:remove", id)),
     refresh: (id) => unwrap(ipcRenderer.invoke("usage:refresh", id)),
     refreshAll: () => unwrap(ipcRenderer.invoke("usage:refresh-all")),
+    localStatus: () => unwrap(ipcRenderer.invoke("usage:local-status")),
+    configureLocal: (input) => unwrap(ipcRenderer.invoke("usage:local-configure", input)),
+    refreshLocal: () => unwrap(ipcRenderer.invoke("usage:local-refresh")),
   },
   documents: {
     list: () => unwrap(ipcRenderer.invoke("documents:list")),

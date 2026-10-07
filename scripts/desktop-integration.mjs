@@ -21,9 +21,7 @@ try {
   const errors = [];
   page.on("pageerror", (error) => errors.push(error.message));
   await completeOnboarding(page);
-  await page
-    .getByRole("button", { name: "添加第一台主机", exact: true })
-    .waitFor({ timeout: 30000 });
+  await page.getByRole("button", { name: "添加资产", exact: true }).waitFor({ timeout: 30000 });
   assert.equal(await instance.evaluate(({ app }) => app.getPath("userData")), directory);
   // 测试资产及曲线只写入本次创建的临时目录。必须在下方 capabilities 检查
   // （首次 bridge.metrics.list）之前写入：0.9.0 起 MetricsStore 的解析结果

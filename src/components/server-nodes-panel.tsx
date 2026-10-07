@@ -4,6 +4,7 @@ import { type UsageSource } from "@/lib/usage";
 import { Plus, Copy, Trash2, RefreshCw, Pencil, Activity } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "./ui/button";
+import { Select } from "./ui/select";
 import { useAppStore } from "@/lib/store";
 import { type ProxyNode, type ProxyProtocol, type Server } from "@/lib/types";
 import { formatProxyUri, parseProxyUri, validateProxyNode } from "@/lib/proxy-nodes";
@@ -223,14 +224,12 @@ export function ServerNodesPanel({ server }: { server: Server }) {
             >
               <label>
                 协议
-                <select
+                <Select
+                  aria-label={t("协议")}
                   value={form.protocol}
-                  onChange={(e) => setForm({ ...form, protocol: e.target.value as ProxyProtocol })}
-                >
-                  {protocols.map((p) => (
-                    <option key={p}>{p}</option>
-                  ))}
-                </select>
+                  onValueChange={(value) => setForm({ ...form, protocol: value as ProxyProtocol })}
+                  options={protocols.map((value) => ({ value, label: value }))}
+                />
               </label>
               <label>
                 端口
@@ -275,29 +274,25 @@ export function ServerNodesPanel({ server }: { server: Server }) {
               )}
               <label>
                 传输
-                <select
+                <Select
+                  aria-label={t("传输")}
                   value={form.network ?? "tcp"}
-                  onChange={(e) =>
-                    setForm({ ...form, network: e.target.value as ProxyNode["network"] })
+                  onValueChange={(value) =>
+                    setForm({ ...form, network: value as ProxyNode["network"] })
                   }
-                >
-                  <option>tcp</option>
-                  <option>ws</option>
-                  <option>grpc</option>
-                </select>
+                  options={["tcp", "ws", "grpc"].map((value) => ({ value, label: value }))}
+                />
               </label>
               <label>
                 安全
-                <select
+                <Select
+                  aria-label={t("安全")}
                   value={form.security ?? "none"}
-                  onChange={(e) =>
-                    setForm({ ...form, security: e.target.value as ProxyNode["security"] })
+                  onValueChange={(value) =>
+                    setForm({ ...form, security: value as ProxyNode["security"] })
                   }
-                >
-                  <option>tls</option>
-                  <option>reality</option>
-                  <option>none</option>
-                </select>
+                  options={["tls", "reality", "none"].map((value) => ({ value, label: value }))}
+                />
               </label>
               <div className="flex gap-2 sm:col-span-2">
                 <Button type="submit">保存节点</Button>

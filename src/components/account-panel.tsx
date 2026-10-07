@@ -1,7 +1,7 @@
 import { Copy, ExternalLink, Eye, EyeOff, KeyRound, Lock, UserRound } from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
 import { toast } from "sonner";
-import { ACCOUNT_COPY, WEBSITE_ACCOUNT_COPY } from "./account-fields";
+import { ACCOUNT_COPY, STANDALONE_ACCOUNT_COPY, WEBSITE_ACCOUNT_COPY } from "./account-fields";
 import { Button } from "./ui/button";
 import { TimeAgo } from "./ui/time-ago";
 import { accountId, desktop, type AccountCredential } from "@/lib/desktop";
@@ -25,13 +25,22 @@ export function AccountPanel({ assetId, kind }: { assetId: string; kind: AssetKi
   const [record, setRecord] = useState<AccountCredential | null>(null);
   const [checked, setChecked] = useState(false);
   const [reveal, setReveal] = useState(false);
+  const [loadError, setLoadError] = useState(false);
+  const composerOpen = useAppStore((s) => s.composerOpen);
   const secretKind = useAppStore((s) => s.secrets.find((item) => item.id === assetId)?.kind);
-  const copy =
-    kind === "secret" && secretKind === "password" ? WEBSITE_ACCOUNT_COPY : ACCOUNT_COPY[kind];
+  const standalone = kind === "secret" && secretKind === "account";
+  const copy = standalone
+    ? STANDALONE_ACCOUNT_COPY
+    : kind === "secret" && secretKind === "password"
+      ? WEBSITE_ACCOUNT_COPY
+      : ACCOUNT_COPY[kind];
 
   useEffect(() => {
     let alive = true;
     setReveal(false);
+    setRecord(null);
+    setChecked(false);
+    setLoadError(false);
     void (async () => {
       if (!bridge || !unlocked) {
         if (alive) {
@@ -47,13 +56,16 @@ export function AccountPanel({ assetId, kind }: { assetId: string; kind: AssetKi
           setChecked(true);
         }
       } catch {
-        if (alive) setChecked(true);
+        if (alive) {
+          setChecked(true);
+          setLoadError(true);
+        }
       }
     })();
     return () => {
       alive = false;
     };
-  }, [bridge, assetId, unlocked]);
+  }, [bridge, assetId, unlocked, composerOpen]);
 
   if (!bridge) return null;
 
@@ -62,6 +74,16 @@ export function AccountPanel({ assetId, kind }: { assetId: string; kind: AssetKi
       <div className="mb-3 flex items-center gap-2">
         <UserRound className="size-4 text-muted" />
         <h3 className="text-meta font-semibold">{t(copy.title)}</h3>
+        {standalone && unlocked && (
+          <Button
+            className="ml-auto"
+            variant="ghost"
+            size="sm"
+            onClick={() => openComposer(kind, assetId)}
+          >
+            {t("编辑账号")}
+          </Button>
+        )}
       </div>
 
       {!unlocked ? (
@@ -76,6 +98,10 @@ export function AccountPanel({ assetId, kind }: { assetId: string; kind: AssetKi
         </Button>
       ) : !checked ? (
         <p className="text-meta text-muted">{t("读取中…")}</p>
+      ) : loadError ? (
+        <p role="alert" className="text-meta text-crit">
+          {t("账号信息读取失败，请重新打开后重试。")}
+        </p>
       ) : !record ? (
         <div className="flex items-center gap-3">
           <Button variant="outline" size="sm" onClick={() => openComposer(kind, assetId)}>
@@ -88,7 +114,7 @@ export function AccountPanel({ assetId, kind }: { assetId: string; kind: AssetKi
       ) : (
         <dl className="space-y-2">
           {record.url && (
-            <Row label={t("登录地址")}>
+            <Row label={t(standalone ? "登录网址" : "登录地址")}>
               <button
                 type="button"
                 className="truncate text-left text-meta text-ink underline decoration-line-strong underline-offset-2 hover:decoration-ink"
@@ -105,9 +131,9 @@ export function AccountPanel({ assetId, kind }: { assetId: string; kind: AssetKi
           )}
 
           {record.username && (
-            <Row label={t("账号")}>
+            <Row label={t(standalone ? "账户名" : "账号")}>
               <span className="truncate font-mono text-meta">{record.username}</span>
-              <CopyAction value={record.username} what={t("账号")} />
+              <CopyAction value={record.username} what={t(standalone ? "账户名" : "账号")} />
             </Row>
           )}
 
@@ -128,7 +154,7 @@ export function AccountPanel({ assetId, kind }: { assetId: string; kind: AssetKi
 
           {record.note && (
             <div>
-              <dt className="mb-1 text-2xs text-subtle">{t("备注")}</dt>
+              <dt className="mb-1 text-2xs text-subtle">{t(standalone ? "敏感备注" : "备注")}</dt>
               <dd>
                 <pre className="whitespace-pre-wrap rounded-md bg-canvas px-3 py-2 font-mono text-2xs text-ink">
                   {record.note}

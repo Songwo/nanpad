@@ -29,6 +29,7 @@ import {
   normalizePhoneNumbers,
 } from "../../electron/services/phone-numbers.mjs";
 import { normalizeUsageDraft } from "./usage-setup.mjs";
+import { retainActivity } from "./activity-history.mjs";
 
 export interface UsageSetupDraft {
   type?: "3x-ui" | "subscription" | "openai-api" | "anthropic-api";
@@ -51,6 +52,16 @@ export interface ExpandState {
 
 export interface AppState extends Snapshot {
   phoneNumbers: PhoneNumber[];
+  phoneFilter: "all" | "attention" | "expired" | "active" | "unknown";
+  phoneFocusId: string | null;
+  phoneCreateRequested: boolean;
+  setPhoneFilter: (filter: AppState["phoneFilter"]) => void;
+  openPhones: (options?: {
+    id?: string;
+    query?: string;
+    attention?: boolean;
+    create?: boolean;
+  }) => void;
   upsertPhoneNumber: (record: PhoneNumber) => void;
   removePhoneNumber: (id: string) => void;
   links: AssetLink[];
@@ -69,6 +80,8 @@ export interface AppState extends Snapshot {
   commandOpen: boolean;
   settingsOpen: boolean;
   composerOpen: boolean;
+  createPickerOpen: boolean;
+  setCreatePickerOpen: (open: boolean) => void;
   composerKind: AssetKind;
   editingId: string | null;
   composerPreset: Record<string, string> | null;
@@ -127,6 +140,9 @@ const emptyUi = {
   view: "overview" as ViewId,
   filter: "all" as const,
   query: "",
+  phoneFilter: "all" as const,
+  phoneFocusId: null as string | null,
+  phoneCreateRequested: false,
   tagFilter: [] as string[],
   groupByTag: false,
   expanded: null,
@@ -134,6 +150,7 @@ const emptyUi = {
   commandOpen: false,
   settingsOpen: false,
   composerOpen: false,
+  createPickerOpen: false,
   composerKind: "server" as AssetKind,
   editingId: null,
   composerPreset: null,
@@ -202,9 +219,34 @@ export const useAppStore = create<AppState>()(
       hydrated: false,
 
       // A tag selection belongs to the list you picked it in.
-      setView: (view) => set({ view, mobileNav: false, query: "", tagFilter: [] }),
+      setView: (view) =>
+        set({
+          view,
+          filter: "all",
+          mobileNav: false,
+          query: "",
+          tagFilter: [],
+          phoneFilter: "all",
+          phoneFocusId: null,
+          phoneCreateRequested: false,
+        }),
+      setCreatePickerOpen: (createPickerOpen) => set({ createPickerOpen, commandOpen: false }),
+      setPhoneFilter: (phoneFilter) => set({ phoneFilter, phoneFocusId: null }),
+      openPhones: (options = {}) =>
+        set({
+          view: "phones",
+          query: options.query ?? "",
+          phoneFocusId: options.id ?? null,
+          phoneFilter: options.attention ? "attention" : "all",
+          phoneCreateRequested: options.create ?? false,
+          filter: "all",
+          expanded: null,
+          mobileNav: false,
+          commandOpen: false,
+          tagFilter: [],
+        }),
       setFilter: (filter) => set({ filter }),
-      setQuery: (query) => set({ query }),
+      setQuery: (query) => set({ query, phoneFocusId: null }),
       toggleTag: (tag) =>
         set({
           tagFilter: get().tagFilter.includes(tag)
@@ -217,7 +259,26 @@ export const useAppStore = create<AppState>()(
       focusTag: (tag) =>
         set({ view: "tags", tagFilter: [tag], query: "", mobileNav: false, expanded: null }),
       setGroupByTag: (groupByTag) => set({ groupByTag }),
-      setExpanded: (expanded) => set({ expanded }),
+      setExpanded: (expanded) => {
+        const previous = get().expanded;
+        set({ expanded });
+        if (!expanded || (previous?.id === expanded.id && previous.kind === expanded.kind)) return;
+        if (
+          !(get()[collectionKey(expanded.kind)] as { id: string }[]).some(
+            (item) => item.id === expanded.id,
+          )
+        )
+          return;
+        const labels: Record<AssetKind, string> = {
+          server: "服务器",
+          domain: "域名",
+          mail: "邮箱",
+          ai: "AI 订阅",
+          secret: "密钥库",
+          cert: "安全证书",
+        };
+        get().log(t("查看了{0}详情", t(labels[expanded.kind])), expanded.kind);
+      },
       openSsh: (sshServerId) => set({ sshServerId, expanded: null }),
       closeSsh: () => set({ sshServerId: null }),
       setCommandOpen: (commandOpen) => set({ commandOpen }),
@@ -314,7 +375,7 @@ export const useAppStore = create<AppState>()(
 
       log: (text, kind = "system") =>
         set({
-          activity: [
+          activity: retainActivity([
             {
               id: uid("act"),
               at: new Date().toISOString(),
@@ -322,7 +383,7 @@ export const useAppStore = create<AppState>()(
               kind,
             },
             ...get().activity,
-          ].slice(0, 40),
+          ]),
         }),
 
       resetDemo: () =>
@@ -365,6 +426,7 @@ export const useAppStore = create<AppState>()(
         return {
           ...current,
           ...saved,
+          activity: retainActivity(saved.activity ?? current.activity),
           phoneNumbers: normalizePhoneNumbers(saved.phoneNumbers, false),
           servers: withTags(saved.servers),
           domains: withTags(saved.domains),
@@ -395,7 +457,7 @@ export const useAppStore = create<AppState>()(
         aiAssets: s.aiAssets,
         secrets: s.secrets,
         certs: s.certs,
-        activity: s.activity,
+        activity: retainActivity(s.activity),
       }),
     },
   ),

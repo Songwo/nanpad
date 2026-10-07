@@ -1,0 +1,173 @@
+@layer theme, base, components, utilities;
+
+@layer components {
+  .ui-button,
+  .ui-select-trigger {
+    box-sizing: border-box;
+    border: 1px solid transparent;
+    font-family: var(--font-sans);
+    cursor: pointer;
+    user-select: none;
+    transition:
+      background-color var(--dur-fast) ease-out,
+      border-color var(--dur-fast) ease-out,
+      color var(--dur-fast) ease-out,
+      box-shadow var(--dur-fast) ease-out,
+      transform var(--dur-fast) ease-out;
+  }
+
+  .ui-button:focus-visible,
+  .ui-select-trigger:focus-visible {
+    outline: 2px solid var(--color-ink);
+    outline-offset: 2px;
+  }
+
+  .ui-button:disabled,
+  .ui-button[aria-disabled="true"],
+  .ui-select-trigger:disabled {
+    cursor: not-allowed;
+    opacity: 0.4;
+  }
+
+  .ui-button:not(:disabled):not([aria-disabled="true"]):active {
+    transform: scale(0.96);
+  }
+
+  .ui-button-solid {
+    color: var(--color-card);
+    background: var(--color-ink);
+    border-color: var(--color-ink);
+  }
+
+  .ui-button-solid:not(:disabled):not([aria-disabled="true"]):hover {
+    background: color-mix(in srgb, var(--color-ink) 88%, var(--color-card));
+  }
+
+  .ui-button-secondary {
+    color: var(--color-ink);
+    background: var(--color-surface);
+  }
+
+  .ui-button-outline,
+  .ui-select-trigger {
+    color: var(--color-ink);
+    background: var(--color-card);
+    border-color: var(--color-line-strong);
+  }
+
+  .ui-button-secondary:not(:disabled):not([aria-disabled="true"]):hover,
+  .ui-button-outline:not(:disabled):not([aria-disabled="true"]):hover,
+  .ui-select-trigger:not(:disabled):hover {
+    color: var(--color-ink);
+    background: var(--color-surface-subtle);
+    border-color: var(--color-muted);
+  }
+
+  .ui-button-ghost {
+    color: var(--color-ink);
+    background: transparent;
+  }
+
+  .ui-button-ghost:not(:disabled):not([aria-disabled="true"]):hover {
+    background: var(--color-line);
+  }
+
+  .ui-button-danger {
+    color: var(--color-sidebar);
+    background: var(--color-danger);
+    border-color: var(--color-danger);
+  }
+
+  .ui-button-danger:not(:disabled):not([aria-disabled="true"]):hover {
+    background: color-mix(in srgb, var(--color-danger) 88%, var(--color-ink));
+  }
+
+  .ui-button-danger-ghost {
+    color: var(--color-danger);
+    background: transparent;
+  }
+
+  .ui-button-danger-ghost:not(:disabled):not([aria-disabled="true"]):hover {
+    background: var(--color-danger-bg);
+  }
+
+  .ui-select-trigger[data-state="open"] {
+    border-color: var(--color-ink);
+    box-shadow: var(--shadow-focus-ring);
+  }
+
+  .ui-select-trigger[aria-invalid="true"] {
+    border-color: var(--color-danger);
+    outline-color: var(--color-danger);
+  }
+
+  .ui-select-label {
+    overflow-wrap: anywhere;
+  }
+
+  .ui-select-chevron {
+    transition: transform var(--dur-fast) ease-out;
+  }
+
+  .ui-select-trigger[data-state="open"] .ui-select-chevron {
+    transform: rotate(180deg);
+  }
+
+  .ui-select-content {
+    z-index: calc(var(--z-index-overlay) + 20);
+    width: var(--radix-select-trigger-width);
+    max-width: calc(100vw - 1.5rem);
+    max-height: min(20rem, var(--radix-select-content-available-height));
+    overflow: hidden;
+    color: var(--color-ink);
+    background: var(--color-card);
+    border: 1px solid var(--color-line-strong);
+    border-radius: var(--radius-sm);
+    box-shadow: var(--shadow-popover);
+  }
+
+  .ui-select-scroll {
+    color: var(--color-muted);
+    background: var(--color-card);
+  }
+
+  .ui-select-item {
+    cursor: pointer;
+    outline: none;
+    color: var(--color-ink);
+  }
+
+  .ui-select-item[data-state="checked"] {
+    background: var(--color-canvas);
+    font-weight: 500;
+  }
+
+  .ui-select-item[data-highlighted] {
+    background: var(--color-surface-subtle);
+    box-shadow: inset 0 0 0 1px var(--color-line-strong);
+  }
+
+  .ui-select-item[data-disabled] {
+    pointer-events: none;
+    opacity: 0.4;
+  }
+
+  @media (pointer: coarse) {
+    .ui-button {
+      min-width: 44px;
+      min-height: 44px;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .ui-button,
+    .ui-select-trigger,
+    .ui-select-chevron {
+      transition: none;
+    }
+
+    .ui-button:not(:disabled):not([aria-disabled="true"]):active {
+      transform: none;
+    }
+  }
+}

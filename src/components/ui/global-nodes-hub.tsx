@@ -3,6 +3,7 @@ import { useState } from "react";
 import { useAppStore } from "@/lib/store";
 import { ServerNodesPanel } from "../server-nodes-panel";
 import { Button } from "./button";
+import { Select } from "./select";
 import { Plus, Activity } from "lucide-react";
 export function GlobalNodesHub() {
   const servers = useAppStore((s) => s.servers);
@@ -38,18 +39,16 @@ export function GlobalNodesHub() {
         <div className="rounded-xl border border-line">
           <label className="flex flex-wrap items-center gap-3 border-b border-line p-4 text-sm">
             所属服务器
-            <select
-              aria-label="所属服务器"
-              className="min-w-0 rounded-md border border-line bg-card p-2"
+            <Select
+              aria-label={t("所属服务器")}
+              className="w-full sm:w-80"
               value={server.id}
-              onChange={(e) => setSelected(e.target.value)}
-            >
-              {servers.map((s) => (
-                <option key={s.id} value={s.id}>
-                  {s.name}（{s.nodes?.length ?? 0} 个节点）
-                </option>
-              ))}
-            </select>
+              onValueChange={setSelected}
+              options={servers.map((s) => ({
+                value: s.id,
+                label: `${s.name}（${s.nodes?.length ?? 0} 个节点）`,
+              }))}
+            />
           </label>
           <ServerNodesPanel key={server.id} server={server} />
         </div>

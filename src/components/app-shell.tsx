@@ -1,16 +1,16 @@
-import { Bot, Globe, House, Menu, Server, SquareTerminal } from "lucide-react";
+import { Bot, FileText, House, Phone, Server } from "lucide-react";
 import { useEffect, useSyncExternalStore } from "react";
 import { Toaster, toast } from "sonner";
 import { CommandPalette } from "./command-palette";
 import { Composer } from "./composer";
+import { CreateAssetPicker } from "./create-asset-picker";
+import { createInCurrentView } from "@/lib/create-asset";
 import { CaptureInbox } from "./capture-inbox";
 import { ExpandLayer } from "./expand-layer";
-import { LogoMark } from "./logo";
 import { RightRail } from "./right-rail";
-import { NAV, Sidebar } from "./sidebar";
+import { Sidebar } from "./sidebar";
 import { Settings } from "./settings";
 import { SshTerminal } from "./ssh-terminal";
-import { Button } from "./ui/button";
 import { TitleBar } from "./title-bar";
 import { VaultGate } from "./vault-gate";
 import { Onboarding } from "./onboarding";
@@ -40,17 +40,16 @@ export function AppShell() {
     if (!bridge) return;
     const off = bridge.onAttention((asset) => {
       if (asset.kind === "phone") {
-        useAppStore.getState().setExpanded(null);
-        useAppStore.getState().setView("phones");
+        const state = useAppStore.getState();
+        const phone = state.phoneNumbers.find((record) => record.id === asset.id);
+        state.openPhones(phone ? { id: phone.id } : { attention: true });
         return;
       }
-      useAppStore
-        .getState()
-        .setExpanded({
-          kind: asset.kind,
-          id: asset.id,
-          origin: { x: window.innerWidth / 2, y: 50, w: 100, h: 50 },
-        });
+      useAppStore.getState().setExpanded({
+        kind: asset.kind,
+        id: asset.id,
+        origin: { x: window.innerWidth / 2, y: 50, w: 100, h: 50 },
+      });
     });
     const offVault = bridge.onVaultChanged(() => {
       if (useAppStore.getState().composerPreset?._captureId) useAppStore.getState().closeComposer();
@@ -76,9 +75,9 @@ export function AppShell() {
     view === "usage" ||
     view === "nodes" ||
     view === "phones" ||
+    view === "agent" ||
     view === "overview";
   const setCommandOpen = useAppStore((s) => s.setCommandOpen);
-  const openComposer = useAppStore((s) => s.openComposer);
   const vaultUnlocked = useVault((s) => s.unlocked);
 
   useEffect(() => {
@@ -140,12 +139,9 @@ export function AppShell() {
     const onKey = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "n") {
         e.preventDefault();
-        if (useAppStore.getState().view === "phones") {
-          window.dispatchEvent(new Event("nanpad:add-phone"));
+        if (e.repeat || document.querySelector('[role="dialog"]') || useVault.getState().prompt)
           return;
-        }
-        const kind = NAV.find((n) => n.id === useAppStore.getState().view)?.kind ?? "server";
-        openComposer(kind);
+        void createInCurrentView();
       }
       if ((e.metaKey || e.ctrlKey) && e.key === ",") {
         e.preventDefault();
@@ -163,7 +159,7 @@ export function AppShell() {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [openComposer, setCommandOpen]);
+  }, [setCommandOpen]);
 
   return (
     <div
@@ -172,30 +168,28 @@ export function AppShell() {
     >
       <TitleBar />
       <div className="flex min-h-0 flex-1">
-        <Sidebar className="hidden md:flex" />
+        <Sidebar collapsible className="hidden md:flex" />
         <MobileDrawer />
 
         <div className="flex min-w-0 flex-1 flex-col">
-          <header className="flex h-12 items-center gap-3 border-b border-line bg-sidebar px-3 md:hidden">
-            <Button
-              variant="ghost"
-              size="icon-sm"
-              onClick={() => useAppStore.getState().setMobileNav(true)}
-              aria-label={t("打开菜单")}
+          {/* 对话使用内部滚动；资产视图保留两列共用的滚动区域。 */}
+          <div
+            className={cn(
+              "min-h-0 flex-1 overflow-y-auto",
+              view === "docs" && "documents-shell",
+              view === "agent" && "agent-shell",
+            )}
+          >
+            <div
+              className={cn(
+                "mx-auto flex w-full max-w-[1560px] items-start px-1 md:px-3",
+                view === "agent" && "agent-shell-columns",
+              )}
             >
-              <Menu className="size-5" />
-            </Button>
-            <LogoMark className="size-7" />
-            <span className="font-bold tracking-wordmark">{t("司南")}</span>
-          </header>
-
-          {/* One scroll container for the two columns, so both sticky headers
-            resolve against the same viewport. */}
-          <div className="min-h-0 flex-1 overflow-y-auto">
-            <div className="mx-auto flex w-full max-w-[1560px] items-start px-1 md:px-3">
               <main
                 className={cn(
                   "@container min-w-0 flex-1",
+                  view === "agent" && "agent-shell-main",
                   !wideWorkspace && "xl:border-r xl:border-line",
                 )}
               >
@@ -208,7 +202,10 @@ export function AppShell() {
         </div>
       </div>
 
-      <nav className="fixed inset-x-0 bottom-0 z-30 flex h-14 items-center justify-around border-t border-line bg-sidebar/95 px-1 pb-[env(safe-area-inset-bottom)] backdrop-blur md:hidden">
+      <nav
+        aria-label={t("快捷导航")}
+        className="fixed inset-x-0 bottom-0 z-30 flex h-14 items-center justify-around border-t border-line bg-sidebar/95 px-1 pb-[env(safe-area-inset-bottom)] backdrop-blur md:hidden"
+      >
         {MOBILE_NAV.map((item) => {
           const Icon = item.icon;
           const active = view === item.id;
@@ -216,6 +213,7 @@ export function AppShell() {
             <button
               key={item.id}
               type="button"
+              aria-current={active ? "page" : undefined}
               onClick={() => setView(item.id)}
               className={cn(
                 "relative flex h-12 min-w-12 flex-col items-center justify-center gap-0.5 text-2xs transition-colors duration-150 ease-out",
@@ -242,6 +240,7 @@ export function AppShell() {
       <SshTerminal />
       <Settings />
       <Composer />
+      <CreateAssetPicker />
       <CaptureInbox />
       <CommandPalette />
       <VaultGate />
@@ -279,9 +278,9 @@ function MobileDrawer() {
 const MOBILE_NAV: { id: ViewId; label: string; icon: typeof House }[] = [
   { id: "overview", label: "总览", icon: House },
   { id: "servers", label: "主机", icon: Server },
-  { id: "domains", label: "域名", icon: Globe },
+  { id: "docs", label: "文档", icon: FileText },
   { id: "ai", label: "AI", icon: Bot },
-  { id: "terminal", label: "终端", icon: SquareTerminal },
+  { id: "phones", label: "号码", icon: Phone },
 ];
 
 function clamp(n: number, a: number, b: number) {

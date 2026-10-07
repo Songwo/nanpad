@@ -1,15 +1,15 @@
 import { Eye, EyeOff, KeyRound, Trash2, UserRound } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "./ui/button";
 import { Field, Input, Textarea } from "./ui/input";
-import { accountId, desktop, type AccountCredential } from "@/lib/desktop";
+import { accountId, desktop } from "@/lib/desktop";
+import { ACCOUNT_KEYS } from "@/lib/account-record.mjs";
 import type { AssetKind } from "@/lib/types";
 import { useVault } from "@/lib/vault-state";
 import { t } from "@/lib/i18n";
 
-/** Form keys that belong to the vault, never to the asset record. */
-export const ACCOUNT_KEYS = ["_url", "_username", "_password", "_note"] as const;
+export { ACCOUNT_KEYS, accountFromForm } from "@/lib/account-record.mjs";
 
 /** Written by the OAuth flow, read back on save. */
 export const OAUTH_KEYS = [
@@ -51,31 +51,11 @@ export const WEBSITE_ACCOUNT_COPY = {
   hint: "登录地址、账号和密码保存在加密库中，可在资产详情关联注册邮箱。",
 };
 
-export function accountFromForm(form: Record<string, string>): AccountCredential | null {
-  const url = form._url?.trim();
-  const username = form._username?.trim();
-  const password = form._password ?? "";
-  const note = form._note?.trim();
-  const oauthProvider = form._oauthProvider?.trim();
-  if (!url && !username && !password && !note && !oauthProvider) return null;
-  return {
-    url: url || undefined,
-    username: username || undefined,
-    password: password || undefined,
-    note: note || undefined,
-    ...(oauthProvider
-      ? {
-          oauth: {
-            provider: oauthProvider,
-            refreshToken: form._oauthRefresh || null,
-            expiresAt: form._oauthExpires || null,
-            scope: form._oauthScope ?? "",
-          },
-        }
-      : {}),
-    updatedAt: new Date().toISOString(),
-  };
-}
+export const STANDALONE_ACCOUNT_COPY = {
+  title: "账号密码",
+  password: "密码",
+  hint: "账户名、密码、登录网址和敏感备注只保存在加密密钥库中。关联文档仅保存引用，不会复制凭据。",
+};
 
 /**
  * Account fields inside the composer.
@@ -101,8 +81,23 @@ export function AccountFields({
   const [reveal, setReveal] = useState(false);
   const [loaded, setLoaded] = useState(false);
   const [stored, setStored] = useState(false);
+  const [loadError, setLoadError] = useState(false);
+  const current = useRef({ form, set });
+  current.current = { form, set };
+  const standalone = kind === "secret" && form.kind === "account";
   const website = kind === "secret" && form.kind === "password";
-  const copy = website ? WEBSITE_ACCOUNT_COPY : ACCOUNT_COPY[kind];
+  const copy = standalone
+    ? STANDALONE_ACCOUNT_COPY
+    : website
+      ? WEBSITE_ACCOUNT_COPY
+      : ACCOUNT_COPY[kind];
+
+  useEffect(() => {
+    setLoaded(false);
+    setStored(false);
+    setReveal(false);
+    setLoadError(false);
+  }, [assetId, unlocked]);
 
   // Prefill once per open, and only from an unlocked vault.
   useEffect(() => {
@@ -117,22 +112,30 @@ export function AccountFields({
         setStored(true);
         // 只有表单里从未出现过的键才回填：用户抢先输入的值不能被迟到的
         // 密钥库记录覆盖（异步预填与手输竞争时以手输为准）。
-        if (rec.url && !("_url" in form)) set("_url", rec.url);
-        if (rec.username && !("_username" in form)) set("_username", rec.username);
-        if (rec.password && !("_password" in form)) set("_password", rec.password);
-        if (rec.note && !("_note" in form)) set("_note", rec.note);
+        const { form: latest, set: update } = current.current;
+        if (rec.url && !("_url" in latest)) update("_url", rec.url);
+        if (rec.username && !("_username" in latest)) update("_username", rec.username);
+        if (!standalone && rec.password && !("_password" in latest))
+          update("_password", rec.password);
+        if (rec.note && !("_note" in latest)) update("_note", rec.note);
       } catch {
-        if (alive) setLoaded(true);
+        if (alive) {
+          setLoaded(true);
+          setLoadError(true);
+        }
       }
     })();
     return () => {
       alive = false;
     };
-    // `set` is a fresh closure every render; re-running on it would loop.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [bridge, assetId, unlocked, loaded]);
+  }, [bridge, assetId, unlocked, loaded, standalone]);
 
-  if (!bridge) return null;
+  if (!bridge)
+    return standalone ? (
+      <p className="rounded-xl bg-canvas p-4 text-meta text-muted sm:col-span-2">
+        {t("账号密码需要桌面版的加密密钥库，网页版不会保存账号凭据。")}
+      </p>
+    ) : null;
 
   return (
     <div className="sm:col-span-2">
@@ -176,87 +179,103 @@ export function AccountFields({
               className="contents"
               aria-label={t("账号信息")}
             >
-            {(kind !== "secret" || website) && (
-              <>
-                <Field label={t("登录地址")}>
-                  <Input
-                    name="account-url"
-                    aria-label={t("登录地址")}
-                    value={form._url ?? ""}
-                    placeholder="https://…"
-                    autoComplete="off"
-                    onChange={(e) => set("_url", e.target.value)}
-                  />
-                </Field>
-                <Field label={t("账号")}>
-                  <Input
-                    name="account-username"
-                    aria-label={t("账号")}
-                    value={form._username ?? ""}
-                    autoComplete="off"
-                    onChange={(e) => set("_username", e.target.value)}
-                  />
-                </Field>
-              </>
-            )}
+              {(kind !== "secret" || website || standalone) && (
+                <>
+                  <Field label={t(standalone ? "登录网址" : "登录地址")}>
+                    <Input
+                      name="account-url"
+                      aria-label={t(standalone ? "登录网址" : "登录地址")}
+                      value={form._url ?? ""}
+                      placeholder="https://…"
+                      autoComplete="off"
+                      onChange={(e) => set("_url", e.target.value)}
+                    />
+                  </Field>
+                  <Field label={t(standalone ? "账户名" : "账号")}>
+                    <Input
+                      name="account-username"
+                      aria-label={t(standalone ? "账户名" : "账号")}
+                      required={standalone}
+                      value={form._username ?? ""}
+                      autoComplete="off"
+                      onChange={(e) => set("_username", e.target.value)}
+                    />
+                  </Field>
+                </>
+              )}
 
-            <div className="sm:col-span-2">
-              <Field label={t(copy.password)}>
-                <div className="relative">
-                  <Input
-                    type={reveal ? "text" : "password"}
-                    name="account-password"
-                    aria-label={t(copy.password)}
-                    value={form._password ?? ""}
-                    autoComplete="off"
-                    spellCheck={false}
-                    className="pr-10 font-mono"
-                    onChange={(e) => set("_password", e.target.value)}
-                  />
-                  <button
-                    type="button"
-                    aria-label={reveal ? t("隐藏") : t("显示")}
-                    className="absolute right-2 top-1/2 grid size-7 -translate-y-1/2 place-items-center rounded-full text-subtle transition-colors duration-150 ease-out hover:bg-line hover:text-ink"
-                    onClick={() => setReveal((v) => !v)}
-                  >
-                    {reveal ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
-                  </button>
-                </div>
-              </Field>
-            </div>
-
-            <div className="sm:col-span-2">
-              <Field label={t("备注（恢复码 / 授权码 / 二次验证）")}>
-                <Textarea
-                  name="account-note"
-                  value={form._note ?? ""}
-                  spellCheck={false}
-                  className="min-h-20 font-mono text-2xs"
-                  onChange={(e) => set("_note", e.target.value)}
-                />
-              </Field>
-            </div>
-
-            {stored && assetId && (
               <div className="sm:col-span-2">
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  className="text-crit"
-                  onClick={async () => {
-                    await bridge.vault.remove(accountId(assetId));
-                    setStored(false);
-                    for (const key of ACCOUNT_KEYS) set(key, "");
-                    toast(t("已删除保存的账号信息"));
-                  }}
-                >
-                  <Trash2 className="size-3.5" />
-
-                  {t("删除已保存的账号")}
-                </Button>
+                <Field label={t(copy.password)}>
+                  <div className="relative">
+                    <Input
+                      type={reveal ? "text" : "password"}
+                      name="account-password"
+                      aria-label={t(copy.password)}
+                      value={form._password ?? ""}
+                      autoComplete="off"
+                      required={standalone && !stored}
+                      placeholder={standalone && stored ? t("留空保留已保存的密码") : undefined}
+                      spellCheck={false}
+                      className="pr-10 font-mono"
+                      onChange={(e) => set("_password", e.target.value)}
+                    />
+                    <button
+                      type="button"
+                      aria-label={reveal ? t("隐藏") : t("显示")}
+                      className="absolute right-2 top-1/2 grid size-7 -translate-y-1/2 place-items-center rounded-full text-subtle transition-colors duration-150 ease-out hover:bg-line hover:text-ink"
+                      onClick={() => setReveal((v) => !v)}
+                    >
+                      {reveal ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
+                    </button>
+                  </div>
+                </Field>
               </div>
-            )}
+
+              <div className="sm:col-span-2">
+                <Field label={t(standalone ? "敏感备注" : "备注（恢复码 / 授权码 / 二次验证）")}>
+                  <Textarea
+                    name="account-note"
+                    aria-label={t(standalone ? "敏感备注" : "备注（恢复码 / 授权码 / 二次验证）")}
+                    value={form._note ?? ""}
+                    spellCheck={false}
+                    className="min-h-20 font-mono text-2xs"
+                    onChange={(e) => set("_note", e.target.value)}
+                  />
+                </Field>
+              </div>
+
+              {loadError && (
+                <p role="alert" className="text-2xs text-crit sm:col-span-2">
+                  {t("账号信息读取失败，请重新打开后重试。")}
+                </p>
+              )}
+              {standalone && stored && (
+                <p className="text-2xs text-muted sm:col-span-2">{t("留空保留已保存的密码")}</p>
+              )}
+              {stored && assetId && !standalone && (
+                <div className="sm:col-span-2">
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="text-crit"
+                    onClick={async () => {
+                      try {
+                        await bridge.vault.remove(accountId(assetId));
+                        setStored(false);
+                        for (const key of ACCOUNT_KEYS) set(key, "");
+                        toast(t("已删除保存的账号信息"));
+                      } catch (error) {
+                        toast.error(error instanceof Error ? error.message : t("凭据保存失败"));
+                      }
+                    }}
+                  >
+                    <Trash2 className="size-3.5" />
+
+                    {t("删除已保存的账号")}
+                  </Button>
+                </div>
+              )}
             </fieldset>
           </div>
         )}

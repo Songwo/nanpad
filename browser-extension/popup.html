@@ -3,14 +3,14 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>保存到司南</title>
+    <title>保存到知屿</title>
     <link rel="stylesheet" href="popup.css" />
   </head>
   <body>
     <header class="app-header">
       <img class="brand" src="icon.png" width="32" height="32" alt="" />
       <div>
-        <h1>司南 Nanpad</h1>
+        <h1>知屿 Zhiyu</h1>
         <span class="subtitle">网站账号</span>
       </div>
       <button
@@ -54,7 +54,7 @@
           <input type="checkbox" id="auto-capture" checked />
         </label>
         <p class="auto-hint">
-          默认开启：在网站提交登录时自动把账号密码发送到司南待确认队列，仍需桌面端核对后加密保存；取消勾选可关闭。
+          默认开启：在网站提交登录时自动把账号密码发送到知屿待确认队列，仍需桌面端核对后加密保存；取消勾选可关闭。
         </p>
       </section>
       <form id="capture" autocomplete="off">
@@ -97,14 +97,14 @@
           </button>
         </div>
         <button class="primary-button" type="submit" id="send" disabled>
-          <img src="icons/arrow-down-to-line.svg" alt="" /><span>发送到司南</span>
+          <img src="icons/arrow-down-to-line.svg" alt="" /><span>发送到知屿</span>
         </button>
       </form>
       <p id="status" role="status" aria-live="polite"></p>
     </main>
     <footer>
       <button class="text-button" id="site-only" disabled>
-        <img src="icons/bookmark-plus.svg" alt="" />仅记录站点并打开司南</button
+        <img src="icons/bookmark-plus.svg" alt="" />仅记录站点并打开知屿</button
       ><a href="https://github.com/Songwo/nanpad/releases/latest" target="_blank" rel="noreferrer"
         >桌面端<img src="icons/arrow-up-right.svg" alt=""
       /></a>

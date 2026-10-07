@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Search, Sun, Moon, Settings2 } from "lucide-react";
+import { Search, Sun, Moon, Settings2, Menu, PanelLeftClose, PanelLeftOpen } from "lucide-react";
 import { WindowControls } from "./window-controls";
 import { LogoMark } from "./logo";
 import { desktop } from "@/lib/desktop";
@@ -13,6 +13,8 @@ export function TitleBar() {
   const setSettingsOpen = useAppStore((s) => s.setSettingsOpen);
   const resolved = useSettings((s) => s.resolved);
   const setTheme = useSettings((s) => s.setTheme);
+  const sidebarCollapsed = useSettings((s) => s.sidebarCollapsed);
+  const setSidebarCollapsed = useSettings((s) => s.setSidebarCollapsed);
   const [platform, setPlatform] = useState<string | null>(null);
   useEffect(() => {
     let alive = true;
@@ -28,11 +30,37 @@ export function TitleBar() {
   }, [bridge]);
   return (
     <header className="drag-strip app-titlebar" onDoubleClick={() => bridge?.win.toggleMaximize()}>
-      <div className="flex min-w-0 items-center gap-3">
+      <div className="flex min-w-0 items-center gap-2">
         {platform === "darwin" && <span className="w-16 shrink-0" />}
+        <button
+          type="button"
+          className="chrome-action desktop-sidebar-toggle shrink-0"
+          aria-label={t(sidebarCollapsed ? "展开主导航" : "收起主导航")}
+          title={t(sidebarCollapsed ? "展开主导航" : "收起主导航")}
+          aria-expanded={!sidebarCollapsed}
+          aria-controls="primary-navigation"
+          onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
+        >
+          <span
+            className="sidebar-toggle-icon size-5"
+            data-collapsed={sidebarCollapsed}
+            aria-hidden="true"
+          >
+            <PanelLeftClose className="sidebar-toggle-close" />
+            <PanelLeftOpen className="sidebar-toggle-open" />
+          </span>
+        </button>
+        <button
+          type="button"
+          className="chrome-action mobile-menu-button shrink-0"
+          aria-label={t("打开菜单")}
+          onClick={() => useAppStore.getState().setMobileNav(true)}
+        >
+          <Menu className="size-5" />
+        </button>
         <LogoMark className="size-6 shrink-0" />
-        <span className="truncate text-sm font-semibold">
-          {t("司南")} <span className="text-muted">Nanpad</span>
+        <span className={`truncate text-sm font-semibold ${bridge ? "hidden sm:inline" : ""}`}>
+          {t("知屿")} <span className="hidden text-muted sm:inline">Zhiyu</span>
         </span>
       </div>
       <div className="flex shrink-0 items-center gap-2">

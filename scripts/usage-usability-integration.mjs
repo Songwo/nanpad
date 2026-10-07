@@ -1,3 +1,4 @@
+import { chooseOption } from "./select-helper.mjs";
 import assert from "node:assert/strict";
 import { createServer } from "node:http";
 import { mkdtemp, mkdir, rm } from "node:fs/promises";
@@ -139,9 +140,17 @@ try {
   assert.equal(usage.records[0].download, 4096, "后续连接失败保留上次真实用量");
   await page.getByRole("button", { name: "连接用量来源", exact: true }).click();
   await page.getByLabel("面板密码", { exact: true }).fill("qa-unused-draft");
-  await page.locator("form select").first().selectOption("openai-api");
+  await chooseOption(
+    page,
+    page.getByRole("combobox", { name: "来源类型", exact: true }),
+    "OpenAI API",
+  );
   assert.equal(await page.getByLabel("面板密码", { exact: true }).count(), 0);
-  await page.locator("form select").first().selectOption("3x-ui");
+  await chooseOption(
+    page,
+    page.getByRole("combobox", { name: "来源类型", exact: true }),
+    "3x-ui 面板",
+  );
   assert.equal(
     await page.getByLabel("面板密码", { exact: true }).inputValue(),
     "",

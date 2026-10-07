@@ -15,6 +15,12 @@ export type ThemeChoice = "system" | "light" | "dark";
 export type ResolvedTheme = "light" | "dark";
 
 interface SettingsState {
+  sidebarCollapsed: boolean;
+  setSidebarCollapsed: (collapsed: boolean) => void;
+  documentListCollapsed: boolean;
+  setDocumentListCollapsed: (collapsed: boolean) => void;
+  toolsExpanded: boolean;
+  setToolsExpanded: (expanded: boolean) => void;
   zoomPercent: ZoomPercent;
   zoomReady: boolean;
   setZoomPercent: (value: ZoomPercent) => Promise<void>;
@@ -50,6 +56,12 @@ export function resolveTheme(choice: ThemeChoice): ResolvedTheme {
 export const useSettings = create<SettingsState>()(
   persist(
     (set) => ({
+      sidebarCollapsed: false,
+      setSidebarCollapsed: (sidebarCollapsed) => set({ sidebarCollapsed }),
+      documentListCollapsed: false,
+      setDocumentListCollapsed: (documentListCollapsed) => set({ documentListCollapsed }),
+      toolsExpanded: false,
+      setToolsExpanded: (toolsExpanded) => set({ toolsExpanded }),
       zoomPercent: 100,
       zoomReady: false,
       setZoomPercent: async (value) => {
@@ -87,6 +99,9 @@ export const useSettings = create<SettingsState>()(
           language: s.language,
           assetLayout: s.assetLayout,
           zoomPercent: s.zoomPercent,
+          toolsExpanded: s.toolsExpanded,
+          sidebarCollapsed: s.sidebarCollapsed,
+          documentListCollapsed: s.documentListCollapsed,
         }) as SettingsState,
       merge: (persisted, current) => {
         const saved = persisted as Partial<SettingsState> | undefined;
@@ -95,6 +110,9 @@ export const useSettings = create<SettingsState>()(
           ...saved,
           zoomPercent: readZoomPercent(saved?.zoomPercent),
           zoomReady: false,
+          toolsExpanded: saved?.toolsExpanded === true,
+          sidebarCollapsed: saved?.sidebarCollapsed === true,
+          documentListCollapsed: saved?.documentListCollapsed === true,
         };
       },
       onRehydrateStorage: () => (state) => {

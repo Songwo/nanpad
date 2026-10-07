@@ -72,6 +72,7 @@ try {
   await page
     .getByRole("button", { name: "迁移并编辑旧文档", exact: true })
     .click({ timeout: 3000 });
+  await page.getByRole("button", { name: "编辑文档", exact: true }).click();
   await page.getByRole("textbox", { name: "文档标题", exact: true }).waitFor();
   assert.match(
     await page.getByRole("textbox", { name: "文档正文", exact: true }).innerText(),
@@ -93,6 +94,7 @@ try {
     await page.evaluate(() => window.__legacyMarkdown),
   );
   await page.getByRole("textbox", { name: "文档标题", exact: true }).fill("修改后的运维记录");
+  await page.getByRole("button", { name: /^关联与设置/ }).click();
   await page.locator(".document-bindings input[type=checkbox]").first().uncheck();
   await page.waitForFunction(() => {
     const document = JSON.parse(
@@ -103,6 +105,7 @@ try {
     return document.title === "修改后的运维记录" && document.bindings.length === 0;
   });
   checks.push("Markdown原文迁移、修改和解绑自动保存");
+  await page.keyboard.press("Escape");
   await page.evaluate(() =>
     window.__documentQaStore.setState({
       view: "servers",
@@ -116,8 +119,9 @@ try {
   await page.getByRole("button", { name: "服务文档", exact: true }).click();
   await page.getByRole("button", { name: "迁移并编辑旧文档", exact: true }).click();
   await page.waitForFunction(
-    () => document.querySelector(".document-title")?.value === "修改后的运维记录",
+    () => document.querySelector(".document-reading-title")?.textContent === "修改后的运维记录",
   );
+  await page.getByRole("button", { name: /^关联与设置/ }).click();
   assert.equal(
     await page.locator(".document-bindings input[type=checkbox]").first().isChecked(),
     false,
@@ -140,7 +144,7 @@ try {
   await page.getByRole("button", { name: "文档资产", exact: true }).click();
   await page.locator(".document-list-item").filter({ hasText: "修改后的运维记录" }).click();
   assert.equal(
-    await page.getByRole("textbox", { name: "文档标题", exact: true }).inputValue(),
+    await page.getByRole("heading", { name: "修改后的运维记录", exact: true }).innerText(),
     "修改后的运维记录",
   );
   checks.push("重复迁移不覆盖编辑或解绑，刷新内容仍在");
@@ -151,7 +155,7 @@ try {
   await imagePage.route(`${origin}/__ui-regression/documents`, (route) =>
     route.fulfill({
       contentType: "text/html",
-      body: '<!doctype html><html lang="zh-CN"><head><link rel="stylesheet" href="/src/styles.css"></head><body><main id="document-test-root"></main></body></html>',
+      body: '<!doctype html><html lang="zh-CN"><head><link rel="stylesheet" href="/src/styles.css"></head><body><main id="document-test-root" style="height:100dvh"></main></body></html>',
     }),
   );
   await imagePage.goto(`${origin}/__ui-regression/documents`);
@@ -181,6 +185,7 @@ try {
         },
         upload: async (input) => {
           window.__imageUploadNames.push(input.filename);
+          if (window.__failMigration) throw new Error("隔离回归：迁移上传失败");
           if (window.__imageUploadNames.length === 2) throw new Error("隔离回归：第二张上传失败");
           return {
             url: `https://zensimagebed.pages.dev/qa-document-${window.__imageUploadNames.length}.png`,
@@ -204,26 +209,25 @@ try {
       .find((item) => item.name.includes("/src/lib/documents.ts"));
     const { useDocuments } = await import(entry.name);
     window.__documentImageStore = useDocuments;
-    await useDocuments
-      .getState()
-      .create([], {
-        title: "图片回归文档",
-        content: { type: "doc", content: [{ type: "paragraph" }] },
-      });
+    await useDocuments.getState().create([], {
+      title: "图片回归文档",
+      content: { type: "doc", content: [{ type: "paragraph" }] },
+    });
     ReactDOM.createRoot(document.getElementById("document-test-root")).render(
       React.createElement(DocumentsWorkspace),
     );
   });
+  await imagePage.getByRole("button", { name: /^关联与设置/ }).click();
   await imagePage.getByText("图片保存到图床：", { exact: false }).waitFor();
-  await imagePage
-    .locator('input[type="file"]')
-    .setInputFiles(
-      ["first.png", "second.png", "third.png"].map((name) => ({
-        name,
-        mimeType: "image/png",
-        buffer: Buffer.from(raster, "base64"),
-      })),
-    );
+  await imagePage.keyboard.press("Escape");
+  await imagePage.getByRole("button", { name: "编辑文档", exact: true }).click();
+  await imagePage.locator('input[type="file"]').setInputFiles(
+    ["first.png", "second.png", "third.png"].map((name) => ({
+      name,
+      mimeType: "image/png",
+      buffer: Buffer.from(raster, "base64"),
+    })),
+  );
   await imagePage.getByRole("button", { name: "重试未完成的图片", exact: true }).waitFor();
   assert.equal(await imagePage.locator(".document-prose img").count(), 1);
   await imagePage.getByRole("button", { name: "重试未完成的图片", exact: true }).click();
@@ -241,18 +245,17 @@ try {
     return store.status[store.selected] === "saved";
   });
   checks.push("图片部分失败保留成功项，重试不重复插入");
-  await imagePage.getByText("图片设置与已有图片迁移", { exact: true }).click();
+  await imagePage.getByRole("button", { name: /^关联与设置/ }).click();
   await imagePage.getByRole("button", { name: "图床上传已启用", exact: false }).click();
   await imagePage.getByRole("checkbox", { name: "新图片上传至我的图床", exact: true }).uncheck();
   await imagePage.getByRole("button", { name: "保存图床设置", exact: true }).click();
   await imagePage.getByText("图片嵌入本机文档", { exact: true }).waitFor();
-  await imagePage
-    .locator('input[type="file"]')
-    .setInputFiles({
-      name: "local.png",
-      mimeType: "image/png",
-      buffer: Buffer.from(raster, "base64"),
-    });
+  await imagePage.keyboard.press("Escape");
+  await imagePage.locator('input[type="file"]').setInputFiles({
+    name: "local.png",
+    mimeType: "image/png",
+    buffer: Buffer.from(raster, "base64"),
+  });
   await imagePage.waitForFunction(
     () => document.querySelectorAll(".document-prose img").length === 4,
   );
@@ -266,6 +269,29 @@ try {
     /^data:image\/png;/,
   );
   checks.push("修改图床设置立即更新位置，本地插图不调用图床");
+  await imagePage.getByRole("button", { name: /^关联与设置/ }).click();
+  const information = imagePage.getByRole("dialog", { name: "文档信息", exact: true });
+  await information.getByRole("button", { name: "本地嵌入", exact: true }).click();
+  await information.getByRole("checkbox", { name: "新图片上传至我的图床", exact: true }).check();
+  await information.getByRole("button", { name: "保存图床设置", exact: true }).click();
+  await imagePage.evaluate(() => {
+    window.__failMigration = true;
+  });
+  await information.getByRole("button", { name: "将内嵌图片迁移到图床", exact: true }).click();
+  await information
+    .getByRole("alert")
+    .filter({ hasText: "隔离回归：迁移上传失败" })
+    .waitFor({ timeout: 5000 });
+  await imagePage.evaluate(() => {
+    window.__failMigration = false;
+  });
+  await information.getByRole("button", { name: "继续迁移内嵌图片", exact: true }).click();
+  await imagePage.waitForFunction(() =>
+    Array.from(document.querySelectorAll(".document-prose img")).every((img) =>
+      img.getAttribute("src").startsWith("https://"),
+    ),
+  );
+  checks.push("迁移失败在当前弹窗反馈且可直接重试");
   assert.deepEqual(pageErrors, []);
   checks.push("无未捕获页面异常");
 } catch (error) {

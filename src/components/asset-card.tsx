@@ -451,8 +451,10 @@ export function AiCard({ data, compact = true }: { data: AiAsset; compact?: bool
 }
 
 export function SecretCard({ data, compact = true }: { data: Secret; compact?: boolean }) {
-  const kindLabel =
-    data.kind === "api"
+  const account = data.kind === "account";
+  const kindLabel = account
+    ? t("账号密码")
+    : data.kind === "api"
       ? "API Key"
       : data.kind === "ssh"
         ? "SSH 密钥"
@@ -485,7 +487,11 @@ export function SecretCard({ data, compact = true }: { data: Secret; compact?: b
             <span className="badge badge-tag-mock text-[11px]">{kindLabel}</span>
           </div>
           <p className="mt-0.5 font-mono text-2xs text-muted">
-            <span className="code-text select-all">{data.hint}</span>
+            {account ? (
+              t("账户名与密码已加密")
+            ) : (
+              <span className="code-text select-all">{data.hint}</span>
+            )}
           </p>
         </div>
       </header>
@@ -498,7 +504,7 @@ export function SecretCard({ data, compact = true }: { data: Secret; compact?: b
       <div className="mt-3.5 border-t border-line/60 pt-2.5">
         <TagRow tags={tagsOf(data)} />
       </div>
-      {!compact && (
+      {!compact && !account && (
         <div className="mt-4 space-y-3 border-t border-line pt-4">
           <p className="text-meta text-muted">{data.notes}</p>
           {!isDesktop() && data.value ? <SecretReveal value={data.value} /> : null}

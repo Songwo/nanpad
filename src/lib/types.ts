@@ -153,7 +153,7 @@ export interface Secret extends Taggable {
   name: string;
   /** 密钥分组归属（0.10.0）；空或指向已删除分组时视为未分组。 */
   folderId?: string;
-  kind: "api" | "ssh" | "password" | "token";
+  kind: "api" | "ssh" | "password" | "token" | "account";
   hint: string;
   value: string;
   lastRotated: string;

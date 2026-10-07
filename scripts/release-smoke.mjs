@@ -47,6 +47,8 @@ try {
   );
   await page.getByRole("button", { name: "忽略网站", exact: true }).click();
   await page.getByText("桌面验证用户", { exact: true }).waitFor();
+  const tools = page.locator("nav").getByRole("button", { name: "更多工具", exact: true });
+  if ((await tools.getAttribute("aria-expanded")) === "false") await tools.click();
   await page.locator("nav").getByRole("button", { name: "AI 助手", exact: true }).click();
   await page.getByRole("button", { name: "模型与知识库", exact: true }).click();
   await verifyOptions(page, page.getByRole("combobox", { name: "授权服务商" }), [
@@ -82,7 +84,7 @@ try {
     .locator("nav")
     .getByRole("button", { name: /^AI 订阅/ })
     .click();
-  await page.getByRole("button", { name: "添加资产", exact: true }).click();
+  await page.getByRole("button", { name: "添加 AI 订阅", exact: true }).click();
   const composer = page.getByRole("dialog", { name: "添加 AI 订阅", exact: true });
   await composer.getByRole("button", { name: /^订阅账号/ }).click();
   assert.equal(

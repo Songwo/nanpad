@@ -1,7 +1,7 @@
 name: Windows 正式版
 on:
   push:
-    tags: ['v*']
+    tags: ["v*"]
 permissions:
   contents: read
 concurrency:
@@ -33,6 +33,7 @@ jobs:
       - run: npm run i18n:check
       - run: npm test
       - run: npm run desktop:dist
+      - run: npm run extension:build
       - name: 校验文件与发布
         shell: pwsh
         env:
@@ -41,6 +42,9 @@ jobs:
           $version = (Get-Content package.json | ConvertFrom-Json).version
           $directory = "release/v$version"
           $installer = "$directory/Nanpad-$version-setup.exe"
+          $extension = "$directory/Nanpad-$version-browser-extension.zip"
+          Compress-Archive -Path "$directory/nanpad-browser-extension/*" -DestinationPath $extension
           $hash = (Get-FileHash $installer -Algorithm SHA256).Hash.ToLower()
-          "$hash  Nanpad-$version-setup.exe" | Set-Content "$directory/SHA256SUMS.txt" -Encoding utf8
-          gh release create "v$version" $installer "$directory/SHA256SUMS.txt" --verify-tag --title "司南 Nanpad $version" --notes-file "docs/releases/v$version.md"
+          $extensionHash = (Get-FileHash $extension -Algorithm SHA256).Hash.ToLower()
+          @("$hash  Nanpad-$version-setup.exe", "$extensionHash  Nanpad-$version-browser-extension.zip") | Set-Content "$directory/SHA256SUMS.txt" -Encoding utf8
+          gh release create "v$version" $installer $extension "$directory/SHA256SUMS.txt" --verify-tag --title "知屿 Zhiyu $version" --notes-file "docs/releases/v$version.md"

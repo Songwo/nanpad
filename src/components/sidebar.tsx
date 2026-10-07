@@ -15,6 +15,8 @@ import {
   Radio,
   Lock,
   Unlock,
+  ChevronDown,
+  Ellipsis,
   type LucideIcon,
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type HTMLAttributes } from "react";
@@ -28,8 +30,10 @@ import { cn, downloadJson } from "@/lib/utils";
 import { useVault } from "@/lib/vault-state";
 import { t } from "@/lib/i18n";
 import { useProfile } from "@/lib/profile";
+import { useSettings } from "@/lib/settings";
 import { toast } from "sonner";
 import { safeImageDataUrl } from "../../electron/services/image-data.mjs";
+import * as Tooltip from "@radix-ui/react-tooltip";
 
 export interface NavGroup {
   title: string;
@@ -85,7 +89,7 @@ export const NAV_GROUPS: NavGroup[] = [
   {
     title: "智能与通信",
     items: [
-      { id: "phones", label: "号码管理", icon: Phone },
+      { id: "phones", label: "号码管理", icon: Phone, badgeKey: "phones" },
       { id: "ai", label: "AI 订阅", icon: Bot, badgeKey: "ai", kind: "ai", countKey: "aiAssets" },
       {
         id: "mail",
@@ -123,7 +127,25 @@ export const NAV_GROUPS: NavGroup[] = [
 // 扁平导出给快捷键或其他模块使用
 export const NAV = NAV_GROUPS.flatMap((g) => g.items);
 
-export function Sidebar({ className, ...rest }: HTMLAttributes<HTMLElement>) {
+export function Sidebar({
+  className,
+  collapsible = false,
+  ...rest
+}: HTMLAttributes<HTMLElement> & { collapsible?: boolean }) {
+  const preference = useSettings((s) => s.sidebarCollapsed);
+  const collapsed = collapsible && preference;
+  const [motionReady, setMotionReady] = useState(false);
+  useEffect(() => {
+    // 等待持久化布局落定，避免首次打开时从默认宽度播放收起动画。
+    let inner = 0;
+    const outer = requestAnimationFrame(() => {
+      inner = requestAnimationFrame(() => setMotionReady(true));
+    });
+    return () => {
+      cancelAnimationFrame(outer);
+      cancelAnimationFrame(inner);
+    };
+  }, []);
   const view = useAppStore((s) => s.view);
   const setView = useAppStore((s) => s.setView);
   const servers = useAppStore((s) => s.servers);
@@ -133,6 +155,11 @@ export function Sidebar({ className, ...rest }: HTMLAttributes<HTMLElement>) {
   const secrets = useAppStore((s) => s.secrets);
   const certs = useAppStore((s) => s.certs);
   const counts = useAppStore(useShallow(attentionOf));
+  const toolsExpanded = useSettings((s) => s.toolsExpanded);
+  const setToolsExpanded = useSettings((s) => s.setToolsExpanded);
+  useEffect(() => {
+    if (view === "agent" || view === "terminal") setToolsExpanded(true);
+  }, [view, setToolsExpanded]);
 
   const totalNodesCount = useMemo(() => {
     return servers.reduce((acc, s) => acc + (s.nodes?.length || 0), 0);
@@ -160,76 +187,122 @@ export function Sidebar({ className, ...rest }: HTMLAttributes<HTMLElement>) {
   );
 
   return (
-    <aside
-      className={cn(
-        "flex h-full w-60 shrink-0 flex-col border-r border-line bg-sidebar select-none transition-colors duration-200",
-        className,
-      )}
-      {...rest}
-    >
-      {/* 5 大分组分层导航栏 */}
-      <nav className="flex-1 space-y-4 overflow-y-auto px-3 py-5">
-        {NAV_GROUPS.map((group) => (
-          <div key={group.title} className="space-y-0.5">
-            <div className="px-3 py-1.5 text-xs font-medium text-muted">{t(group.title)}</div>
-            {group.items.map((item) => {
-              const active = view === item.id;
-              const Icon = item.icon;
-              const attentionCount = item.badgeKey ? counts[item.badgeKey] : 0;
-              const totalCount = item.countKey ? assetCounts[item.countKey] : 0;
-
-              return (
+    <Tooltip.Provider delayDuration={250} skipDelayDuration={100}>
+      <aside
+        id={collapsible ? "primary-navigation" : undefined}
+        data-collapsed={collapsed}
+        data-motion-ready={motionReady}
+        className={cn(
+          "app-sidebar flex h-full w-60 shrink-0 flex-col border-r border-line bg-sidebar select-none transition-colors duration-200",
+          className,
+        )}
+        {...rest}
+      >
+        {/* 5 大分组分层导航栏 */}
+        <nav
+          aria-label={t("主导航")}
+          className="sidebar-nav flex-1 space-y-4 overflow-y-auto px-3 py-5"
+        >
+          {NAV_GROUPS.map((group) => (
+            <div key={group.title} className="sidebar-section space-y-0.5">
+              {group.title === "工具" ? (
                 <button
-                  key={item.id}
                   type="button"
-                  onClick={() => setView(item.id)}
-                  data-active={active}
-                  aria-current={active ? "page" : undefined}
-                  className={cn(
-                    "group flex min-h-11 w-full items-center justify-between gap-2 rounded-md px-3 py-2 text-left text-sm transition-colors duration-150",
-                    active
-                      ? "bg-line font-semibold text-ink"
-                      : "text-muted hover:bg-surface hover:text-ink font-medium",
-                  )}
+                  aria-expanded={toolsExpanded}
+                  aria-label={t("更多工具")}
+                  title={collapsed ? t("更多工具") : undefined}
+                  onClick={() => setToolsExpanded(!toolsExpanded)}
+                  className="sidebar-tools-toggle flex min-h-11 w-full items-center justify-between rounded-md px-3 text-xs font-medium text-muted hover:bg-surface hover:text-ink"
                 >
-                  <span className="flex min-w-0 items-center gap-3">
-                    <Icon className="size-4 shrink-0" />
-                    <span className="truncate">{t(item.label)}</span>
-                  </span>
-                  <div className="flex items-center gap-1.5 shrink-0">
-                    {attentionCount > 0 && (
-                      <span className="inline-flex items-center justify-center rounded bg-crit px-1 py-0.5 font-mono text-[10px] font-bold text-white leading-none">
-                        {attentionCount}
-                      </span>
-                    )}
-                    {item.id === "vault" ? (
-                      <span className="rounded bg-ok/10 text-ok px-1 py-0.5 font-mono text-[10px] font-medium leading-none">
-                        AES-GCM
-                      </span>
-                    ) : item.id === "nodes" && totalCount > 0 ? (
-                      <span className="rounded bg-ok/10 text-ok px-1 py-0.5 font-mono text-[10px] font-medium leading-none">
-                        {totalCount}
-                      </span>
-                    ) : totalCount > 0 ? (
-                      <span className="font-mono text-[10.5px] text-muted/80">{totalCount}</span>
-                    ) : null}
-                  </div>
+                  <Ellipsis className="sidebar-tools-icon size-5" aria-hidden="true" />
+                  <span className="sidebar-tools-label">{t("更多工具")}</span>
+                  <ChevronDown
+                    className={cn("sidebar-tools-chevron size-4", toolsExpanded && "rotate-180")}
+                  />
                 </button>
-              );
-            })}
-          </div>
-        ))}
-      </nav>
+              ) : (
+                <div className="sidebar-section-title px-3 py-1.5 text-xs font-medium text-muted">
+                  {t(group.title)}
+                </div>
+              )}
+              {(group.title !== "工具" || toolsExpanded) &&
+                group.items.map((item) => {
+                  const active = view === item.id;
+                  const Icon = item.icon;
+                  const attentionCount = item.badgeKey ? counts[item.badgeKey] : 0;
+                  const totalCount = item.countKey ? assetCounts[item.countKey] : 0;
 
-      {/* 底部账户空间与安全沙箱卡片 */}
-      <div className="mt-auto border-t border-line/60 p-2.5">
-        <ProfileMenu />
-      </div>
-    </aside>
+                  return (
+                    <Tooltip.Root key={item.id}>
+                      <Tooltip.Trigger asChild>
+                        <button
+                          type="button"
+                          aria-label={t(item.label)}
+                          onClick={() => setView(item.id)}
+                          data-active={active}
+                          aria-current={active ? "page" : undefined}
+                          className={cn(
+                            "sidebar-nav-item group flex min-h-11 w-full items-center justify-between gap-2 rounded-md px-3 py-2 text-left text-sm transition-colors duration-150",
+                            active
+                              ? "bg-line font-semibold text-ink"
+                              : "text-muted hover:bg-surface hover:text-ink font-medium",
+                          )}
+                        >
+                          <span className="sidebar-item-content flex min-w-0 items-center gap-3">
+                            <Icon className="sidebar-item-icon size-5 shrink-0" />
+                            <span className="sidebar-item-label truncate">{t(item.label)}</span>
+                          </span>
+                          <div className="sidebar-item-counts flex items-center gap-1.5 shrink-0">
+                            {attentionCount > 0 && (
+                              <span className="inline-flex items-center justify-center rounded bg-crit px-1 py-0.5 font-mono text-[10px] font-bold text-white leading-none">
+                                {attentionCount}
+                              </span>
+                            )}
+                            {item.id === "nodes" && totalCount > 0 ? (
+                              <span className="rounded bg-ok/10 text-ok px-1 py-0.5 font-mono text-[10px] font-medium leading-none">
+                                {totalCount}
+                              </span>
+                            ) : totalCount > 0 ? (
+                              <span className="font-mono text-[10.5px] text-muted/80">
+                                {totalCount}
+                              </span>
+                            ) : null}
+                          </div>
+                          {attentionCount > 0 && (
+                            <span className="sidebar-attention-dot" aria-hidden="true" />
+                          )}
+                        </button>
+                      </Tooltip.Trigger>
+                      {collapsed && (
+                        <Tooltip.Portal>
+                          <Tooltip.Content side="right" sideOffset={10} className="sidebar-tooltip">
+                            {t(item.label)}
+                            {attentionCount > 0 && (
+                              <span className="ml-2 text-xs">
+                                {t("{0} 项待处理", attentionCount)}
+                              </span>
+                            )}
+                            <Tooltip.Arrow className="fill-ink" />
+                          </Tooltip.Content>
+                        </Tooltip.Portal>
+                      )}
+                    </Tooltip.Root>
+                  );
+                })}
+            </div>
+          ))}
+        </nav>
+
+        {/* 底部账户空间与安全沙箱卡片 */}
+        <div className="sidebar-profile-footer mt-auto border-t border-line/60 p-2.5">
+          <ProfileMenu compact={collapsed} />
+        </div>
+      </aside>
+    </Tooltip.Provider>
   );
 }
 
-function ProfileMenu() {
+function ProfileMenu({ compact = false }: { compact?: boolean }) {
   const resetDemo = useAppStore((s) => s.resetDemo);
   const log = useAppStore((s) => s.log);
   const importSnapshot = useAppStore((s) => s.importSnapshot);
@@ -279,50 +352,65 @@ function ProfileMenu() {
   return (
     <div
       ref={root}
-      className="relative flex items-center gap-2.5 rounded-xl border border-line bg-card/60 p-2 transition-colors duration-150 hover:bg-card shadow-xs"
+      className={cn(
+        "sidebar-profile-card relative flex items-center rounded-xl border border-line bg-card/60 p-2 hover:bg-card shadow-xs",
+        compact && "sidebar-profile-compact",
+      )}
     >
-      <div className="grid size-9 shrink-0 place-items-center overflow-hidden rounded-full bg-ink text-xs font-semibold text-card">
-        {avatar ? (
-          <img src={avatar} alt={t("个人头像")} className="size-full object-cover" />
-        ) : (
-          Array.from(name)[0]
-        )}
-      </div>
-
-      <div className="min-w-0 flex-1">
-        <div className="truncate text-xs font-bold leading-tight text-ink">{name}</div>
-        <div className="flex items-center gap-1 text-[10.5px] text-muted">
-          {vaultUnlocked ? (
-            <span className="flex items-center gap-1 text-ok font-medium">
-              <Unlock className="size-2.5" />
-              <span>{t("金库已挂载")}</span>
-            </span>
-          ) : (
-            <span className="flex items-center gap-1 text-muted">
-              <Lock className="size-2.5" />
-              <span>{t("金库已锁定")}</span>
-            </span>
-          )}
-        </div>
-      </div>
-
       <button
         type="button"
         aria-label={t("更多操作")}
         aria-expanded={open}
-        className="flex size-7 items-center justify-center rounded-lg text-muted transition-colors duration-150 hover:bg-line hover:text-ink cursor-pointer"
+        title={compact ? `${name} · ${t(vaultUnlocked ? "凭据已解锁" : "凭据已锁定")}` : undefined}
+        className="sidebar-profile-trigger flex min-w-0 w-full items-center gap-2.5 rounded-lg text-left text-muted hover:text-ink"
         onClick={() => setOpen((v) => !v)}
       >
-        ···
+        <span className="sidebar-profile-avatar relative grid size-9 shrink-0 place-items-center rounded-full bg-ink text-xs font-semibold text-card">
+          {avatar ? (
+            <img src={avatar} alt="" className="size-full rounded-full object-cover" />
+          ) : (
+            Array.from(name)[0]
+          )}
+          <span
+            className={cn("sidebar-vault-dot", vaultUnlocked ? "bg-ok" : "bg-muted")}
+            aria-hidden="true"
+          />
+        </span>
+
+        <span className="sidebar-profile-details min-w-0 flex-1">
+          <span className="block truncate text-xs font-bold leading-tight text-ink">{name}</span>
+          <span className="flex items-center gap-1 text-[10.5px] text-muted">
+            {vaultUnlocked ? (
+              <span className="flex items-center gap-1 text-ok font-medium">
+                <Unlock className="size-2.5" />
+                <span>{t("凭据已解锁")}</span>
+              </span>
+            ) : (
+              <span className="flex items-center gap-1 text-muted">
+                <Lock className="size-2.5" />
+                <span>{t("凭据已锁定")}</span>
+              </span>
+            )}
+          </span>
+        </span>
+        <span
+          className="sidebar-profile-ellipsis grid size-7 shrink-0 place-items-center"
+          aria-hidden="true"
+        >
+          ···
+        </span>
       </button>
 
       {mounted && (
         <div
-          className="anim-panel absolute bottom-14 left-0 right-0 z-30 overflow-hidden rounded-xl border border-line bg-card py-1 shadow-float"
+          className={cn(
+            "anim-panel absolute bottom-14 left-0 right-0 z-30 overflow-hidden rounded-xl border border-line bg-card py-1 shadow-float",
+            compact && "sidebar-profile-popover",
+          )}
           data-shown={shown}
         >
           <div className="border-b border-line px-3 py-1.5 text-[11px] font-semibold text-muted">
-            {t("安全沙箱与资产配置")}
+            {t("工作区与备份")}
           </div>
           {item(t("导出 JSON 快照"), () => {
             const s = useAppStore.getState();

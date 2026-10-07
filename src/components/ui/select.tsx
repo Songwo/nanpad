@@ -9,6 +9,7 @@ import {
   type Ref,
 } from "react";
 import { cn } from "@/lib/utils";
+import "./controls.css";
 
 export type SelectOption = {
   value: string;
@@ -89,21 +90,22 @@ export function Select({
       >
         <SelectPrimitive.Trigger
           ref={triggerRef}
+          data-slot="select-trigger"
           aria-required={required || undefined}
           aria-invalid={invalid || undefined}
           className={cn(
-            "group flex min-h-11 w-full min-w-0 items-center justify-between gap-3 rounded-sm bg-card px-3 py-2 text-left text-body text-ink shadow-[0_0_0_1px_var(--color-line-strong)] outline-none transition-[background-color,box-shadow] duration-150 hover:bg-canvas focus-visible:shadow-[0_0_0_2px_var(--color-ink)] disabled:cursor-not-allowed disabled:opacity-40 data-[state=open]:shadow-[0_0_0_2px_var(--color-ink)] aria-invalid:shadow-[0_0_0_2px_var(--color-crit)]",
+            "ui-select-trigger group flex min-h-11 w-full min-w-0 items-center justify-between gap-3 rounded-sm px-3 py-2 text-left text-body",
             className,
           )}
           {...props}
         >
-          <span className="min-w-0 flex-1 whitespace-normal break-words">
+          <span className="ui-select-label min-w-0 flex-1 whitespace-normal break-words">
             <SelectPrimitive.Value placeholder={placeholder}>
               {selected?.label}
             </SelectPrimitive.Value>
           </span>
           <SelectPrimitive.Icon asChild>
-            <ChevronDown className="size-4 shrink-0 text-muted transition-transform duration-150 group-data-[state=open]:rotate-180 motion-reduce:transition-none" />
+            <ChevronDown className="ui-select-chevron size-4 shrink-0 text-muted" />
           </SelectPrimitive.Icon>
         </SelectPrimitive.Trigger>
         <SelectPrimitive.Portal>
@@ -111,10 +113,11 @@ export function Select({
             position="popper"
             sideOffset={6}
             collisionPadding={12}
-            className="z-[calc(var(--z-index-overlay)+20)] max-h-[min(20rem,var(--radix-select-content-available-height))] w-[var(--radix-select-trigger-width)] max-w-[calc(100vw-1.5rem)] overflow-hidden rounded-sm bg-card text-ink shadow-float"
+            data-slot="select-content"
+            className="ui-select-content"
             onEscapeKeyDown={(event) => event.stopPropagation()}
           >
-            <SelectPrimitive.ScrollUpButton className="flex h-7 items-center justify-center bg-card text-muted">
+            <SelectPrimitive.ScrollUpButton className="ui-select-scroll flex h-7 items-center justify-center">
               <ChevronUp className="size-4" />
             </SelectPrimitive.ScrollUpButton>
             <SelectPrimitive.Viewport className="p-1">
@@ -124,9 +127,9 @@ export function Select({
                   value={encodeValue(option.value)}
                   disabled={option.disabled}
                   textValue={option.label}
-                  className="relative flex min-h-11 cursor-pointer items-center gap-2 rounded-xs py-2 pl-3 pr-8 text-body outline-none data-[disabled]:pointer-events-none data-[disabled]:opacity-40 data-[highlighted]:bg-line data-[state=checked]:bg-canvas"
+                  className="ui-select-item relative flex min-h-11 items-center gap-2 rounded-xs py-2 pl-3 pr-8 text-body"
                 >
-                  <span className="min-w-0 flex-1 whitespace-normal break-words">
+                  <span className="ui-select-label min-w-0 flex-1 whitespace-normal break-words">
                     <SelectPrimitive.ItemText>{option.label}</SelectPrimitive.ItemText>
                     {option.description && (
                       <span className="mt-0.5 block text-meta text-muted">
@@ -134,13 +137,13 @@ export function Select({
                       </span>
                     )}
                   </span>
-                  <SelectPrimitive.ItemIndicator className="absolute right-2.5 flex items-center text-ok">
+                  <SelectPrimitive.ItemIndicator className="absolute right-2.5 flex items-center text-ink">
                     <Check className="size-4" strokeWidth={2.5} />
                   </SelectPrimitive.ItemIndicator>
                 </SelectPrimitive.Item>
               ))}
             </SelectPrimitive.Viewport>
-            <SelectPrimitive.ScrollDownButton className="flex h-7 items-center justify-center bg-card text-muted">
+            <SelectPrimitive.ScrollDownButton className="ui-select-scroll flex h-7 items-center justify-center">
               <ChevronDown className="size-4" />
             </SelectPrimitive.ScrollDownButton>
           </SelectPrimitive.Content>

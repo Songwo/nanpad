@@ -1,4 +1,15 @@
-import { Check, Copy, Cpu, Flame, Network, Play, ShieldAlert, SquareTerminal, Terminal, Wrench } from "lucide-react";
+import {
+  Check,
+  Copy,
+  Cpu,
+  Flame,
+  Network,
+  Play,
+  ShieldAlert,
+  SquareTerminal,
+  Terminal,
+  Wrench,
+} from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 import { Button } from "./ui/button";
@@ -108,16 +119,13 @@ export function ServerOpsToolbox({ server }: { server: Server }) {
             {t("服务器运维指令工具箱")}
           </h3>
           <p className="text-xs text-muted mt-0.5">
-            {t("预设 Xray 代理、Docker 编排、网络端口、安全防火墙等高频运维诊断命令，支持一键复制与在终端直达执行")}
+            {t(
+              "预设 Xray 代理、Docker 编排、网络端口、安全防火墙等高频运维诊断命令，支持一键复制与在终端直达执行",
+            )}
           </p>
         </div>
 
-        <Button
-          variant="primary"
-          size="sm"
-          onClick={() => openSsh(server.id)}
-          className="btn-pill h-7 text-xs px-3 shadow-xs"
-        >
+        <Button variant="primary" size="sm" onClick={() => openSsh(server.id)}>
           <SquareTerminal className="mr-1 size-3.5" />
           {t("开启玻璃终端")}
         </Button>
@@ -163,12 +171,8 @@ export function ServerOpsToolbox({ server }: { server: Server }) {
                   </div>
                 </div>
 
-                <div className="mt-2 text-xs font-semibold text-ink">
-                  {t(item.title)}
-                </div>
-                <p className="mt-0.5 text-[11px] text-muted leading-snug">
-                  {t(item.desc)}
-                </p>
+                <div className="mt-2 text-xs font-semibold text-ink">{t(item.title)}</div>
+                <p className="mt-0.5 text-[11px] text-muted leading-snug">{t(item.desc)}</p>
               </div>
 
               <div className="mt-2.5 rounded-lg border border-line/60 bg-surface-subtle/80 p-2 font-mono text-[11px] text-ink select-all overflow-x-auto whitespace-nowrap">

@@ -182,7 +182,7 @@ try {
   await page.getByRole("button", { name: "AI 订阅", exact: true }).click();
   const dialog = page.getByRole("dialog", { name: "添加 AI 订阅", exact: true });
   const open = async () => {
-    await page.getByRole("button", { name: "添加资产", exact: true }).click();
+    await page.getByRole("button", { name: "添加 AI 订阅", exact: true }).click();
     await dialog.waitFor();
     await dialog.getByRole("button", { name: /^订阅账号/ }).click();
   };

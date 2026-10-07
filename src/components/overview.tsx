@@ -9,8 +9,9 @@ import {
   Globe,
   Radio,
   Bot,
-  ShieldCheck,
-  SquareTerminal,
+  FileText,
+  Phone,
+  ChartNoAxesCombined,
   type LucideIcon,
 } from "lucide-react";
 import { useAppStore } from "@/lib/store";
@@ -19,16 +20,15 @@ import { attentionOf } from "@/lib/status";
 import { t } from "@/lib/i18n";
 import type { ViewId } from "@/lib/types";
 import { Button } from "./ui/button";
-import { TimeAgo } from "./ui/time-ago";
+import { ActivityJournal } from "./activity-journal";
+import { createAsset } from "@/lib/create-asset";
 
 export function Overview() {
   const servers = useAppStore((s) => s.servers);
   const domains = useAppStore((s) => s.domains);
   const aiAssets = useAppStore((s) => s.aiAssets);
-  const activity = useAppStore((s) => s.activity);
   const counts = useAppStore(useShallow(attentionOf));
   const setView = useAppStore((s) => s.setView);
-  const openComposer = useAppStore((s) => s.openComposer);
   const nodes = useMemo(() => servers.flatMap((server) => server.nodes ?? []), [servers]);
   const monthly = useMemo(() => subscriptionCost(aiAssets), [aiAssets]);
   const stats: {
@@ -86,26 +86,10 @@ export function Overview() {
           <h2 className="text-2xl font-semibold tracking-tight">{t("你的数字工作空间")}</h2>
           <p className="mt-2 text-sm text-muted">{t("集中管理资产，快速找到需要处理的事项。")}</p>
         </div>
-        <Button onClick={() => openComposer("server")}>
+        <Button onClick={() => void createAsset()}>
           <Plus className="size-4" />
-          {t(
-            servers.length + domains.length + aiAssets.length === 0 ? "添加第一台主机" : "添加资产",
-          )}
+          {t("添加资产")}
         </Button>
-      </section>
-      <section className="overview-stats" aria-label={t("资产摘要")}>
-        {stats.map(({ label, value, detail, icon: Icon, view }) => (
-          <button type="button" key={view} className="summary-tile" onClick={() => setView(view)}>
-            <span className="flex items-center justify-between gap-3 text-sm text-muted">
-              <span>{t(label)}</span>
-              <Icon className="size-4" />
-            </span>
-            <strong className="mt-4 block text-3xl font-semibold tabular-nums tracking-tight">
-              {value}
-            </strong>
-            <span className="mt-2 block text-sm text-muted">{detail}</span>
-          </button>
-        ))}
       </section>
       {counts.total > 0 && (
         <section className="workspace-panel" aria-label={t("待处理事项")}>
@@ -127,28 +111,91 @@ export function Overview() {
             )
               .filter(([, , count]) => count > 0)
               .map(([view, label, count]) => (
-                <Button key={view} variant="outline" onClick={() => setView(view)}>
+                <Button
+                  key={view}
+                  variant="outline"
+                  onClick={() => {
+                    if (view === "phones") useAppStore.getState().openPhones({ attention: true });
+                    else {
+                      setView(view);
+                      useAppStore.getState().setFilter("attention");
+                    }
+                  }}
+                >
                   {t(label)} · {t("{0} 项需要留意", count)} <ArrowUpRight className="size-4" />
                 </Button>
               ))}
           </div>
         </section>
       )}
-      <div className="overview-columns">
-        <section className="workspace-panel">
-          <div className="panel-heading">
-            <h2>{t("服务器")}</h2>
-            <button
-              type="button"
-              className="text-sm text-muted hover:text-ink"
-              onClick={() => setView("servers")}
-            >
-              {t("查看全部")} <ArrowUpRight className="inline size-4" />
+      <section className="workspace-panel" aria-label={t("常用操作")}>
+        <div className="panel-heading">
+          <h2>{t("常用操作")}</h2>
+        </div>
+        <div className="overview-actions">
+          {(
+            [
+              {
+                view: "docs",
+                label: "打开文档",
+                detail: "记录图片、链接与资产说明",
+                icon: FileText,
+              },
+              {
+                view: "phones",
+                label: "管理号码",
+                detail: "查看到期日与关联订阅",
+                icon: Phone,
+              },
+              {
+                view: "usage",
+                label: "查看用量",
+                detail: "查看流量、Token 与最近采集结果",
+                icon: ChartNoAxesCombined,
+              },
+              { view: "ai", label: "查看 AI 订阅", detail: "管理订阅与月度开支", icon: Bot },
+            ] as const
+          ).map(({ view, label, detail, icon: Icon }) => (
+            <button type="button" key={view} onClick={() => setView(view)} className="quick-action">
+              <Icon className="size-5 shrink-0 text-muted" />
+              <span className="min-w-0 flex-1">
+                <span className="block text-sm font-medium">{t(label)}</span>
+                <span className="mt-1 block text-sm text-muted">{t(detail)}</span>
+              </span>
+              <ArrowUpRight className="size-4 text-muted" />
             </button>
-          </div>
-          {servers.length ? (
+          ))}
+        </div>
+      </section>
+      <section className="overview-stats" aria-label={t("资产摘要")}>
+        {stats.map(({ label, value, detail, icon: Icon, view }) => (
+          <button type="button" key={view} className="summary-tile" onClick={() => setView(view)}>
+            <span className="flex items-center justify-between gap-3 text-sm text-muted">
+              <span>{t(label)}</span>
+              <Icon className="size-4" />
+            </span>
+            <strong className="mt-4 block text-3xl font-semibold tabular-nums tracking-tight">
+              {value}
+            </strong>
+            <span className="mt-2 block text-sm text-muted">{detail}</span>
+          </button>
+        ))}
+      </section>
+      <div className={servers.length ? "overview-columns" : "grid gap-5"}>
+        {servers.length > 0 && (
+          <section className="workspace-panel">
+            <div className="panel-heading">
+              <h2>{t("服务器")}</h2>
+              <button
+                type="button"
+                className="text-sm text-muted hover:text-ink"
+                onClick={() => setView("servers")}
+              >
+                {t("查看全部")} <ArrowUpRight className="inline size-4" />
+              </button>
+            </div>
             <div className="divide-y divide-line">
-              {servers.slice(0, 5).map((server) => (
+              {servers.slice(0, 3).map((server) => (
                 <button
                   type="button"
                   key={server.id}
@@ -173,82 +220,10 @@ export function Overview() {
                 </button>
               ))}
             </div>
-          ) : (
-            <div className="workspace-empty">
-              <Server className="mx-auto mb-3 size-6" />
-              <p>{t("尚未添加服务器")}</p>
-              <Button
-                variant="outline"
-                size="sm"
-                className="mt-4"
-                onClick={() => openComposer("server")}
-              >
-                {t("添加服务器")}
-              </Button>
-            </div>
-          )}
-        </section>
-        <section className="workspace-panel">
-          <div className="panel-heading">
-            <h2>{t("常用操作")}</h2>
-            <span className="text-sm text-muted">{t("{0} 项需要留意", counts.total)}</span>
-          </div>
-          <div className="space-y-1 p-2">
-            {(
-              [
-                { view: "nodes", label: "管理自建节点", detail: "配置节点与导出订阅", icon: Radio },
-                {
-                  view: "terminal",
-                  label: "打开终端",
-                  detail: "连接服务器并管理会话",
-                  icon: SquareTerminal,
-                },
-                {
-                  view: "vault",
-                  label: "管理密钥",
-                  detail: "查看凭据与安全状态",
-                  icon: ShieldCheck,
-                },
-                { view: "ai", label: "查看 AI 订阅", detail: "管理订阅与月度开支", icon: Bot },
-              ] as const
-            ).map(({ view, label, detail, icon: Icon }) => (
-              <button
-                type="button"
-                key={view}
-                onClick={() => setView(view)}
-                className="quick-action"
-              >
-                <Icon className="size-5 shrink-0 text-muted" />
-                <span className="min-w-0 flex-1">
-                  <span className="block text-sm font-medium">{t(label)}</span>
-                  <span className="mt-1 block text-sm text-muted">{t(detail)}</span>
-                </span>
-                <ArrowUpRight className="size-4 text-muted" />
-              </button>
-            ))}
-          </div>
-        </section>
-      </div>
-      <section className="workspace-panel">
-        <div className="panel-heading">
-          <h2>{t("最近动态")}</h2>
-        </div>
-        {activity.length ? (
-          <ul className="divide-y divide-line">
-            {activity.slice(0, 5).map((item) => (
-              <li
-                key={item.id}
-                className="flex flex-wrap items-start justify-between gap-2 px-5 py-4"
-              >
-                <p className="min-w-0 text-sm break-words">{item.text}</p>
-                <TimeAgo iso={item.at} className="shrink-0 text-xs text-muted" />
-              </li>
-            ))}
-          </ul>
-        ) : (
-          <p className="px-5 py-6 text-sm text-muted">{t("暂无动态，添加资产后会在这里记录。")}</p>
+          </section>
         )}
-      </section>
+        <ActivityJournal />
+      </div>
     </div>
   );
 }

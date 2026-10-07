@@ -1,0 +1,36 @@
+/* 阅读与编辑共用正文排版，阅读时保留文本选择和链接焦点。 */
+.document-detail[data-mode="read"] .document-reading-title {
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.document-detail[data-mode="read"] .document-prose {
+  min-height: 0;
+  cursor: text;
+}
+
+.document-detail[data-mode="read"] .document-prose img {
+  -webkit-user-drag: none;
+}
+
+.document-detail[data-mode="read"] .document-prose .ProseMirror-selectednode {
+  outline: none;
+}
+
+.document-detail[data-mode="read"] .document-prose a:focus-visible {
+  outline: 2px solid var(--color-ink);
+  outline-offset: 3px;
+  border-radius: 2px;
+}
+
+@media (max-width: 700px) {
+  .document-detail .document-context-bar {
+    gap: 8px;
+    padding-inline: 12px;
+    flex-wrap: wrap;
+  }
+
+  .document-detail .documents-back {
+    margin-right: auto;
+  }
+}

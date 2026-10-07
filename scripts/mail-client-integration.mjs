@@ -114,7 +114,7 @@ try {
                 html: '<h2>九月迭代设计评审</h2><p>邮件工作台的<strong>阅读布局与头像</strong>已经进入验收。</p><ul><li>账号按文件夹收纳</li><li>正文和附件按需读取</li></ul><table><tr><th>负责人</th><th>进度</th></tr><tr><td>Product Team</td><td>待发布</td></tr></table><img alt="设计预览" data-mail-remote-src="https://images.example.test/design.png"><p>感谢参与本轮评审。</p>',
               }
             : {}),
-          messageId: "<weekly@example.test>",
+          messageId: `<message-${selection.uid}@example.test>`,
           replyTo: [{ name: "", address: "team@example.test" }],
           cc: [],
           attachments: [],

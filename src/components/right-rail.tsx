@@ -14,10 +14,6 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { useMemo, type ReactNode } from "react";
-import { lazy, Suspense } from "react";
-const AgentHistory = lazy(() =>
-  import("./agent-view").then((module) => ({ default: module.AgentHistory })),
-);
 import { CalendarExport } from "./operations-panel";
 import { TimeAgo } from "./ui/time-ago";
 import { isDesktop } from "@/lib/desktop";
@@ -168,7 +164,6 @@ function expiryDetail(iso: string) {
  */
 export function RightRail({ className }: { className?: string }) {
   const activity = useAppStore((s) => s.activity);
-  const view = useAppStore((s) => s.view);
   const setCommandOpen = useAppStore((s) => s.setCommandOpen);
   const alerts = useAlerts();
 
@@ -180,14 +175,6 @@ export function RightRail({ className }: { className?: string }) {
           <span className="flex-1 text-left">{t("搜索资产、跳转、连接")}</span>
           <kbd className="rounded-xs bg-card px-1.5 py-0.5 font-mono text-2xs text-muted">⌘K</kbd>
         </button>
-
-        {/* The agent's own history is more useful here than the standing
-            picture while you are mid-conversation. */}
-        {view === "agent" && (
-          <Suspense fallback={null}>
-            <AgentHistory />
-          </Suspense>
-        )}
 
         <Panel
           title={t("需要留意")}

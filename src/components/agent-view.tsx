@@ -5,6 +5,11 @@ import {
   EyeOff,
   Lock,
   MessageSquarePlus,
+  PanelRightOpen,
+  Search,
+  Trash2,
+  FileText,
+  ArrowUpRight,
   ShieldCheck,
   SquareTerminal,
   Square,
@@ -13,6 +18,9 @@ import {
 } from "lucide-react";
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { toast } from "sonner";
+import { EditorDialog } from "./ui/editor-dialog";
+import { useDocuments } from "@/lib/documents";
+import "./agent-workspace.css";
 import { LogoMark } from "./logo";
 import { Button } from "./ui/button";
 import { TimeAgo } from "./ui/time-ago";
@@ -25,7 +33,7 @@ import { accountId, credentialId, desktop } from "@/lib/desktop";
 import { chipClass, dotClass, KIND_LABEL } from "@/lib/status";
 import { useAppStore } from "@/lib/store";
 import type { AssetKind } from "@/lib/types";
-import { cn, copyText } from "@/lib/utils";
+import { copyText } from "@/lib/utils";
 import { useVault } from "@/lib/vault-state";
 import { t } from "@/lib/i18n";
 
@@ -34,6 +42,9 @@ const toolLabel = (name: string) =>
     {
       search_knowledge: "本地检索",
       get_asset: "查询资产",
+      search_documents: "检索文档",
+      get_document: "读取文档",
+      get_related_resources: "查询关联资源",
       locate_credential: "定位凭据",
       check_mailbox: "检查邮箱",
       list_mail_folders: "查询邮箱分组",
@@ -46,12 +57,18 @@ const toolLabel = (name: string) =>
 export function AgentView() {
   const conversations = useConversations((s) => s.conversations);
   const activeId = useConversations((s) => s.activeId);
+  const hydrated = useConversations((s) => s.hydrated);
   const append = useConversations((s) => s.append);
   const start = useConversations((s) => s.start);
   const [draft, setDraft] = useState("");
   const [configOpen, setConfigOpen] = useState(false);
   const [model, setModel] = useState("");
   const [allowMailboxChecks, setAllowMailboxChecks] = useState(false);
+  const [allowDocumentContent, setAllowDocumentContent] = useState(false);
+  const [contextOpen, setContextOpen] = useState(false);
+  const [preparing, setPreparing] = useState(false);
+  const preparingRef = useRef(false);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
   const requireVault = useVault((state) => state.require);
   const [running, setRunning] = useState<{
     id: string;
@@ -64,7 +81,9 @@ export function AgentView() {
   const runRef = useRef<string | null>(null);
   const [error, setError] = useState("");
   const api = desktop()?.agent;
-  const bottom = useRef<HTMLDivElement>(null);
+  const messagesRef = useRef<HTMLDivElement>(null);
+  const followBottom = useRef(true);
+  const busy = Boolean(running) || preparing || !hydrated;
 
   const active = conversations.find((c) => c.id === activeId) ?? null;
   const messages = active?.messages ?? [];
@@ -72,13 +91,28 @@ export function AgentView() {
   const [visibleCount, setVisibleCount] = useState(40);
   useEffect(() => {
     setVisibleCount(40);
+    setDraft("");
+    setError("");
+    setAllowMailboxChecks(false);
+    setAllowDocumentContent(false);
+    followBottom.current = true;
   }, [activeId]);
   const visibleMessages = messages.slice(-visibleCount);
   const hiddenCount = messages.length - visibleMessages.length;
 
   useEffect(() => {
-    bottom.current?.scrollIntoView({ block: "end" });
+    // 只推动消息容器，避免浏览器把整个页面和输入区一起滚走。
+    const scroll = messagesRef.current;
+    if (scroll && followBottom.current) scroll.scrollTop = scroll.scrollHeight;
   }, [messages.length, activeId, running?.text]);
+
+  useEffect(() => {
+    if (!useConversations.getState().hydrated) {
+      void Promise.resolve(useConversations.persist.rehydrate())
+        .then(() => useConversations.getState().setHydrated(true))
+        .catch((reason: Error) => setError(reason.message));
+    }
+  }, []);
 
   useEffect(() => {
     let alive = true;
@@ -96,14 +130,14 @@ export function AgentView() {
   }, [api, configOpen]);
   useEffect(
     () => () => {
-      if (runRef.current) void api?.cancel(runRef.current);
+      if (runRef.current) void api?.cancel(runRef.current).catch(() => {});
     },
     [api],
   );
 
   async function send(text: string) {
     const question = text.trim();
-    if (!question || runRef.current) return;
+    if (!question || runRef.current || preparingRef.current || !hydrated) return;
     if (!api) {
       setError(t("模型连接与本地知识库仅在桌面端可用。"));
       return;
@@ -114,10 +148,23 @@ export function AgentView() {
       return;
     }
     const checkMailboxes = allowMailboxChecks;
-    if (checkMailboxes && !(await requireVault(t("本次允许查询邮箱")))) return;
+    const readDocuments = allowDocumentContent;
+    preparingRef.current = true;
+    setPreparing(true);
+    try {
+      if (checkMailboxes && !(await requireVault(t("本次允许查询邮箱")))) return;
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : String(reason));
+      return;
+    } finally {
+      preparingRef.current = false;
+      setPreparing(false);
+    }
     if (runRef.current) return;
     setAllowMailboxChecks(false);
+    setAllowDocumentContent(false);
     const conversationId = activeId ?? start();
+    followBottom.current = true;
     const history = messages
       .filter(
         (m) =>
@@ -127,6 +174,7 @@ export function AgentView() {
       )
       .map((m) => ({
         role: m.role === "you" ? ("user" as const) : ("assistant" as const),
+        documentContent: m.blocks.some((b) => b.type === "run" && b.documentContent === true),
         content: m.blocks
           .filter((b) => b.type === "text")
           .map((b) => b.text)
@@ -159,7 +207,13 @@ export function AgentView() {
       );
     });
     try {
-      const result = await api.run({ id, question, history, allowMailboxChecks: checkMailboxes });
+      const result = await api.run({
+        id,
+        question,
+        history,
+        allowMailboxChecks: checkMailboxes,
+        allowDocumentContent: readDocuments,
+      });
       append(
         "agent",
         [
@@ -171,6 +225,7 @@ export function AgentView() {
             steps: result.steps,
             tools: result.tools,
             status: "success",
+            documentContent: readDocuments,
           },
         ],
         conversationId,
@@ -189,6 +244,7 @@ export function AgentView() {
             steps: 0,
             tools,
             status: reason === "已停止生成。" ? "stopped" : "error",
+            documentContent: readDocuments,
           },
         ],
         conversationId,
@@ -200,130 +256,223 @@ export function AgentView() {
     }
   }
 
-  return (
-    <div className="flex min-h-0 flex-1 flex-col">
-      <header className="agent-header">
-        <span className="min-w-0 flex-1 break-words text-meta">{model || t("尚未配置模型")}</span>
-        <Button
-          size="icon-sm"
-          variant="ghost"
-          disabled={Boolean(running)}
-          aria-label={t("模型与知识库")}
-          title={t("模型与知识库")}
-          onClick={() => setConfigOpen((open) => !open)}
-        >
-          <Settings2 className="size-4" />
-        </Button>
-      </header>
-      {configOpen && (
-        <div className="border-b border-line p-4">
-          <AgentSettings onConfigChange={(config) => setModel(config.model)} />
-        </div>
-      )}
-      {!configOpen && (
-        <>
-          <div className="min-h-0 flex-1 px-4 pb-4 pt-4">
-            {messages.length === 0 ? (
-              <Welcome onPick={send} />
-            ) : (
-              <div className="space-y-5 pb-4">
-                {hiddenCount > 0 && (
-                  <button
-                    type="button"
-                    className="mx-auto block rounded-full border border-line px-3 py-1 text-2xs text-muted transition-colors duration-150 ease-out hover:bg-line"
-                    onClick={() => setVisibleCount((count) => count + 80)}
-                  >
-                    {t("显示更早的 {0} 条消息", hiddenCount)}
-                  </button>
-                )}
-                {visibleMessages.map((m) => (
-                  <MessageRow key={m.id} message={m} />
-                ))}
-                {running?.conversationId === activeId && (
-                  <div className="agent-pending" aria-live="polite">
-                    <p className="flex items-center gap-2 text-meta text-muted">
-                      <Loader2 className="size-4 animate-spin" />
-                      {running.phase}
-                    </p>
-                    {running.tools.length > 0 && (
-                      <p className="my-2 break-words font-mono text-2xs text-subtle">
-                        {running.tools.map(toolLabel).join(" → ")}
-                      </p>
-                    )}
-                    <Markdown>{running.text}</Markdown>
-                  </div>
-                )}
-                <div ref={bottom} />
-              </div>
-            )}
-          </div>
+  function fillDraft(question: string) {
+    setDraft(question);
+    setContextOpen(false);
+    requestAnimationFrame(() => inputRef.current?.focus({ preventScroll: true }));
+  }
 
-          <form
-            className="sticky bottom-0 bg-canvas px-4 pb-4 pt-2"
-            onSubmit={(e: FormEvent) => {
-              e.preventDefault();
-              void send(draft);
-            }}
+  const sourceGroups = messages.flatMap((message) =>
+    message.blocks.flatMap((block) =>
+      block.type === "sources" ? [{ messageId: message.id, sources: block.sources }] : [],
+    ),
+  );
+  const context = (
+    <AgentContext
+      busy={busy}
+      onPick={fillDraft}
+      onNavigate={() => setContextOpen(false)}
+      sourceGroups={sourceGroups}
+      runningSources={running?.sources ?? []}
+      onTrace={(messageId) => {
+        setVisibleCount(messages.length);
+        setContextOpen(false);
+        followBottom.current = false;
+        requestAnimationFrame(() => {
+          const scroll = messagesRef.current;
+          const target = scroll?.querySelector<HTMLElement>(
+            `[data-message-id="${CSS.escape(messageId)}"]`,
+          );
+          if (scroll && target)
+            scroll.scrollTop +=
+              target.getBoundingClientRect().top - scroll.getBoundingClientRect().top;
+        });
+      }}
+    />
+  );
+
+  return (
+    <div className="agent-workspace">
+      <section className="agent-chat" aria-label={t("AI 问答")}>
+        <header className="agent-header">
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-meta font-medium">{active?.title ?? t("新对话")}</p>
+            <p className="truncate text-2xs text-subtle">{model || t("尚未配置模型")}</p>
+          </div>
+          <Button
+            size="icon-sm"
+            variant="ghost"
+            className="agent-context-toggle"
+            aria-label={t("对话上下文")}
+            title={t("对话上下文")}
+            onClick={() => setContextOpen(true)}
           >
-            <div className="relative">
-              <textarea
-                value={draft}
-                rows={1}
-                aria-label={t("向模型提问")}
-                maxLength={8000}
-                placeholder={t("哪些资产需要优先处理？请引用依据。")}
-                className="agent-input"
-                onChange={(e) => setDraft(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
-                    e.preventDefault();
-                    void send(draft);
-                  }
-                }}
-              />
-              {running ? (
-                <button
-                  type="button"
-                  aria-label={t("停止生成")}
-                  title={t("停止生成")}
-                  className="agent-stop"
-                  onClick={() =>
-                    void api?.cancel(running.id).catch((e: Error) => setError(e.message))
-                  }
-                >
-                  <Square className="size-4" />
-                </button>
+            <PanelRightOpen className="size-4" />
+          </Button>
+          <Button
+            size="icon-sm"
+            variant="ghost"
+            disabled={busy}
+            aria-label={t("模型与知识库")}
+            title={t("模型与知识库")}
+            onClick={() => setConfigOpen((open) => !open)}
+          >
+            <Settings2 className="size-4" />
+          </Button>
+        </header>
+        {configOpen ? (
+          <div className="agent-settings-scroll">
+            <AgentSettings onConfigChange={(config) => setModel(config.model)} />
+          </div>
+        ) : (
+          <>
+            <div
+              ref={messagesRef}
+              className="agent-message-scroll"
+              role="region"
+              aria-label={t("对话消息")}
+              onScroll={(event) => {
+                const scroll = event.currentTarget;
+                followBottom.current =
+                  scroll.scrollHeight - scroll.scrollTop - scroll.clientHeight < 64;
+              }}
+            >
+              {messages.length === 0 ? (
+                <Welcome onPick={fillDraft} />
               ) : (
-                <button
-                  type="submit"
-                  aria-label={t("发送")}
-                  disabled={!draft.trim()}
-                  className="absolute bottom-2 right-2 grid size-8 place-items-center rounded-full bg-ink text-card transition-transform duration-150 ease-out active:scale-90 disabled:opacity-30"
-                >
-                  <ArrowUp className="size-4" />
-                </button>
+                <div className="agent-message-list">
+                  {hiddenCount > 0 && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="mx-auto flex"
+                      onClick={() => {
+                        const scroll = messagesRef.current;
+                        const height = scroll?.scrollHeight ?? 0;
+                        followBottom.current = false;
+                        setVisibleCount((count) => count + 80);
+                        requestAnimationFrame(() => {
+                          if (scroll) scroll.scrollTop += scroll.scrollHeight - height;
+                        });
+                      }}
+                    >
+                      {t("显示更早的 {0} 条消息", hiddenCount)}
+                    </Button>
+                  )}
+                  {visibleMessages.map((message) => (
+                    <MessageRow key={message.id} message={message} />
+                  ))}
+                  {running?.conversationId === activeId && (
+                    <div className="agent-pending" aria-live="polite">
+                      <p className="flex items-center gap-2 text-meta text-muted">
+                        <Loader2 className="size-4 animate-spin" />
+                        {running.phase}
+                      </p>
+                      {running.tools.length > 0 && (
+                        <p className="my-2 break-words font-mono text-2xs text-subtle">
+                          {running.tools.map(toolLabel).join(" → ")}
+                        </p>
+                      )}
+                      <Markdown>{running.text}</Markdown>
+                    </div>
+                  )}
+                </div>
               )}
             </div>
-            <label className="mt-2 flex min-h-10 items-center gap-2 px-1 text-meta text-muted">
-              <input
-                type="checkbox"
-                className="size-4 accent-ink"
-                checked={allowMailboxChecks}
-                disabled={Boolean(running) || !api}
-                onChange={(event) => setAllowMailboxChecks(event.target.checked)}
-              />
-              {t("本次允许查询邮箱")}
-            </label>
-            <p className="mt-2 px-1 text-2xs text-subtle">
-              {t("本地检索，真实模型生成。问题和命中片段发送至所选模型；凭据不进入检索。")}
-            </p>
-            {error && (
-              <p role="alert" className="mt-2 break-words text-meta text-crit">
-                {error}
+            <form
+              className="agent-composer"
+              onSubmit={(event: FormEvent) => {
+                event.preventDefault();
+                void send(draft);
+              }}
+            >
+              <div className="relative">
+                <textarea
+                  ref={inputRef}
+                  value={draft}
+                  rows={1}
+                  aria-label={t("向模型提问")}
+                  maxLength={8000}
+                  placeholder={t("哪些资产需要优先处理？请引用依据。")}
+                  className="agent-input"
+                  onChange={(event) => setDraft(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (
+                      event.key === "Enter" &&
+                      !event.shiftKey &&
+                      !event.nativeEvent.isComposing
+                    ) {
+                      event.preventDefault();
+                      void send(draft);
+                    }
+                  }}
+                />
+                {running ? (
+                  <button
+                    type="button"
+                    aria-label={t("停止生成")}
+                    title={t("停止生成")}
+                    className="agent-stop"
+                    onClick={() =>
+                      void api
+                        ?.cancel(running.id)
+                        .catch((reason: Error) => setError(reason.message))
+                    }
+                  >
+                    <Square className="size-4" />
+                  </button>
+                ) : (
+                  <button
+                    type="submit"
+                    aria-label={t("发送")}
+                    disabled={!draft.trim() || busy}
+                    className="agent-send"
+                  >
+                    <ArrowUp className="size-4" />
+                  </button>
+                )}
+              </div>
+              <div className="agent-permissions">
+                <label>
+                  <input
+                    type="checkbox"
+                    checked={allowMailboxChecks}
+                    disabled={busy || !api}
+                    onChange={(event) => setAllowMailboxChecks(event.target.checked)}
+                  />
+                  {t("本次允许查询邮箱")}
+                </label>
+                <label>
+                  <input
+                    type="checkbox"
+                    checked={allowDocumentContent}
+                    disabled={busy || !api}
+                    onChange={(event) => setAllowDocumentContent(event.target.checked)}
+                  />
+                  {t("本次允许检索文档正文")}
+                </label>
+              </div>
+              <p className="agent-privacy-note">
+                {t(
+                  "问题和命中片段发送至所选模型；勾选后可发送文档正文片段，仅本次有效。回答保存在本机历史，凭据不进入检索。",
+                )}
               </p>
-            )}
-          </form>
-        </>
+              {error && (
+                <p role="alert" className="mt-2 break-words text-meta text-crit">
+                  {error}
+                </p>
+              )}
+            </form>
+          </>
+        )}
+      </section>
+      <aside className="agent-context-desktop" aria-label={t("对话上下文")}>
+        {context}
+      </aside>
+      {contextOpen && (
+        <EditorDialog title={t("对话上下文")} onClose={() => setContextOpen(false)}>
+          {context}
+        </EditorDialog>
       )}
     </div>
   );
@@ -356,7 +505,7 @@ function MessageRow({ message }: { message: Message }) {
   if (message.role === "you") {
     const text = message.blocks.find((b) => b.type === "text");
     return (
-      <div className="flex justify-end">
+      <div className="flex justify-end" data-message-id={message.id}>
         <div className="max-w-[80%] rounded-2xl rounded-br-sm bg-ink px-4 py-2.5 text-card">
           <p className="whitespace-pre-wrap text-meta">{text?.type === "text" ? text.text : ""}</p>
         </div>
@@ -365,7 +514,7 @@ function MessageRow({ message }: { message: Message }) {
   }
 
   return (
-    <div className="flex gap-3">
+    <div className="flex gap-3" data-message-id={message.id}>
       <LogoMark className="mt-0.5 size-6 shrink-0" />
       <div className="min-w-0 flex-1 space-y-2.5">
         {message.blocks.map((block, i) => (
@@ -401,23 +550,7 @@ function BlockView({ block }: { block: Block }) {
           <ul>
             {block.sources.map((source) => (
               <li key={source.id}>
-                {source.assetId && source.kind ? (
-                  <button
-                    type="button"
-                    className="text-left text-meta font-medium"
-                    onClick={() => reveal(source.assetId!, source.kind!, source.focus)}
-                  >
-                    [{source.citation}] {source.title}
-                    {source.focus === "account" && (
-                      <span className="ml-2 text-muted">{t("打开凭据位置")}</span>
-                    )}
-                  </button>
-                ) : (
-                  <span className="text-meta font-medium">
-                    [{source.citation}] {source.title}
-                  </span>
-                )}
-                <Markdown>{source.excerpt}</Markdown>
+                <SourceItem source={source} />
               </li>
             ))}
           </ul>
@@ -535,6 +668,9 @@ function SecretBlock({ block }: { block: Extract<Block, { type: "secret" }> }) {
 
   useEffect(() => {
     let alive = true;
+    setValue(null);
+    setShown(false);
+    setMissing(false);
     void (async () => {
       if (!bridge || !unlocked) return;
       try {
@@ -622,58 +758,243 @@ const FIELD_TEXT: Record<SecretField, string> = {
   note: "备注",
 };
 
-/** The rail turns into the conversation list while the agent view is open. */
-export function AgentHistory() {
-  const conversations = useConversations((s) => s.conversations);
-  const activeId = useConversations((s) => s.activeId);
-  const open = useConversations((s) => s.open);
-  const start = useConversations((s) => s.start);
-  const remove = useConversations((s) => s.remove);
+const COMMON_QUESTIONS = [
+  "哪些资产需要优先处理？请引用依据。",
+  "我的主机、域名和证书有哪些关联？",
+  "统计每月 AI 订阅费用，给出优化建议。",
+  "查找与当前资产相关的文档，并列出来源。",
+];
 
+type SourceGroup = { messageId: string; sources: Source[] };
+
+/** 对话控件集中在同一工作区，流式生成时锁定会改变回答归属的操作。 */
+function AgentContext({
+  busy,
+  onPick,
+  onNavigate,
+  sourceGroups,
+  runningSources,
+  onTrace,
+}: {
+  busy: boolean;
+  onPick: (question: string) => void;
+  onNavigate: () => void;
+  sourceGroups: SourceGroup[];
+  runningSources: Source[];
+  onTrace: (messageId: string) => void;
+}) {
+  const conversations = useConversations((state) => state.conversations);
+  const activeId = useConversations((state) => state.activeId);
+  const [query, setQuery] = useState("");
+  const needle = query.trim().toLocaleLowerCase();
+  const filtered = conversations
+    .filter(
+      (conversation) =>
+        !needle ||
+        [
+          conversation.title,
+          ...conversation.messages.flatMap((message) =>
+            message.blocks.flatMap((block) => (block.type === "text" ? [block.text] : [])),
+          ),
+        ]
+          .join(" ")
+          .toLocaleLowerCase()
+          .includes(needle),
+    )
+    .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+  const sources = sourceGroups.flatMap((group) =>
+    group.sources.map((source) => ({ ...source, messageId: group.messageId })),
+  );
   return (
-    <section className="overflow-hidden rounded-xl bg-card shadow-card">
-      <header className="flex items-center justify-between px-4 pb-2 pt-3.5">
-        <h2 className="font-semibold tracking-tight">{t("对话")}</h2>
+    <div className="agent-context-content">
+      <section className="agent-context-section">
+        <div className="agent-context-heading">
+          <h2>{t("历史对话")}</h2>
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={busy}
+            onClick={() => {
+              useConversations.getState().start();
+              setQuery("");
+              onNavigate();
+            }}
+          >
+            <MessageSquarePlus className="size-4" />
+            {t("新对话")}
+          </Button>
+        </div>
+        <label className="agent-history-search">
+          <Search className="size-4 shrink-0" />
+          <input
+            aria-label={t("搜索历史对话")}
+            placeholder={t("搜索历史对话")}
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+          />
+        </label>
+        {busy && (
+          <p className="text-2xs text-muted" role="status">
+            {t("生成期间暂不可切换或删除对话。")}
+          </p>
+        )}
+        {filtered.length === 0 ? (
+          <p className="text-meta text-muted">{t(needle ? "没有匹配的对话。" : "还没有对话。")}</p>
+        ) : (
+          <ul className="agent-history-list">
+            {filtered.map((conversation) => (
+              <li
+                key={conversation.id}
+                className="agent-history-row"
+                data-active={conversation.id === activeId}
+              >
+                <button
+                  type="button"
+                  className="agent-history-open"
+                  disabled={busy}
+                  aria-current={conversation.id === activeId ? "page" : undefined}
+                  onClick={() => {
+                    useConversations.getState().open(conversation.id);
+                    onNavigate();
+                  }}
+                >
+                  <span className="truncate text-meta font-medium">{conversation.title}</span>
+                  <TimeAgo iso={conversation.updatedAt} className="text-2xs text-subtle" />
+                </button>
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  disabled={busy}
+                  aria-label={t("删除对话：{0}", conversation.title)}
+                  title={t("删除对话")}
+                  onClick={() => {
+                    if (
+                      window.confirm(
+                        t("删除对话“{0}”？这会移除本机的问答历史，无法撤销。", conversation.title),
+                      )
+                    )
+                      useConversations.getState().remove(conversation.id);
+                  }}
+                >
+                  <Trash2 className="size-4" />
+                </Button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+      <section className="agent-context-section">
+        <div className="agent-context-heading">
+          <h2>{t("常用提问")}</h2>
+        </div>
+        <p className="text-2xs text-muted">{t("选择后填入输入框，确认后再发送。")}</p>
+        <div className="agent-question-list">
+          {COMMON_QUESTIONS.map((question) => (
+            <button
+              type="button"
+              key={question}
+              disabled={busy}
+              onClick={() => onPick(t(question))}
+            >
+              <span>{t(question)}</span>
+              <ArrowUpRight className="size-3.5 shrink-0" />
+            </button>
+          ))}
+        </div>
+      </section>
+      <section className="agent-context-section">
+        <div className="agent-context-heading">
+          <h2>{t("当前对话来源")}</h2>
+          <span className="text-2xs text-subtle">{sources.length + runningSources.length}</span>
+        </div>
+        {sources.length + runningSources.length === 0 ? (
+          <p className="text-meta text-muted">{t("回答引用的资产和文档会显示在这里。")}</p>
+        ) : (
+          <ul className="agent-context-sources">
+            {sources.map((source, index) => (
+              <li key={source.messageId + source.id + index}>
+                <SourceItem source={source} compact />
+                <button
+                  type="button"
+                  className="agent-trace-link"
+                  onClick={() => onTrace(source.messageId)}
+                >
+                  {t("回到引用消息")}
+                </button>
+              </li>
+            ))}
+            {runningSources.map((source) => (
+              <li key={source.id}>
+                <SourceItem source={source} compact />
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+    </div>
+  );
+}
+
+/** 文档跳转先等待旧稿保存；失败时保留当前界面并明确提示。 */
+function SourceItem({ source, compact = false }: { source: Source; compact?: boolean }) {
+  const [opening, setOpening] = useState(false);
+  const canOpen = Boolean(source.documentId || (source.assetId && source.kind));
+  async function openSource() {
+    if (opening) return;
+    setOpening(true);
+    try {
+      if (source.documentId) {
+        await useDocuments.getState().open(source.documentId);
+        useAppStore.getState().setView("docs");
+      } else if (source.assetId && source.kind) {
+        const width = Math.min(560, window.innerWidth - 48);
+        useAppStore.getState().setExpanded({
+          kind: source.kind,
+          id: source.assetId,
+          focus: source.focus,
+          origin: {
+            x: (window.innerWidth - width) / 2,
+            y: window.innerHeight * 0.3,
+            w: width,
+            h: 180,
+          },
+        });
+      }
+    } catch (reason) {
+      toast.error(
+        t("打开来源失败：{0}", reason instanceof Error ? reason.message : String(reason)),
+      );
+    } finally {
+      setOpening(false);
+    }
+  }
+  const title = (
+    <>
+      <span className="agent-source-citation">[{source.citation}]</span>
+      <span>{source.title}</span>
+      {source.documentId ? (
+        <FileText className="size-3.5 shrink-0" />
+      ) : canOpen ? (
+        <ArrowUpRight className="size-3.5 shrink-0" />
+      ) : null}
+    </>
+  );
+  return (
+    <div className="agent-source-item">
+      {canOpen ? (
         <button
           type="button"
-          aria-label={t("新对话")}
-          className="grid size-7 place-items-center rounded-full text-subtle transition-colors duration-150 ease-out hover:bg-line hover:text-ink"
-          onClick={() => start()}
+          className="agent-source-title"
+          disabled={opening}
+          onClick={() => void openSource()}
         >
-          <MessageSquarePlus className="size-4" />
+          {title}
         </button>
-      </header>
-      {conversations.length === 0 ? (
-        <p className="px-4 pb-4 text-meta text-muted">{t("还没有对话。")}</p>
       ) : (
-        <ul className="pb-2">
-          {conversations.slice(0, 20).map((c) => (
-            <li key={c.id} className="group/item relative">
-              <button
-                type="button"
-                className={cn(
-                  "row-tap flex w-full items-center gap-2 px-4 py-2 text-left hover:bg-line",
-                  c.id === activeId && "bg-line",
-                )}
-                onClick={() => open(c.id)}
-              >
-                <span className="min-w-0 flex-1">
-                  <span className="block truncate text-meta">{c.title}</span>
-                  <TimeAgo iso={c.updatedAt} className="block text-2xs text-subtle" />
-                </span>
-              </button>
-              <button
-                type="button"
-                aria-label={t("删除对话")}
-                className="absolute right-2 top-1/2 hidden -translate-y-1/2 rounded-full px-2 py-1 text-2xs text-subtle hover:text-crit group-hover/item:block"
-                onClick={() => remove(c.id)}
-              >
-                {t("删除")}
-              </button>
-            </li>
-          ))}
-        </ul>
+        <p className="agent-source-title">{title}</p>
       )}
-    </section>
+      {source.focus === "account" && <p className="text-2xs text-muted">{t("打开凭据位置")}</p>}
+      {!compact && <Markdown>{source.excerpt}</Markdown>}
+    </div>
   );
 }

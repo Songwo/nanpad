@@ -12,7 +12,8 @@ import {
   Tag,
   type LucideIcon,
 } from "lucide-react";
-import { useEffect, useMemo, type ReactNode } from "react";
+import { useDeferredValue, useEffect, useMemo, useState, type ReactNode } from "react";
+import { commandResults } from "@/lib/command-results.mjs";
 import { NAV } from "./sidebar";
 import { usePresence } from "@/lib/motion";
 import { useAppStore } from "@/lib/store";
@@ -71,6 +72,8 @@ export function CommandPalette() {
 }
 
 function Palette({ shown, onClose }: { shown: boolean; onClose: () => void }) {
+  const [query, setQuery] = useState("");
+  const deferredQuery = useDeferredValue(query);
   const setView = useAppStore((s) => s.setView);
   const focusTag = useAppStore((s) => s.focusTag);
   const openSsh = useAppStore((s) => s.openSsh);
@@ -129,7 +132,7 @@ function Palette({ shown, onClose }: { shown: boolean; onClose: () => void }) {
       id: `page:${n.id}`,
       search: t("{0} 页面", n.label),
       icon: n.icon,
-      label: n.label,
+      label: t(n.label),
       run: () => {
         setView(n.id);
         onClose();
@@ -152,18 +155,16 @@ function Palette({ shown, onClose }: { shown: boolean; onClose: () => void }) {
           onClose();
         },
       }));
-    if (sshEntries.length) out.push({ heading: t("SSH 会话"), entries: sshEntries });
 
     const assets: Entry[] = [
       ...phoneNumbers.map((phone) => ({
         id: `phone:${phone.id}`,
-        search: `${phone.number} ${phone.label} ${phone.provider}`,
+        search: `${phone.number} ${phone.label} ${phone.provider} ${phone.notes}`,
         icon: Phone,
         label: phone.label || phone.number,
         meta: phone.number,
         run: () => {
-          setView("phones");
-          useAppStore.getState().setQuery(phone.number);
+          useAppStore.getState().openPhones({ id: phone.id });
           onClose();
         },
       })),
@@ -208,6 +209,7 @@ function Palette({ shown, onClose }: { shown: boolean; onClose: () => void }) {
       })),
     });
 
+    if (sshEntries.length) out.push({ heading: t("SSH 会话"), entries: sshEntries });
     return out;
   }, [
     servers,
@@ -225,6 +227,7 @@ function Palette({ shown, onClose }: { shown: boolean; onClose: () => void }) {
     onClose,
   ]);
 
+  const results = useMemo(() => commandResults(sections, deferredQuery), [sections, deferredQuery]);
   return (
     <div className="fixed inset-0 z-50">
       <button
@@ -238,20 +241,33 @@ function Palette({ shown, onClose }: { shown: boolean; onClose: () => void }) {
         className="anim-panel relative mx-auto mt-[12vh] flex max-h-[70vh] w-[min(600px,calc(100vw-24px))] flex-col overflow-hidden rounded-xl bg-card shadow-float"
         data-shown={shown}
         loop
+        shouldFilter={false}
       >
         <Command.Input
           autoFocus
-          placeholder={t("搜索资产、标签、页面，或直接连 SSH…")}
+          aria-label={t("搜索资产与操作")}
+          value={query}
+          onValueChange={setQuery}
+          placeholder={t("搜索号码、资产、标签或页面…")}
           className="h-13 w-full shrink-0 border-b border-line bg-transparent px-4 text-body outline-none placeholder:text-subtle"
         />
-        <Command.List className="min-h-0 flex-1 overflow-y-auto p-2">
+        <Command.List
+          aria-busy={query !== deferredQuery}
+          className="min-h-0 flex-1 overflow-y-auto p-2"
+        >
           <Command.Empty className="px-3 py-10 text-center text-meta text-muted">
             {t("没有匹配项")}
           </Command.Empty>
-          {sections.map((section) => (
+          {results.sections.map((section) => (
             <Command.Group key={section.heading} heading={section.heading} className="cmd-group">
               {section.entries.map((entry) => (
-                <Item key={entry.id} value={entry.search} onSelect={entry.run}>
+                <Item
+                  key={entry.id}
+                  value={entry.id}
+                  onSelect={() => {
+                    if (query === deferredQuery) entry.run();
+                  }}
+                >
                   <entry.icon className="size-4 shrink-0 text-subtle" strokeWidth={1.9} />
                   <span className="truncate">{entry.label}</span>
                   {entry.meta && (
@@ -263,6 +279,11 @@ function Palette({ shown, onClose }: { shown: boolean; onClose: () => void }) {
             </Command.Group>
           ))}
         </Command.List>
+        {results.total > results.shown && (
+          <p className="border-t border-line px-4 py-2 text-2xs text-muted" role="status">
+            {t("显示前 {0} 项，共 {1} 项；继续输入可缩小范围。", results.shown, results.total)}
+          </p>
+        )}
         <footer className="flex shrink-0 items-center gap-4 border-t border-line px-4 py-2 text-2xs text-subtle">
           <span>
             <Key>↑</Key>

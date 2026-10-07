@@ -24,7 +24,7 @@ try {
     Object.defineProperty(navigator.clipboard, "readText", { value: async () => "" }),
   );
   await page.getByRole("button", { name: "邮箱", exact: true }).click();
-  await page.getByRole("button", { name: "添加资产", exact: true }).click();
+  await page.getByRole("button", { name: "添加邮箱", exact: true }).click();
   let composer = page.getByRole("dialog", { name: "邮箱", exact: true });
   await composer.getByLabel("地址", { exact: true }).fill("website-owner@example.test");
   await composer.getByLabel("所属域名", { exact: true }).fill("example.test");
@@ -32,7 +32,7 @@ try {
   await composer.waitFor({ state: "detached" });
 
   await page.getByRole("button", { name: "密钥", exact: true }).click();
-  await page.getByRole("button", { name: "添加资产", exact: true }).click();
+  await page.getByRole("button", { name: "添加密钥", exact: true }).click();
   composer = page.getByRole("dialog", { name: "密钥", exact: true });
   await composer.getByRole("combobox", { name: "类型", exact: true }).click();
   await page.getByRole("option", { name: "网站账号 / 密码", exact: true }).click();

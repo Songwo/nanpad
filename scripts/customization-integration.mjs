@@ -123,7 +123,7 @@ try {
     .locator("nav")
     .getByRole("button", { name: /^AI 订阅/ })
     .click();
-  await page.getByRole("button", { name: "添加资产", exact: true }).click();
+  await page.getByRole("button", { name: "添加 AI 订阅", exact: true }).click();
   let composer = page.getByRole("dialog", { name: "添加 AI 订阅", exact: true });
   await composer.getByRole("button", { name: "仅手动记录", exact: true }).click();
   await composer.getByLabel("名称", { exact: true }).fill("图片验证订阅");

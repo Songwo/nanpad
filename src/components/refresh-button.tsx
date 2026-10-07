@@ -42,6 +42,7 @@ export function RefreshAllButton({ kind }: { kind: ProbeKind | null }) {
         setBusy(true);
         try {
           const n = await refreshAll(kind);
+          if (n > 0) useAppStore.getState().log(t("手动检查了 {0} 项{1}", n, t(LABEL[kind])), kind);
           toast(t("已刷新 {0} 项{1}", n, t(LABEL[kind])));
         } finally {
           setBusy(false);
@@ -84,6 +85,11 @@ export function RefreshOneButton({ kind, id }: { kind: ProbeKind; id: string }) 
           return;
         }
         await refreshById(kind, id);
+        const state = useAppStore.getState();
+        const asset = (
+          kind === "server" ? state.servers : kind === "domain" ? state.domains : state.certs
+        ).find((item) => item.id === id);
+        if (asset && !asset.demo) state.log(t("手动检查了{0}状态", t(LABEL[kind])), kind);
       }}
     >
       <RefreshCw className={cn("size-4", busy && "animate-spin")} />

@@ -2,7 +2,6 @@ import { useState } from "react";
 import * as Dialog from "@radix-ui/react-dialog";
 import {
   ArrowLeft,
-  Folder,
   FolderOpen,
   FolderPlus,
   Mail,
@@ -30,6 +29,7 @@ import { Field, Input, Select } from "./ui/input";
 import { openFromEvent } from "./asset-card";
 import { MailReader } from "./mail-reader";
 import { MailAvatar, MailAppearanceEditor } from "./mail-avatar";
+import { CollectionCard } from "./ui/collection-card";
 
 export function MailWorkspace() {
   const state = useAppStore();
@@ -124,7 +124,7 @@ export function MailWorkspace() {
         </div>
       </div>
       {active === null ? (
-        <div className="grid gap-x-4 gap-y-6 sm:grid-cols-2 2xl:grid-cols-3">
+        <div className="collection-grid">
           {query &&
             !matching.length &&
             !allFolders.some((item) => t(item.name).toLocaleLowerCase().includes(query)) && (
@@ -145,35 +145,46 @@ export function MailWorkspace() {
                 (mailbox) => mailFolderId(mailbox, folders) === item.id,
               );
               return (
-                <button
+                <CollectionCard
                   key={item.id}
-                  className={cn("mail-folder group text-left", `mail-folder-${item.color}`)}
-                  onClick={() => {
+                  name={t(item.name)}
+                  color={item.color}
+                  count={mailboxes.length}
+                  unit={t("个邮箱")}
+                  description={
+                    mailboxes.length
+                      ? t("{0} 个账号", mailboxes.length)
+                      : t("分类收纳，随时打开收件箱")
+                  }
+                  openLabel={t("打开文件夹 {0}", t(item.name))}
+                  editLabel={t("编辑文件夹 {0}", t(item.name))}
+                  onEdit={item.id ? () => setEditor(item) : undefined}
+                  onOpen={() => {
                     setActive(item.id);
                     setSelected([]);
                   }}
-                  aria-label={t("打开文件夹 {0}", t(item.name))}
-                >
-                  <div className="mail-folder-tab" />
-                  <div className="flex items-center justify-between">
-                    <Folder className="size-7" />
-                    <span className="font-mono text-meta text-muted">{mailboxes.length}</span>
-                  </div>
-                  <h3 className="mt-4 truncate text-base font-semibold text-ink">{t(item.name)}</h3>
-                  <div className="mt-4 flex min-h-8 items-center gap-2 text-muted">
-                    {mailboxes.slice(0, 3).map((mailbox) => (
-                      <MailAvatar
-                        key={mailbox.id}
-                        address={mailbox.address}
-                        image={mailbox.imageDataUrl}
-                        size="sm"
-                      />
-                    ))}
-                    <span className="ml-auto text-2xs">
-                      {mailboxes.length ? t("{0} 个账号", mailboxes.length) : t("空文件夹")}
-                    </span>
-                  </div>
-                </button>
+                  preview={
+                    mailboxes.length ? (
+                      <>
+                        {mailboxes.slice(0, 2).map((mailbox) => (
+                          <MailAvatar
+                            key={mailbox.id}
+                            address={mailbox.address}
+                            image={mailbox.imageDataUrl}
+                            size="sm"
+                          />
+                        ))}
+                        <span className="collection-card-preview-label">
+                          {mailboxes[0].address}
+                        </span>
+                      </>
+                    ) : (
+                      <span className="collection-card-preview-label">
+                        {t("空文件夹 · 打开后添加邮箱")}
+                      </span>
+                    )
+                  }
+                />
               );
             })}
         </div>

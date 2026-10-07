@@ -3,7 +3,7 @@ import { AuthProvider } from "@/lib/auth/provider";
 import { PreviewHostBridge } from "@/components/preview-host-bridge";
 import appCss from "../styles.css?url";
 
-const APP_NAME = "司南 SINAN";
+const APP_NAME = "知屿 Zhiyu";
 
 export const Route = createRootRoute({
   head: () => ({
@@ -14,7 +14,7 @@ export const Route = createRootRoute({
       { name: "theme-color", content: "#0f1419" },
       {
         name: "description",
-        content: "司南 — 个人数字资产指挥台。服务器、域名、邮箱、AI 订阅、密钥与证书，一屏尽览。",
+        content: "知屿 — 个人数字资产指挥台。服务器、域名、邮箱、AI 订阅、密钥与证书，一屏尽览。",
       },
     ],
     links: [

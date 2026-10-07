@@ -8,6 +8,7 @@ import { windowsAppId, migrateLegacyWindowsShortcut } from "./services/windows-i
 import { ImageBed } from "./services/image-bed.mjs";
 import { checkNode } from "./services/node-check.mjs";
 import { UsageStore } from "./services/usage.mjs";
+import { LocalUsageMonitor } from "./services/local-usage.mjs";
 import { DocumentsStore } from "./services/documents.mjs";
 import {
   app,
@@ -22,6 +23,7 @@ import {
   Notification,
   safeStorage,
   screen,
+  powerMonitor,
 } from "electron";
 import { X509Certificate } from "node:crypto";
 import { CaptureQueue } from "./services/browser-capture.mjs";
@@ -182,7 +184,7 @@ function notifyAttention() {
   if (!items.length) return;
   const en = preferences.locale === "en";
   const notification = new Notification({
-    title: en ? "Nanpad: assets need attention" : "司南：资产需要留意",
+    title: en ? "Zhiyu: assets need attention" : "知屿：资产需要留意",
     body: items
       .slice(0, 5)
       .map(
@@ -201,10 +203,10 @@ function notifyAttention() {
 function updateTray() {
   if (!tray) return;
   const en = preferences.locale === "en";
-  tray.setToolTip("Nanpad");
+  tray.setToolTip("知屿 Zhiyu");
   tray.setContextMenu(
     Menu.buildFromTemplate([
-      { label: en ? "Open Nanpad" : "打开司南", click: showWindow },
+      { label: en ? "Open Zhiyu" : "打开知屿", click: showWindow },
       {
         label: en ? "Lock vault" : "锁定密钥库",
         click: lockVault,
@@ -288,7 +290,7 @@ async function createWindow() {
       relaunchCommand: app.isPackaged
         ? `"${process.execPath}"`
         : `"${process.execPath}" "${join(here, "main.mjs")}"`,
-      relaunchDisplayName: "司南 Nanpad",
+      relaunchDisplayName: "知屿 Zhiyu",
     });
   }
 
@@ -372,16 +374,20 @@ function sameOrigin(a, b) {
 }
 
 /** Wrap a handler so the renderer always gets `{ok}` or `{ok:false, error}`. */
-function handle(channel, fn, mainWindowOnly = false) {
+function isMainFrame(event) {
+  return Boolean(
+    win &&
+    !win.isDestroyed() &&
+    event.sender === win.webContents &&
+    event.senderFrame === win.webContents.mainFrame,
+  );
+}
+
+function handle(channel, fn, mainWindowOnly = true) {
   ipcMain.handle(channel, async (event, ...args) => {
     try {
-      if (
-        mainWindowOnly &&
-        (!win ||
-          event.sender !== win.webContents ||
-          event.senderFrame !== win.webContents.mainFrame)
-      ) {
-        throw new Error("Display settings are only available to the main window.");
+      if (mainWindowOnly && !isMainFrame(event)) {
+        throw new Error("此操作仅允许在应用主窗口中执行。");
       }
       return { ok: true, data: await fn(...args) };
     } catch (err) {
@@ -448,7 +454,62 @@ function registerIpc() {
   handle("ai-accounts:finish", (id, code) => aiAccounts.finish(id, code));
   handle("ai-accounts:cancel", (id) => aiAccounts.cancel(id));
   const usage = new UsageStore(join(app.getPath("userData"), "usage-history.json"), vault);
-  for (const method of ["list", "add", "remove", "refresh"])
+  const localUsage = new LocalUsageMonitor({
+    file: join(app.getPath("userData"), "local-usage.json"),
+    shouldCollect: () => Boolean(vault?.unlocked),
+    // 隔离测试只能读取自身数据目录内的合成日志，不触碰用户日志。
+    ...(!app.isPackaged && process.env.NANPAD_TEST_DATA_DIR
+      ? {
+          roots: {
+            codex: [join(app.getPath("userData"), "qa-logs", "codex")],
+            claude: [join(app.getPath("userData"), "qa-logs", "claude")],
+            grok: [join(app.getPath("userData"), "qa-logs", "grok")],
+            gemini: [join(app.getPath("userData"), "qa-logs", "gemini")],
+          },
+        }
+      : {}),
+  });
+  const localStatus = async () => {
+    const status = await localUsage.status();
+    return { ...status, paused: status.enabled && !vault.unlocked };
+  };
+  handle("usage:list", async () => {
+    const [remote, local] = await Promise.all([usage.list(), localUsage.list()]);
+    const recordedLocal = new Set(local.records.map((row) => row.sourceId));
+    return {
+      sources: [
+        ...remote.sources,
+        ...local.sources.filter((source) => recordedLocal.has(source.id)),
+      ],
+      records: [...remote.records, ...local.records],
+    };
+  });
+  handle("usage:local-status", localStatus);
+  handle("usage:local-configure", async (input) => {
+    if (
+      !input ||
+      typeof input !== "object" ||
+      Array.isArray(input) ||
+      Object.keys(input).some((key) => key !== "enabled") ||
+      typeof input.enabled !== "boolean"
+    )
+      throw new Error("监控设置只接受开启或关闭，不接受日志路径。");
+    if (input.enabled && !vault.unlocked) throw new Error("请先解锁密钥库再开启本机监控。");
+    await localUsage.configure({ enabled: input.enabled });
+    if (input.enabled && vault.unlocked) await localUsage.refresh();
+    return localStatus();
+  });
+  handle("usage:local-refresh", async () => {
+    if (!vault.unlocked) throw new Error("密钥库已锁定，本机采集已暂停。");
+    await localUsage.refresh();
+    return localStatus();
+  });
+  const localTimer = setInterval(() => {
+    if (vault.unlocked) void localUsage.refresh().catch(() => {});
+  }, 10_000);
+  localTimer.unref();
+  app.once("before-quit", () => clearInterval(localTimer));
+  for (const method of ["add", "remove", "refresh"])
     handle("usage:" + method, (...args) => usage[method](...args));
   handle("ai-accounts:refresh", async (id) => {
     try {
@@ -655,6 +716,10 @@ function registerIpc() {
     directory: app.getPath("userData"),
     secureStorage: safeStorage,
     getSnapshot: () => currentSnapshot,
+    workspaceDocuments: {
+      list: () => documents.listMetadata(),
+      get: (id) => documents.get(id),
+    },
     checkMailbox: (id, options) => mailboxes.check(id, options),
     emit: (event) => emit("agent:event", event),
   });
@@ -827,8 +892,12 @@ function registerIpc() {
     ssh.close(sessionId);
     return true;
   });
-  ipcMain.on("ssh:write", (_e, sessionId, data) => ssh.write(sessionId, data));
-  ipcMain.on("ssh:resize", (_e, sessionId, cols, rows) => ssh.resize(sessionId, cols, rows));
+  ipcMain.on("ssh:write", (event, sessionId, data) => {
+    if (isMainFrame(event) && vault.unlocked) ssh.write(sessionId, data);
+  });
+  ipcMain.on("ssh:resize", (event, sessionId, cols, rows) => {
+    if (isMainFrame(event)) ssh.resize(sessionId, cols, rows);
+  });
 
   // ---- mailboxes ----------------------------------------------------------
   handle("mail:providers", async () => MAIL_PROVIDERS);
@@ -889,10 +958,14 @@ function registerIpc() {
     maximized: Boolean(win?.isMaximized()),
     platform: process.platform,
   }));
-  ipcMain.on("window:minimize", () => win?.minimize());
-  ipcMain.on("window:close", () => win?.close());
-  ipcMain.on("window:toggle-maximize", () => {
-    if (!win) return;
+  ipcMain.on("window:minimize", (event) => {
+    if (isMainFrame(event)) win.minimize();
+  });
+  ipcMain.on("window:close", (event) => {
+    if (isMainFrame(event)) win.close();
+  });
+  ipcMain.on("window:toggle-maximize", (event) => {
+    if (!isMainFrame(event)) return;
     if (win.isMaximized()) win.unmaximize();
     else win.maximize();
   });
@@ -1027,6 +1100,9 @@ if (!app.requestSingleInstanceLock()) {
     }
     Menu.setApplicationMenu(buildMenu());
     registerIpc();
+    // 操作系统锁屏或休眠立即锁库；恢复后由用户重新解锁。
+    powerMonitor.on("lock-screen", lockVault);
+    powerMonitor.on("suspend", lockVault);
     await extensionBridge.start();
     try {
       const iconPath = app.isPackaged

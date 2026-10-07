@@ -56,7 +56,10 @@ try {
     await page.goto("http://127.0.0.1:8080/", { waitUntil: "domcontentloaded" });
     await page.locator('[data-app-ready="true"]').waitFor({ timeout: 60000 });
     assert.equal(await page.evaluate(() => devicePixelRatio), dpi);
-    await page.getByRole("button", { name: "号码管理", exact: true }).click();
+    await page
+      .locator("nav")
+      .getByRole("button", { name: /^号码管理/ })
+      .click();
     const phone = page.locator('[data-phone-id="display-phone"]');
     await phone.waitFor();
     for (const zoom of [100, 110, 125, 150]) {

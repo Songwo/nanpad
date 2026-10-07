@@ -19,6 +19,7 @@ export interface Source {
   title: string;
   kind?: AssetKind;
   assetId?: string;
+  documentId?: string;
   focus?: "account";
   excerpt: string;
 }
@@ -51,7 +52,8 @@ export interface AgentBridge {
     id: string;
     question: string;
     allowMailboxChecks?: boolean;
-    history: Array<{ role: "user" | "assistant"; content: string }>;
+    allowDocumentContent?: boolean;
+    history: Array<{ role: "user" | "assistant"; content: string; documentContent?: boolean }>;
   }): Promise<{
     model: string;
     sources: number;

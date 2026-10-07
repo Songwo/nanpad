@@ -11,7 +11,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
-const source = readFileSync(join(root, "src/lib/changelog.ts"), "utf8");
+const source = readFileSync(join(root, "src/lib/changelog.ts"), "utf8").replace(/\r\n/g, "\n");
 
 // A tiny extractor rather than a TS pipeline: the file is a plain array literal
 // and adding a compiler to a 40-line script would be the expensive option.

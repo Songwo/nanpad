@@ -1,5 +1,5 @@
 import { hostedImageUrl } from "./hosted-image.mjs";
-import { mkdir, readFile, readdir, writeFile, rename, unlink } from "node:fs/promises";
+import { mkdir, readFile, readdir, writeFile, rename, unlink, lstat } from "node:fs/promises";
 import { join } from "node:path";
 import { inspectRaster } from "./image-data.mjs";
 
@@ -124,11 +124,47 @@ export function documentSummary(doc) {
     imageCount,
   };
 }
+
+const METADATA_LIMIT = 6000;
+const metadataFingerprint = (info) =>
+  [info.mtimeNs, info.size, info.dev, info.ino, info.ctimeNs].join(":");
+
+// 冷读只解析 JSON 后提取白名单，不遍历正文、不生成摘要或处理图片。
+function documentMetadata(value, id) {
+  if (!value || value.id !== id) throw new Error("文档标识与文件名不一致");
+  const bindings = [],
+    seen = new Set();
+  for (const ref of Array.isArray(value.bindings) ? value.bindings : []) {
+    if (!KINDS.has(ref?.kind) || typeof ref.id !== "string" || !ref.id || ref.id.length > 256)
+      throw new Error("关联资产无效");
+    const key = `${ref.kind}:${ref.id}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    bindings.push({ kind: ref.kind, id: ref.id });
+    if (bindings.length > 100) throw new Error("单篇文档最多关联 100 项资产");
+  }
+  return {
+    id,
+    title:
+      (typeof value.title === "string" ? value.title.trim().slice(0, 160) : "") || "未命名文档",
+    bindings,
+    createdAt: typeof value.createdAt === "string" ? value.createdAt.slice(0, 40) : "",
+    updatedAt: typeof value.updatedAt === "string" ? value.updatedAt.slice(0, 40) : "",
+  };
+}
+
 export class DocumentsStore {
   #directory;
   #queue = Promise.resolve();
-  constructor(directory) {
+  #metadata = new Map();
+  #metadataLimit;
+  #readMetadataFile;
+  constructor(directory, { metadataLimit = METADATA_LIMIT, readMetadataFile = readFile } = {}) {
+    if (!Number.isInteger(metadataLimit) || metadataLimit < 1 || metadataLimit > METADATA_LIMIT)
+      throw new Error("文档元信息目录上限必须在 1 到 6000 之间");
     this.#directory = directory;
+    this.#metadataLimit = metadataLimit;
+    this.#readMetadataFile = readMetadataFile;
   }
   #path(id) {
     if (!/^doc-[a-zA-Z0-9-]{1,80}$/.test(id)) throw new Error("文档标识无效");
@@ -147,6 +183,70 @@ export class DocumentsStore {
     for (const name of names.filter((n) => /^doc-[a-zA-Z0-9-]{1,80}\.json$/.test(n)))
       result.push(documentSummary(await this.get(name.slice(0, -5))));
     return result.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+  }
+  listMetadata() {
+    // 与保存、删除共用队列，避免异步冷读把已失效的元信息重新写回缓存。
+    const job = this.#queue.then(async () => {
+      let names;
+      try {
+        names = (await readdir(this.#directory))
+          .filter((name) => /^doc-[a-zA-Z0-9-]{1,80}\.json$/.test(name))
+          .sort();
+      } catch (error) {
+        if (error.code !== "ENOENT") throw error;
+        this.#metadata.clear();
+        return { documents: [], truncated: false };
+      }
+      const selected = names.slice(0, this.#metadataLimit);
+      const selectedIds = new Set(selected.map((name) => name.slice(0, -5)));
+      for (const id of this.#metadata.keys()) if (!selectedIds.has(id)) this.#metadata.delete(id);
+      const documents = [];
+      for (const name of selected) {
+        const id = name.slice(0, -5);
+        const path = this.#path(id);
+        let metadata;
+        try {
+          for (let attempt = 0; attempt < 2; attempt++) {
+            const before = await lstat(path, { bigint: true });
+            // 只扫描普通文档文件，避免跟随文档目录中的符号链接读取其他存储。
+            if (!before.isFile()) {
+              this.#metadata.delete(id);
+              break;
+            }
+            const fingerprint = metadataFingerprint(before);
+            const cached = this.#metadata.get(id);
+            if (cached?.fingerprint === fingerprint) {
+              metadata = cached.value;
+              break;
+            }
+            this.#metadata.delete(id);
+            if (before.size > 64n * 1024n * 1024n) throw new Error("文档文件过大");
+            const raw = await this.#readMetadataFile(path, "utf8");
+            if (raw.length > 16 * 1024 * 1024 + 4096) throw new Error("文档文件过大");
+            const value = documentMetadata(JSON.parse(raw), id);
+            const after = await lstat(path, { bigint: true });
+            if (after.isFile() && metadataFingerprint(after) === fingerprint) {
+              this.#metadata.set(id, { fingerprint, value });
+              metadata = value;
+              break;
+            }
+            if (attempt === 1) throw new Error("文档正在被外部程序持续修改");
+          }
+          if (metadata) documents.push(structuredClone(metadata));
+        } catch (error) {
+          this.#metadata.delete(id);
+          // 文件在枚举后被外部删除时跳过；其他错误不能伪装成完整空目录。
+          if (error.code !== "ENOENT")
+            throw new Error("无法读取工作区文档元信息，请检查本机文档文件。");
+        }
+      }
+      return {
+        documents: documents.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)),
+        truncated: names.length > selected.length,
+      };
+    });
+    this.#queue = job.catch(() => {});
+    return job;
   }
   async get(id) {
     await this.#queue;
@@ -176,6 +276,7 @@ export class DocumentsStore {
       await mkdir(this.#directory, { recursive: true });
       await writeFile(path + ".tmp", JSON.stringify(doc), "utf8");
       await rename(path + ".tmp", path);
+      this.#metadata.delete(clean.id);
       return doc;
     });
     this.#queue = job.catch(() => {});
@@ -183,7 +284,10 @@ export class DocumentsStore {
   }
   remove(id) {
     const path = this.#path(id);
-    const job = this.#queue.then(() => unlink(path));
+    const job = this.#queue.then(async () => {
+      this.#metadata.delete(id);
+      await unlink(path);
+    });
     this.#queue = job.catch(() => {});
     return job;
   }

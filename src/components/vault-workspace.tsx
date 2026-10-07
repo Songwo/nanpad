@@ -2,7 +2,6 @@ import { useState } from "react";
 import * as Dialog from "@radix-ui/react-dialog";
 import {
   ArrowLeft,
-  Folder,
   FolderOpen,
   FolderPlus,
   KeyRound,
@@ -11,6 +10,7 @@ import {
   Settings2,
   Trash2,
   X,
+  UserRound,
 } from "lucide-react";
 import { toast } from "sonner";
 import { useAppStore } from "@/lib/store";
@@ -28,8 +28,10 @@ import type { Secret } from "@/lib/types";
 import { Button } from "./ui/button";
 import { Field, Input, Select } from "./ui/input";
 import { openFromEvent } from "./asset-card";
+import { CollectionCard } from "./ui/collection-card";
 
 const KIND_LABEL: Record<Secret["kind"], string> = {
+  account: "账号密码",
   password: "网站账号",
   api: "API Key",
   ssh: "SSH 私钥",
@@ -105,10 +107,20 @@ export function VaultWorkspace() {
             {active === null ? t("密钥分组") : t(folder?.name ?? "未分组")}
           </h2>
           <span className="text-meta text-muted">
-            {t("{0} 个密钥", active === null ? matching.length : displayed.length)}
+            {t("{0} 项资料", active === null ? matching.length : displayed.length)}
           </span>
         </div>
         <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() =>
+              state.openComposer("secret", null, { kind: "account", folderId: active ?? "" })
+            }
+          >
+            <UserRound className="size-4" />
+            {t("添加账号")}
+          </Button>
           {folder?.id && (
             <Button
               variant="ghost"
@@ -127,7 +139,7 @@ export function VaultWorkspace() {
         </div>
       </div>
       {active === null ? (
-        <div className="grid gap-x-4 gap-y-6 sm:grid-cols-2 2xl:grid-cols-3">
+        <div className="collection-grid">
           {query &&
             !matching.length &&
             !allFolders.some((item) => t(item.name).toLocaleLowerCase().includes(query)) && (
@@ -148,35 +160,44 @@ export function VaultWorkspace() {
                 (secret) => secretFolderId(secret, folders) === item.id,
               );
               return (
-                <button
+                <CollectionCard
                   key={item.id}
-                  className={cn("mail-folder group text-left", `mail-folder-${item.color}`)}
-                  onClick={() => {
+                  name={t(item.name)}
+                  color={item.color}
+                  count={members.length}
+                  unit={t("项资料")}
+                  description={
+                    members.length
+                      ? t(
+                          "{0} 个账号 · {1} 项凭据",
+                          members.filter((secret) => ["account", "password"].includes(secret.kind))
+                            .length,
+                          members.filter((secret) => !["account", "password"].includes(secret.kind))
+                            .length,
+                        )
+                      : t("账号与凭据的独立收纳空间")
+                  }
+                  openLabel={t("打开分组 {0}", t(item.name))}
+                  editLabel={t("编辑分组 {0}", t(item.name))}
+                  onEdit={item.id ? () => setEditor(item) : undefined}
+                  onOpen={() => {
                     setActive(item.id);
                     setSelected([]);
                   }}
-                  aria-label={t("打开分组 {0}", t(item.name))}
-                >
-                  <div className="mail-folder-tab" />
-                  <div className="flex items-center justify-between">
-                    <Folder className="size-7" />
-                    <span className="font-mono text-meta text-muted">{members.length}</span>
-                  </div>
-                  <h3 className="mt-4 truncate text-base font-semibold text-ink">{t(item.name)}</h3>
-                  <div className="mt-4 flex min-h-8 flex-wrap items-center gap-1 text-muted">
-                    {members.slice(0, 3).map((secret) => (
-                      <span
-                        key={secret.id}
-                        className="max-w-24 truncate rounded-full bg-ink/10 px-2 py-0.5 text-2xs"
-                      >
-                        {secret.name}
+                  preview={
+                    members.length ? (
+                      members.slice(0, 2).map((secret) => (
+                        <span key={secret.id} className="collection-card-preview-chip">
+                          {secret.name}
+                        </span>
+                      ))
+                    ) : (
+                      <span className="collection-card-preview-label">
+                        {t("空分组 · 打开后添加资料")}
                       </span>
-                    ))}
-                    <span className="ml-auto text-2xs">
-                      {members.length ? t("{0} 个密钥", members.length) : t("空分组")}
-                    </span>
-                  </div>
-                </button>
+                    )
+                  }
+                />
               );
             })}
         </div>
@@ -234,7 +255,11 @@ export function VaultWorkspace() {
                     )
                   }
                 />
-                <KeyRound className="size-5 shrink-0 text-muted" />
+                {secret.kind === "account" ? (
+                  <UserRound className="size-5 shrink-0 text-muted" />
+                ) : (
+                  <KeyRound className="size-5 shrink-0 text-muted" />
+                )}
                 <div className="min-w-0 flex-1">
                   <span className="block truncate font-medium">{secret.name}</span>
                   <span className="mt-1 block truncate text-meta text-muted">
@@ -269,10 +294,7 @@ export function VaultWorkspace() {
           folder={editor}
           close={() => {
             setEditor(null);
-            if (
-              active &&
-              !useAppStore.getState().secretFolders?.some((item) => item.id === active)
-            )
+            if (active && !useAppStore.getState().secretFolders?.some((item) => item.id === active))
               setActive(null);
           }}
         />
@@ -283,7 +305,9 @@ export function VaultWorkspace() {
 
 function FolderEditor({ folder, close }: { folder: SecretFolder | "new"; close: () => void }) {
   const [name, setName] = useState(folder === "new" ? "" : folder.name);
-  const [color, setColor] = useState<SecretFolder["color"]>(folder === "new" ? "blue" : folder.color);
+  const [color, setColor] = useState<SecretFolder["color"]>(
+    folder === "new" ? "blue" : folder.color,
+  );
   const [deleting, setDeleting] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -304,8 +328,7 @@ function FolderEditor({ folder, close }: { folder: SecretFolder | "new"; close: 
           )
         )
           throw new Error(t("分组名称已存在"));
-        if (folder === "new" && folders.length >= 100)
-          throw new Error(t("最多创建 100 个分组"));
+        if (folder === "new" && folders.length >= 100) throw new Error(t("最多创建 100 个分组"));
         const next = { id: folder === "new" ? uid() : folder.id, name: name.trim(), color };
         await useAppStore.setState({
           secretFolders:

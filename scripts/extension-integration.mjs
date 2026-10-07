@@ -116,7 +116,7 @@ try {
   await completeOnboarding(page);
   await page.locator('[data-app-ready="true"]').waitFor();
   await page.getByRole("button", { name: "邮箱", exact: true }).click();
-  await page.getByRole("button", { name: "添加资产", exact: true }).click();
+  await page.getByRole("button", { name: "添加邮箱", exact: true }).click();
   let composer = page.getByRole("dialog", { name: "邮箱", exact: true });
   await composer.getByLabel("地址", { exact: true }).fill("owner@example.test");
   await composer.getByLabel("所属域名", { exact: true }).fill("example.test");

@@ -35,11 +35,8 @@ interface ConversationState {
 }
 
 /**
- * Chat history, on disk beside the assets.
- *
- * Safe to write in the clear because of how answers are built: a message that
- * revealed a password stores `{type:"secret", assetId, field}`, never the value.
- * The file records which questions were asked, not any of the answers' secrets.
+ * 历史与资产一样保存在本机。凭据引用块只保存资产和字段，不保存密钥库值；
+ * 用户输入及获准检索的文档回答仍可能包含敏感文本，不应视作自动脱敏数据。
  */
 const diskStorage: StateStorage = {
   getItem: async () => {

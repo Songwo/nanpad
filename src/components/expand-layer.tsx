@@ -30,6 +30,11 @@ import { PROBEABLE, type ProbeKind } from "@/lib/probes";
 import { useAppStore, type ExpandState } from "@/lib/store";
 import type { AssetKind } from "@/lib/types";
 import { t } from "@/lib/i18n";
+import { desktop } from "@/lib/desktop";
+import { useVault } from "@/lib/vault-state";
+import { deleteEncryptedAccount } from "@/lib/account-delete.mjs";
+import { EditorDialog } from "./ui/editor-dialog";
+import { toast } from "sonner";
 
 const ENTER_MS = 340;
 const EXIT_MS = 220;
@@ -47,6 +52,9 @@ export function ExpandLayer() {
   const remove = useAppStore((s) => s.remove);
   const aiAssets = useAppStore((s) => s.aiAssets);
   const servers = useAppStore((s) => s.servers);
+  const secrets = useAppStore((s) => s.secrets);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   const [visible, setVisible] = useState<ExpandState | null>(null);
   const [shown, setShown] = useState(false);
@@ -55,9 +63,14 @@ export function ExpandLayer() {
   >("overview");
   const currentServer =
     visible?.kind === "server" ? servers.find((s) => s.id === visible.id) : null;
+  const currentAccount =
+    visible?.kind === "secret"
+      ? secrets.find((item) => item.id === visible.id && item.kind === "account")
+      : null;
 
   useEffect(() => {
     setServerTab("overview");
+    setConfirmDelete(false);
   }, [visible?.id]);
 
   const panel = useRef<HTMLDivElement>(null);
@@ -140,15 +153,39 @@ export function ExpandLayer() {
   }, [visible]);
 
   const close = useCallback(() => setExpanded(null), [setExpanded]);
+  const deleteAccount = async () => {
+    if (!currentAccount || deleting) return;
+    const id = currentAccount.id;
+    const bridge = desktop();
+    if (!bridge) {
+      toast.error(t("请在桌面版中删除加密账号。"));
+      return;
+    }
+    setConfirmDelete(false);
+    setDeleting(true);
+    try {
+      await deleteEncryptedAccount({
+        id,
+        requireUnlocked: () =>
+          useVault.getState().require(t("删除账号及其加密凭据需要解锁密钥库。")),
+        removeCredential: (key: string) => bridge.vault.remove(key),
+        removeAsset: (assetId: string) => remove("secret", assetId),
+      });
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : String(error));
+    } finally {
+      setDeleting(false);
+    }
+  };
 
   useEffect(() => {
     if (!visible) return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") close();
+      if (e.key === "Escape" && !confirmDelete && !useVault.getState().prompt) close();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [visible, close]);
+  }, [visible, close, confirmDelete]);
 
   if (!visible) return null;
 
@@ -159,6 +196,21 @@ export function ExpandLayer() {
       aria-modal="true"
       aria-label={t("资产详情")}
     >
+      {confirmDelete && currentAccount && (
+        <EditorDialog title={t("删除账号")} onClose={() => setConfirmDelete(false)}>
+          <p className="text-sm leading-relaxed text-muted">
+            {t("将删除「{0}」及其加密凭据，关联文档会保留。此操作无法撤销。", currentAccount.name)}
+          </p>
+          <div className="mt-6 flex justify-end gap-2">
+            <Button variant="outline" onClick={() => setConfirmDelete(false)}>
+              {t("取消")}
+            </Button>
+            <Button variant="danger" onClick={() => void deleteAccount()}>
+              {t("确认删除账号")}
+            </Button>
+          </div>
+        </EditorDialog>
+      )}
       <button
         type="button"
         aria-label={t("关闭")}
@@ -185,7 +237,10 @@ export function ExpandLayer() {
             <Button
               variant="ghost"
               size="icon-sm"
-              onClick={() => remove(visible.kind, visible.id)}
+              disabled={deleting}
+              onClick={() =>
+                currentAccount ? setConfirmDelete(true) : remove(visible.kind, visible.id)
+              }
               aria-label={t("删除")}
             >
               <Trash2 className="size-4" />
@@ -323,16 +378,7 @@ export function ExpandLayer() {
           ) : (
             <>
               <ExpandedBody kind={visible.kind} id={visible.id} />
-              {visible.kind === "server" && (
-                <MetricHistory key={`metrics:${visible.id}`} serverId={visible.id} />
-              )}
-              {visible.kind === "server" && (
-                <SftpBrowser key={`files:${visible.id}`} serverId={visible.id} />
-              )}
-              <AssetRelations key={`links:${visible.kind}:${visible.id}`} asset={visible} />
-              <AssetDocuments asset={visible} />
-              {(visible.kind !== "ai" ||
-                !aiAssets.find((item) => item.id === visible.id)?.oauthAccountId) && (
+              {currentAccount && (
                 <div ref={accountSection} tabIndex={-1} aria-label={t("凭据位置")}>
                   <AccountPanel
                     key={`${visible.kind}:${visible.id}`}
@@ -341,6 +387,25 @@ export function ExpandLayer() {
                   />
                 </div>
               )}
+              {visible.kind === "server" && (
+                <MetricHistory key={`metrics:${visible.id}`} serverId={visible.id} />
+              )}
+              {visible.kind === "server" && (
+                <SftpBrowser key={`files:${visible.id}`} serverId={visible.id} />
+              )}
+              <AssetRelations key={`links:${visible.kind}:${visible.id}`} asset={visible} />
+              <AssetDocuments asset={visible} />
+              {!currentAccount &&
+                (visible.kind !== "ai" ||
+                  !aiAssets.find((item) => item.id === visible.id)?.oauthAccountId) && (
+                  <div ref={accountSection} tabIndex={-1} aria-label={t("凭据位置")}>
+                    <AccountPanel
+                      key={`${visible.kind}:${visible.id}`}
+                      assetId={visible.id}
+                      kind={visible.kind}
+                    />
+                  </div>
+                )}
             </>
           )}
         </div>

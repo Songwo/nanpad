@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -303,8 +303,12 @@ test("vercel Host without a public hostname emits no og:image", () => {
   }
 });
 
-test("emits og:image for a public host and prefers a custom card", () => {
+test("emits og:image for a public host and prefers a custom card", (t) => {
+  // 占位卡场景必须使用空目录，不能由当前项目是否已有品牌图决定结果。
+  const cwd = mkdtempSync(join(tmpdir(), "pwa-placeholder-"));
+  t.after(() => rmSync(cwd, { recursive: true, force: true }));
   const placeholder = injectGrokPwaHead("<html><head></head></html>", {
+    cwd,
     appName: "Wild Race",
     host: "wild-race.grok.me",
     site: { title: "Wild Race" },
@@ -316,6 +320,7 @@ test("emits og:image for a public host and prefers a custom card", () => {
   assert.match(placeholder, /property="og:image:width" content="1200"/);
 
   const custom = injectGrokPwaHead("<html><head></head></html>", {
+    cwd,
     appName: "Wild Race",
     host: "wild-race.grok.me",
     site: { title: "Wild Race", card: "custom", type: "x:game" },
@@ -324,8 +329,11 @@ test("emits og:image for a public host and prefers a custom card", () => {
   assert.match(custom, /property="og:type" content="x:game"/);
 });
 
-test("placeholder og:image appends site.color when it is 6-digit hex", () => {
+test("placeholder og:image appends site.color when it is 6-digit hex", (t) => {
+  const cwd = mkdtempSync(join(tmpdir(), "pwa-placeholder-color-"));
+  t.after(() => rmSync(cwd, { recursive: true, force: true }));
   const themed = injectGrokPwaHead("<html><head></head></html>", {
+    cwd,
     host: "wild-race.grok.me",
     site: { title: "Wild Race", color: "#FF4D2E" },
   });
@@ -335,12 +343,14 @@ test("placeholder og:image appends site.color when it is 6-digit hex", () => {
   );
 
   const invalid = injectGrokPwaHead("<html><head></head></html>", {
+    cwd,
     host: "wild-race.grok.me",
     site: { title: "Wild Race", color: "red" },
   });
   assert.doesNotMatch(invalid, /color=/);
 
   const custom = injectGrokPwaHead("<html><head></head></html>", {
+    cwd,
     host: "wild-race.grok.me",
     site: { title: "Wild Race", card: "custom", color: "FF4D2E" },
   });

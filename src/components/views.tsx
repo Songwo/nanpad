@@ -44,6 +44,7 @@ import { groupByTag, matchesTags, tagIndex, tagsOf } from "@/lib/tags";
 import type { AssetKind, Status, Taggable, ViewId } from "@/lib/types";
 import { cn, formatUsd } from "@/lib/utils";
 import { t } from "@/lib/i18n";
+import { CREATE_LABELS } from "@/lib/create-asset";
 
 export function MainView() {
   const view = useAppStore((s) => s.view);
@@ -52,7 +53,10 @@ export function MainView() {
   return (
     <div
       key={view}
-      className={cn("view-in", view === "agent" && "flex min-h-[calc(100dvh-13rem)] flex-col")}
+      className={cn(
+        view === "docs" ? "documents-view" : "view-in",
+        view === "agent" && "agent-view-frame",
+      )}
     >
       <Suspense
         fallback={
@@ -120,13 +124,14 @@ export function TopTabs() {
   const view = useAppStore((s) => s.view);
   const item = NAV.find((entry) => entry.id === view);
   const openComposer = useAppStore((s) => s.openComposer);
+  if (view === "docs") return null;
   return (
     <div className="sticky top-0 z-20 border-b border-line bg-canvas">
-      <div className="flex min-h-16 items-center justify-between gap-3 px-4 md:px-6">
+      <div className="page-view-heading flex min-h-16 items-center justify-between gap-3 px-4 md:px-6">
         <h1 className="text-xl font-semibold tracking-tight">{t(item?.label ?? "资产总览")}</h1>
         {item?.kind && (
           <Button size="sm" onClick={() => openComposer(item.kind!)}>
-            {t("添加资产")}
+            {t(CREATE_LABELS[item.kind])}
           </Button>
         )}
       </div>
@@ -152,13 +157,14 @@ function ListHeader() {
   const pending = counts[BADGE_KEY[view]];
 
   return (
-    <div className="bg-canvas/80 px-4 py-2 space-y-2 border-b border-line">
-      <div className="flex items-center justify-between gap-3">
+    <div className="asset-list-toolbar bg-canvas/80 px-4 py-2 space-y-2 border-b border-line">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         {/* Compact pill tabs for filter */}
         <div className="flex items-center gap-1.5 text-xs font-medium">
           <button
             type="button"
             onClick={() => setFilter("all")}
+            aria-pressed={filter === "all"}
             className={cn(
               "px-3 py-1 rounded-full transition-colors cursor-pointer text-xs",
               filter === "all"
@@ -171,6 +177,7 @@ function ListHeader() {
           <button
             type="button"
             onClick={() => setFilter("attention")}
+            aria-pressed={filter === "attention"}
             className={cn(
               "px-3 py-1 rounded-full transition-colors cursor-pointer flex items-center gap-1.5 text-xs",
               filter === "attention"
@@ -234,8 +241,9 @@ function ListHeader() {
           size="sm"
           className="xl:hidden h-8 text-xs"
           onClick={() => setCommandOpen(true)}
+          aria-label={t("搜索资产")}
         >
-          ⌘K
+          <Search className="size-4" />
         </Button>
       </div>
 
@@ -387,7 +395,7 @@ function ServersView() {
   return (
     <AssetList
       items={items}
-      empty={t("没有匹配的服务器。点左下角「添加资产」录入一台。")}
+      empty={t("没有匹配的服务器。点击「添加服务器」录入一台。")}
       render={(s) => <ServerCard key={s.id} data={s} />}
     />
   );

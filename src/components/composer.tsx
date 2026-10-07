@@ -27,6 +27,7 @@ import type {
 } from "@/lib/types";
 import { uid } from "@/lib/utils";
 import { t } from "@/lib/i18n";
+import { accountMetadataFromForm, clearAccountDraft } from "@/lib/account-record.mjs";
 import {
   initialAiMode,
   initialServerMode,
@@ -49,10 +50,27 @@ export function Composer() {
   // Closing clears `editingId`, so the exit would otherwise re-title itself
   // from "编辑" to "添加" halfway out.
   const last = useRef({ kind, editingId });
+  const [sessionRevision, setSessionRevision] = useState(0);
+  useEffect(
+    () =>
+      useAppStore.subscribe((state, previous) => {
+        if (
+          state.composerOpen &&
+          (!previous.composerOpen ||
+            state.composerKind !== previous.composerKind ||
+            state.editingId !== previous.editingId ||
+            state.composerPreset !== previous.composerPreset)
+        ) {
+          setSessionRevision((revision) => revision + 1);
+        }
+      }),
+    [],
+  );
   if (open) last.current = { kind, editingId };
   if (!mounted || (captured.current && (!open || !unlocked))) return null;
   return (
     <ComposerBody
+      key={sessionRevision}
       kind={last.current.kind}
       editingId={last.current.editingId}
       shown={shown}
@@ -100,6 +118,68 @@ function ComposerBody({
     initialServerMode(existing, form),
   );
   const [imageBusy, setImageBusy] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const standaloneAccount = kind === "secret" && form.kind === "account";
+  const formRef = useRef(form);
+  formRef.current = form;
+  const accountGeneration = useRef(0);
+  const sessionActive = useRef(true);
+  const panelRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    sessionActive.current = true;
+    // 订阅同步失效，关闭与重新打开即使合并在同一次 React 渲染中也不能复活旧保存。
+    const unsubscribe = useAppStore.subscribe((state, previous) => {
+      if (
+        !state.composerOpen ||
+        state.composerKind !== previous.composerKind ||
+        state.editingId !== previous.editingId ||
+        state.composerPreset !== previous.composerPreset
+      ) {
+        sessionActive.current = false;
+      }
+    });
+    return () => {
+      sessionActive.current = false;
+      unsubscribe();
+    };
+  }, []);
+
+  useEffect(
+    () =>
+      useVault.subscribe((state, previous) => {
+        if (
+          previous.unlocked &&
+          !state.unlocked &&
+          kind === "secret" &&
+          formRef.current.kind === "account"
+        ) {
+          accountGeneration.current += 1;
+          setForm(clearAccountDraft);
+        }
+      }),
+    [kind],
+  );
+
+  useEffect(() => {
+    if (!shown) return;
+    // 等类型选择器释放焦点后，将键盘交给新表单，避免焦点落到页面背景。
+    const frame = requestAnimationFrame(() => {
+      const panel = panelRef.current;
+      if (!panel || useVault.getState().prompt || panel.contains(document.activeElement)) return;
+      const visible = (element: HTMLElement) => element.getClientRects().length > 0;
+      const input = Array.from(
+        panel.querySelectorAll<HTMLElement>(
+          'input:not([type="hidden"]):not([type="radio"]):not([type="checkbox"]):not([disabled]), textarea:not([disabled])',
+        ),
+      ).find(visible);
+      const action = Array.from(
+        panel.querySelectorAll<HTMLElement>(".editor-scroll button:not([disabled])"),
+      ).find(visible);
+      (input ?? action ?? panel).focus({ preventScroll: true });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [shown]);
 
   // Reset only when the form changes *subject*. Keying on `existing` would
   // wipe half-typed input every time a background probe rewrote the record.
@@ -114,7 +194,7 @@ function ComposerBody({
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
+      if (e.key === "Escape" && !e.defaultPrevented && !useVault.getState().prompt) onClose();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -126,53 +206,100 @@ function ComposerBody({
 
   async function submit(e: FormEvent) {
     e.preventDefault();
-    if (imageBusy) return;
+    if (imageBusy || saving) return;
+    if (standaloneAccount && !isDesktop()) {
+      toast.error(t("账号密码需要桌面版的加密密钥库，网页版不会保存账号凭据。"));
+      return;
+    }
+    if (standaloneAccount && !form.name?.trim()) {
+      toast.error(t("请填写显示名称"));
+      return;
+    }
+    const generation = accountGeneration.current;
+    const accountStillOpen = () =>
+      sessionActive.current &&
+      useAppStore.getState().composerOpen &&
+      (!standaloneAccount || generation === accountGeneration.current);
     const captureStillOpen = () =>
       !form._captureId ||
       (useAppStore.getState().composerOpen &&
         useAppStore.getState().composerPreset?._captureId === form._captureId &&
         useVault.getState().unlocked);
-    if (!captureStillOpen()) return;
+    if (!captureStillOpen() || !accountStillOpen()) return;
     const id = editingId ?? uid(kind.slice(0, 3));
-
-    // Secrets go to the encrypted vault before the asset is written, so a
-    // half-saved record never ends up pointing at a credential that is not there.
-    if (isDesktop()) {
-      const sshDraft = kind === "server" ? sshDraftForSave(form, serverMode) : null;
-      const sshCredential = sshDraft ? credentialFromForm(sshDraft) : null;
-      const account = accountFromForm(kind === "server" ? serverAccountDraft(form) : form);
-      if (sshCredential || account) {
-        const unlocked = await useVault.getState().require(t("保存账号与凭据需要先解锁密钥库。"));
-        if (!unlocked) {
-          toast(t("密钥库未解锁，凭据未保存"));
-          return;
-        } else {
-          try {
-            if (!captureStillOpen()) return;
-            const vault = desktop()!.vault;
-            if (sshCredential) await vault.set(credentialId(id), sshCredential);
-            if (account) await vault.set(accountId(id), account);
-          } catch (err) {
-            toast(err instanceof Error ? err.message : t("凭据保存失败"));
+    setSaving(true);
+    try {
+      // Secrets go to the encrypted vault before the asset is written, so a
+      // half-saved record never ends up pointing at a credential that is not there.
+      if (isDesktop()) {
+        const sshDraft = kind === "server" ? sshDraftForSave(form, serverMode) : null;
+        const sshCredential = sshDraft ? credentialFromForm(sshDraft) : null;
+        const accountDraft = kind === "server" ? serverAccountDraft(form) : form;
+        const draftAccount = accountFromForm(accountDraft);
+        if (sshCredential || draftAccount || standaloneAccount) {
+          const unlocked = await useVault.getState().require(t("保存账号与凭据需要先解锁密钥库。"));
+          if (!accountStillOpen()) return;
+          if (!unlocked) {
+            toast(t("密钥库未解锁，凭据未保存"));
             return;
+          } else {
+            try {
+              if (!captureStillOpen() || !accountStillOpen()) return;
+              const vault = desktop()!.vault;
+              const previous = editingId ? await vault.get(accountId(id)) : null;
+              if (!captureStillOpen() || !accountStillOpen()) return;
+              const account = accountFromForm(accountDraft, previous);
+              if (standaloneAccount && (!account?.username?.trim() || !account.password)) {
+                toast.error(t("请填写账户名和密码"));
+                return;
+              }
+              if (!captureStillOpen() || !accountStillOpen()) return;
+              if (sshCredential) await vault.set(credentialId(id), sshCredential);
+              if (!captureStillOpen() || !accountStillOpen()) return;
+              if (account) {
+                await vault.set(accountId(id), account);
+                if (standaloneAccount && !accountStillOpen()) {
+                  if (!editingId) {
+                    try {
+                      await vault.remove(accountId(id));
+                    } catch {
+                      // 写入已经完成但锁库阻止清理时，留下可管理入口，且不碰后来打开的表单。
+                      persist(kind, id, form, existing, serverMode);
+                      toast.warning(
+                        t("加密凭据未能清理，已保留「{0}」，可解锁后查看或删除。", form.name),
+                      );
+                    }
+                  } else {
+                    toast(t("编辑已关闭，已经写入的加密凭据已保留。"));
+                  }
+                  return;
+                }
+              }
+            } catch (err) {
+              if (!accountStillOpen()) return;
+              toast(err instanceof Error ? err.message : t("凭据保存失败"));
+              return;
+            }
           }
         }
       }
-    }
 
-    if (!captureStillOpen()) return;
-    persist(kind, id, form, existing, serverMode);
-    if (kind === "secret" && form.kind === "password" && form._mailboxId) {
-      useAppStore.getState().linkAssets({ kind, id }, { kind: "mail", id: form._mailboxId });
+      if (!captureStillOpen() || !accountStillOpen()) return;
+      persist(kind, id, form, existing, serverMode);
+      if (kind === "secret" && ["password", "account"].includes(form.kind) && form._mailboxId) {
+        useAppStore.getState().linkAssets({ kind, id }, { kind: "mail", id: form._mailboxId });
+      }
+      useAppStore
+        .getState()
+        .log(
+          `${editingId ? t("已更新") : t("已添加")} ${t(KIND_LABEL[kind])} ${form.name || form.address || form.cn || ""}`,
+          kind,
+        );
+      toast.success(editingId ? t("已保存") : t("已添加"));
+      onClose();
+    } finally {
+      if (sessionActive.current) setSaving(false);
     }
-    useAppStore
-      .getState()
-      .log(
-        `${editingId ? t("已更新") : t("已添加")} ${t(KIND_LABEL[kind])} ${form.name || form.address || form.cn || ""}`,
-        kind,
-      );
-    toast.success(editingId ? t("已保存") : t("已添加"));
-    onClose();
   }
 
   return (
@@ -185,193 +312,219 @@ function ComposerBody({
         onClick={onClose}
       />
       <div
+        ref={panelRef}
         role="dialog"
+        tabIndex={-1}
         aria-modal="true"
         aria-label={
-          kind === "ai" ? t(editingId ? "编辑 AI 订阅" : "添加 AI 订阅") : t(KIND_LABEL[kind])
+          standaloneAccount
+            ? t("账号密码")
+            : kind === "ai"
+              ? t(editingId ? "编辑 AI 订阅" : "添加 AI 订阅")
+              : t(KIND_LABEL[kind])
         }
         data-shown={shown}
-        className="anim-sheet relative z-10 max-h-[92vh] w-full max-w-lg overflow-y-auto rounded-t-2xl bg-card p-5 shadow-float sm:rounded-2xl"
+        className="editor-dialog editor-dialog-inline"
       >
-        <div className="mb-4 flex items-center justify-between">
+        <div className="editor-heading">
           <h2 className="text-lg font-semibold tracking-tight">
             {kind === "ai" ? (
               t(editingId ? "编辑 AI 订阅" : "添加 AI 订阅")
             ) : (
               <>
                 {editingId ? t("编辑") : t("添加")}
-                {t(KIND_LABEL[kind])}
+                {t(standaloneAccount ? "账号密码" : KIND_LABEL[kind])}
               </>
             )}
           </h2>
-          <Button type="button" variant="ghost" size="icon-sm" onClick={onClose}>
-            <X className="size-4" />
-          </Button>
-        </div>
-        {kind === "ai" && !editingId && aiMode !== "choose" && (
           <Button
             type="button"
             variant="ghost"
-            size="sm"
-            className="mb-3"
-            onClick={() => setAiMode("choose")}
+            size="icon"
+            className="min-h-11 min-w-11"
+            aria-label={t("关闭")}
+            onClick={onClose}
           >
-            <ArrowLeft className="size-3.5" />
-            {t("重新选择来源")}
+            <X className="size-4" />
           </Button>
-        )}
-        {kind === "ai" && (aiMode === "login" || aiMode === "manual") && (
-          <div
-            role="tablist"
-            aria-label={t("添加方式")}
-            className="mb-5 grid grid-cols-2 gap-1 rounded-md bg-line p-1"
-          >
+        </div>
+        <div className="editor-scroll">
+          {kind === "ai" && !editingId && aiMode !== "choose" && (
             <Button
               type="button"
-              role="tab"
-              aria-selected={aiMode === "login"}
-              variant={aiMode === "login" ? "outline" : "ghost"}
-              onClick={() => setAiMode("login")}
+              variant="ghost"
+              size="sm"
+              className="mb-3"
+              onClick={() => setAiMode("choose")}
             >
-              <LogIn className="size-4" />
-              {t("快速登录")}
+              <ArrowLeft className="size-3.5" />
+              {t("重新选择来源")}
             </Button>
-            <Button
-              type="button"
-              role="tab"
-              aria-selected={aiMode === "manual"}
-              variant={aiMode === "manual" ? "outline" : "ghost"}
-              onClick={() => setAiMode("manual")}
+          )}
+          {kind === "ai" && (aiMode === "login" || aiMode === "manual") && (
+            <div
+              role="tablist"
+              aria-label={t("添加方式")}
+              className="mb-5 grid grid-cols-2 gap-1 rounded-md bg-line p-1"
             >
-              <Pencil className="size-4" />
-              {t("手动填写")}
-            </Button>
-          </div>
-        )}
-        {kind === "ai" && aiMode === "choose" ? (
-          <div className="space-y-3">
-            <p className="text-meta text-muted">{t("先选择要管理的 AI 来源。")}</p>
-            <button
-              type="button"
-              className="flex w-full items-start gap-3 rounded-xl border border-line bg-canvas p-4 text-left transition-colors hover:bg-line focus-visible:outline-2 focus-visible:outline-accent"
-              onClick={() => setAiMode("login")}
-            >
-              <LogIn className="mt-0.5 size-5 shrink-0 text-accent" />
-              <span>
-                <span className="block font-semibold">{t("订阅账号")}</span>
-                <span className="mt-1 block text-meta text-muted">
-                  {t("连接 ChatGPT / Codex、Claude 等账号，查看平台提供的订阅额度。")}
-                </span>
-              </span>
-            </button>
-            <button
-              type="button"
-              className="flex w-full items-start gap-3 rounded-xl border border-line bg-canvas p-4 text-left transition-colors hover:bg-line focus-visible:outline-2 focus-visible:outline-accent"
-              onClick={() => setAiMode("api")}
-            >
-              <ChartNoAxesCombined className="mt-0.5 size-5 shrink-0 text-accent" />
-              <span>
-                <span className="block font-semibold">{t("API 调用用量")}</span>
-                <span className="mt-1 block text-meta text-muted">
-                  {t("连接 OpenAI 或 Anthropic 的用量接口，记录 Token 用量。")}
-                </span>
-              </span>
-            </button>
-            <Button type="button" variant="ghost" onClick={() => setAiMode("manual")}>
-              <Pencil className="size-4" />
-              {t("仅手动记录")}
-            </Button>
-          </div>
-        ) : kind === "ai" && aiMode === "api" ? (
-          <div className="space-y-4">
-            <p className="text-meta leading-relaxed text-muted">
-              {t(
-                "选择 API 服务商后继续设置用量来源。组织用量接口通常需要 Admin Key，普通调用 Key 可能没有查询权限。",
-              )}
-            </p>
-            <div className="grid grid-cols-2 gap-3">
               <Button
                 type="button"
-                variant="outline"
-                onClick={() => useAppStore.getState().openUsageSetup({ type: "openai-api" })}
+                role="tab"
+                aria-selected={aiMode === "login"}
+                variant={aiMode === "login" ? "outline" : "ghost"}
+                onClick={() => setAiMode("login")}
               >
-                OpenAI API
+                <LogIn className="size-4" />
+                {t("快速登录")}
               </Button>
               <Button
                 type="button"
-                variant="outline"
-                onClick={() => useAppStore.getState().openUsageSetup({ type: "anthropic-api" })}
+                role="tab"
+                aria-selected={aiMode === "manual"}
+                variant={aiMode === "manual" ? "outline" : "ghost"}
+                onClick={() => setAiMode("manual")}
               >
-                Anthropic API
+                <Pencil className="size-4" />
+                {t("手动填写")}
               </Button>
             </div>
-          </div>
-        ) : kind === "ai" && aiMode === "login" ? (
-          <div role="tabpanel" aria-label={t("快速登录")}>
-            <AiAccountsPanel
-              standalone
-              assetId={editingId ?? undefined}
-              initialProvider={(existing as AiAsset | null)?.oauthProvider}
-            />
-            <div className="mt-5 flex justify-end">
+          )}
+          {kind === "ai" && aiMode === "choose" ? (
+            <div className="space-y-3">
+              <p className="text-meta text-muted">{t("先选择要管理的 AI 来源。")}</p>
+              <button
+                type="button"
+                className="flex w-full items-start gap-3 rounded-xl border border-line bg-canvas p-4 text-left transition-colors hover:bg-line focus-visible:outline-2 focus-visible:outline-accent"
+                onClick={() => setAiMode("login")}
+              >
+                <LogIn className="mt-0.5 size-5 shrink-0 text-accent" />
+                <span>
+                  <span className="block font-semibold">{t("订阅账号")}</span>
+                  <span className="mt-1 block text-meta text-muted">
+                    {t("连接 ChatGPT / Codex、Claude 等账号，查看平台提供的订阅额度。")}
+                  </span>
+                </span>
+              </button>
+              <button
+                type="button"
+                className="flex w-full items-start gap-3 rounded-xl border border-line bg-canvas p-4 text-left transition-colors hover:bg-line focus-visible:outline-2 focus-visible:outline-accent"
+                onClick={() => setAiMode("api")}
+              >
+                <ChartNoAxesCombined className="mt-0.5 size-5 shrink-0 text-accent" />
+                <span>
+                  <span className="block font-semibold">{t("API 调用用量")}</span>
+                  <span className="mt-1 block text-meta text-muted">
+                    {t("连接 OpenAI 或 Anthropic 的用量接口，记录 Token 用量。")}
+                  </span>
+                </span>
+              </button>
+              <Button type="button" variant="ghost" onClick={() => setAiMode("manual")}>
+                <Pencil className="size-4" />
+                {t("仅手动记录")}
+              </Button>
+            </div>
+          ) : kind === "ai" && aiMode === "api" ? (
+            <div className="space-y-4">
+              <p className="text-meta leading-relaxed text-muted">
+                {t(
+                  "选择 API 服务商后继续设置用量来源。组织用量接口通常需要 Admin Key，普通调用 Key 可能没有查询权限。",
+                )}
+              </p>
+              <div className="grid grid-cols-2 gap-3">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => useAppStore.getState().openUsageSetup({ type: "openai-api" })}
+                >
+                  OpenAI API
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => useAppStore.getState().openUsageSetup({ type: "anthropic-api" })}
+                >
+                  Anthropic API
+                </Button>
+              </div>
+            </div>
+          ) : kind === "ai" && aiMode === "login" ? (
+            <div role="tabpanel" aria-label={t("快速登录")}>
+              <AiAccountsPanel
+                standalone
+                assetId={editingId ?? undefined}
+                initialProvider={(existing as AiAsset | null)?.oauthProvider}
+              />
+            </div>
+          ) : (
+            <form id="asset-composer-form" onSubmit={submit}>
+              {kind !== "server" && (
+                <div className="mb-4">
+                  <ImagePicker
+                    key={`${kind}:${editingId ?? "new"}`}
+                    value={form.imageDataUrl}
+                    onChange={(value) => set("imageDataUrl", value)}
+                    onBusyChange={setImageBusy}
+                  />
+                </div>
+              )}
+              {kind === "ai" && !form.oauthAccountId && (
+                <p className="mb-4 rounded-lg bg-canvas p-3 text-meta leading-relaxed text-muted">
+                  {t("手动记录不会自动采集用量。这里的用量、月费与续费日期由你维护。")}
+                </p>
+              )}
+              {kind === "server" ? (
+                <ServerFields
+                  form={form}
+                  set={set}
+                  editingId={editingId}
+                  mode={serverMode}
+                  setMode={setServerMode}
+                  onBusyChange={setImageBusy}
+                />
+              ) : (
+                <div className="grid gap-3 sm:grid-cols-2">
+                  {fields(kind, form, set, editingId)}
+                </div>
+              )}
+              {kind === "secret" && ["password", "account"].includes(form.kind) && (
+                <div className="mt-3">
+                  <Field label={t("注册邮箱")}>
+                    <Select
+                      aria-label={t("注册邮箱")}
+                      value={form._mailboxId ?? ""}
+                      onValueChange={(value) => set("_mailboxId", value)}
+                      options={[
+                        { value: "", label: t("暂不关联") },
+                        ...mailboxes.map((mail) => ({ value: mail.id, label: mail.address })),
+                      ]}
+                    />
+                  </Field>
+                </div>
+              )}
+            </form>
+          )}
+        </div>
+        {(kind !== "ai" || !["choose", "api"].includes(aiMode)) && (
+          <div className="editor-footer">
+            {kind === "ai" && aiMode === "login" ? (
               <Button type="button" variant="outline" onClick={onClose}>
                 {t("完成")}
               </Button>
-            </div>
-          </div>
-        ) : (
-          <form onSubmit={submit}>
-            {kind !== "server" && (
-              <div className="mb-4">
-                <ImagePicker
-                  key={`${kind}:${editingId ?? "new"}`}
-                  value={form.imageDataUrl}
-                  onChange={(value) => set("imageDataUrl", value)}
-                  onBusyChange={setImageBusy}
-                />
-              </div>
-            )}
-            {kind === "ai" && !form.oauthAccountId && (
-              <p className="mb-4 rounded-lg bg-canvas p-3 text-meta leading-relaxed text-muted">
-                {t("手动记录不会自动采集用量。这里的用量、月费与续费日期由你维护。")}
-              </p>
-            )}
-            {kind === "server" ? (
-              <ServerFields
-                form={form}
-                set={set}
-                editingId={editingId}
-                mode={serverMode}
-                setMode={setServerMode}
-                onBusyChange={setImageBusy}
-              />
             ) : (
-              <div className="grid gap-3 sm:grid-cols-2">{fields(kind, form, set, editingId)}</div>
+              <>
+                <Button type="button" variant="outline" onClick={onClose}>
+                  {t("取消")}
+                </Button>
+                <Button
+                  type="submit"
+                  form="asset-composer-form"
+                  disabled={imageBusy || saving || (standaloneAccount && !isDesktop())}
+                >
+                  {editingId ? t("保存") : t("添加")}
+                </Button>
+              </>
             )}
-            {kind === "secret" && form.kind === "password" && (
-              <div className="mt-3">
-                <Field label={t("注册邮箱")}>
-                  <Select
-                    aria-label={t("注册邮箱")}
-                    value={form._mailboxId ?? ""}
-                    onValueChange={(value) => set("_mailboxId", value)}
-                    options={[
-                      { value: "", label: t("暂不关联") },
-                      ...mailboxes.map((mail) => ({ value: mail.id, label: mail.address })),
-                    ]}
-                  />
-                </Field>
-              </div>
-            )}
-            <div className="mt-5 flex justify-end gap-2">
-              <Button type="button" variant="ghost" onClick={onClose}>
-                {t("取消")}
-              </Button>
-              <Button type="submit" disabled={imageBusy}>
-                {editingId ? t("保存") : t("添加")}
-              </Button>
-            </div>
-          </form>
+          </div>
         )}
       </div>
     </div>
@@ -518,13 +671,17 @@ function fields(
   editingId: string | null,
 ): ReactNode[] {
   return [
-    <SmartPaste
-      key="_paste"
-      kind={kind}
-      onApply={(fields) => {
-        for (const [k, v] of Object.entries(fields)) set(k, v);
-      }}
-    />,
+    ...(kind === "secret" && form.kind === "account"
+      ? []
+      : [
+          <SmartPaste
+            key="_paste"
+            kind={kind}
+            onApply={(fields) => {
+              for (const [k, v] of Object.entries(fields)) set(k, v);
+            }}
+          />,
+        ]),
     ...kindFields(kind, form, set),
     ...(kind === "ai" && form.oauthAccountId
       ? []
@@ -537,18 +694,26 @@ function kindFields(
   form: Record<string, string>,
   set: (k: string, v: string) => void,
 ): ReactNode[] {
-  const F = (key: string, label: string, extra?: { span?: boolean; area?: boolean }) => (
+  const F = (
+    key: string,
+    label: string,
+    extra?: { span?: boolean; area?: boolean; required?: boolean; placeholder?: string },
+  ) => (
     <div key={key} className={extra?.span ? "sm:col-span-2" : ""}>
       <Field label={label}>
         {extra?.area ? (
           <Textarea
             aria-label={label}
+            required={extra?.required}
+            placeholder={extra?.placeholder}
             value={form[key] ?? ""}
             onChange={(e) => set(key, e.target.value)}
           />
         ) : (
           <Input
             aria-label={label}
+            required={extra?.required}
+            placeholder={extra?.placeholder}
             value={form[key] ?? ""}
             onChange={(e) => set(key, e.target.value)}
           />
@@ -600,13 +765,17 @@ function kindFields(
       ];
     case "secret":
       return [
-        F("name", t("名称")),
+        F("name", t(form.kind === "account" ? "显示名称" : "名称"), {
+          required: form.kind === "account",
+          placeholder: form.kind === "account" ? "Apple ID" : undefined,
+        }),
         <Field key="kind" label={t("类型")}>
           <Select
             aria-label={t("类型")}
             value={form.kind || "api"}
             onValueChange={(value) => set("kind", value)}
             options={[
+              { value: "account", label: t("账号密码") },
               { value: "password", label: t("网站账号 / 密码") },
               { value: "api", label: "API Key" },
               { value: "ssh", label: t("SSH 私钥") },
@@ -614,9 +783,9 @@ function kindFields(
             ]}
           />
         </Field>,
-        F("hint", t("提示")),
+        ...(form.kind === "account" ? [] : [F("hint", t("提示"))]),
         F("tags", t("标签（逗号分隔）"), { span: true }),
-        F("notes", t("说明"), { span: true, area: true }),
+        ...(form.kind === "account" ? [] : [F("notes", t("说明"), { span: true, area: true })]),
       ];
     case "cert":
       return [
@@ -833,7 +1002,7 @@ function persist(
     case "secret": {
       const previous = existing as Secret | null;
       const item: Secret = {
-        ...previous,
+        ...(form.kind === "account" ? {} : previous),
         id,
         imageDataUrl: form.imageDataUrl || "",
         name: form.name,
@@ -846,6 +1015,7 @@ function persist(
         tags: parseTags(form.tags ?? ""),
         status: "online",
         notes: form.notes,
+        ...(form.kind === "account" ? accountMetadataFromForm(form) : {}),
       };
       s.upsertSecret(item);
       break;

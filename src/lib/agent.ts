@@ -10,12 +10,8 @@ import { daysUntil, formatUsd } from "./utils.ts";
 import { t } from "./i18n.ts";
 
 /**
- * One piece of an answer.
- *
- * Answers are structured, not prose, for one reason: a `secret` block stores a
- * *reference* — asset id and field name — and resolves the value from the vault
- * at render time. So a conversation about passwords can be written to disk
- * without ever writing a password to disk.
+ * 回答由正文、来源与运行记录组成。凭据块只保存引用，不写入密钥库里的值。
+ * 用户问题和获得授权的文档片段仍可能包含敏感信息，并会保存在本机对话历史中。
  */
 export type Block =
   | { type: "sources"; sources: import("./agent-client").Source[] }
@@ -25,6 +21,8 @@ export type Block =
       steps: number;
       tools: string[];
       status: "success" | "error" | "stopped";
+      /** 标记这次回答是否允许使用工作区文档正文，下一次发送前重新确认范围。 */
+      documentContent?: boolean;
     }
   | { type: "text"; text: string }
   | { type: "secret"; assetId: string; kind: AssetKind; field: SecretField; label: string }

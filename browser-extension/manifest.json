@@ -1,35 +1,24 @@
 {
   "manifest_version": 3,
-  "name": "司南 Nanpad - 保存网站账号",
+  "name": "知屿 Zhiyu - 保存网站账号",
   "version": "0.10.0",
-  "description": "读取当前网页的登录表单并核对后保存到本机司南密钥库；登录时自动采集默认开启，可在弹窗中关闭。",
-  "permissions": [
-    "activeTab",
-    "scripting",
-    "storage"
-  ],
-  "host_permissions": [
-    "http://127.0.0.1/*"
-  ],
+  "description": "读取当前网页的登录表单并核对后保存到本机知屿密钥库；登录时自动采集默认开启，可在弹窗中关闭。",
+  "permissions": ["activeTab", "scripting", "storage"],
+  "host_permissions": ["http://127.0.0.1/*"],
   "background": {
     "service_worker": "background.mjs",
     "type": "module"
   },
   "content_scripts": [
     {
-      "matches": [
-        "http://*/*",
-        "https://*/*"
-      ],
-      "js": [
-        "submit-capture.mjs"
-      ],
+      "matches": ["http://*/*", "https://*/*"],
+      "js": ["submit-capture.mjs"],
       "run_at": "document_idle"
     }
   ],
   "action": {
     "default_popup": "popup.html",
-    "default_title": "保存到司南"
+    "default_title": "保存到知屿"
   },
   "icons": {
     "128": "icon.png"

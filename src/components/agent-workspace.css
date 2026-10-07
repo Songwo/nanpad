@@ -1,0 +1,299 @@
+/* 高度逐层传递到消息区，滚动只发生在消息、设置和上下文内部。 */
+.agent-shell {
+  overflow: hidden;
+}
+.agent-shell-columns {
+  height: 100%;
+  min-height: 0;
+  align-items: stretch;
+}
+.agent-shell-main,
+.agent-view-frame,
+.agent-chat {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+.agent-shell-main > :first-child,
+.agent-header,
+.agent-composer {
+  flex-shrink: 0;
+}
+.agent-view-frame {
+  flex: 1;
+  overflow: hidden;
+}
+.agent-workspace {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 320px;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+.agent-message-scroll,
+.agent-settings-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+  padding: 20px 24px;
+}
+.agent-message-list {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  max-width: 880px;
+  margin-inline: auto;
+}
+.agent-message-list > * {
+  flex-shrink: 0;
+  overflow-wrap: anywhere;
+}
+.agent-composer {
+  padding: 12px 24px 16px;
+  border-top: 1px solid var(--color-line);
+  background: var(--color-canvas);
+  color: var(--color-ink);
+}
+.agent-send {
+  position: absolute;
+  right: 6px;
+  bottom: 6px;
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: var(--color-ink);
+  color: var(--color-card);
+}
+.agent-send:disabled {
+  opacity: 0.35;
+}
+.agent-permissions {
+  display: flex;
+  flex-wrap: wrap;
+  column-gap: 20px;
+  margin-top: 4px;
+  font-size: var(--text-meta);
+  color: var(--color-muted);
+}
+.agent-permissions label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 36px;
+  cursor: pointer;
+}
+.agent-permissions input {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--color-ink);
+}
+.agent-privacy-note {
+  font-size: var(--text-2xs);
+  color: var(--color-subtle);
+  line-height: 1.5;
+}
+.agent-context-desktop {
+  min-width: 0;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  border-left: 1px solid var(--color-line);
+}
+.agent-context-content {
+  min-width: 0;
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+.editor-dialog > .agent-context-content {
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.agent-context-section {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  gap: 12px;
+}
+.agent-context-section + .agent-context-section {
+  border-top: 1px solid var(--color-line);
+  padding-top: 20px;
+}
+.agent-context-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.agent-context-heading h2 {
+  font-size: var(--text-meta);
+  font-weight: 600;
+}
+.agent-history-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-lg);
+  background: var(--color-card);
+  color: var(--color-muted);
+}
+.agent-history-search input {
+  width: 100%;
+  min-width: 0;
+  outline: none;
+  color: var(--color-ink);
+  font-size: var(--text-meta);
+}
+.agent-history-search:focus-within {
+  outline: 2px solid var(--color-ink);
+  outline-offset: 2px;
+}
+.agent-history-list {
+  max-height: 240px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.agent-history-row {
+  display: flex;
+  align-items: center;
+  border-radius: var(--radius-md);
+  padding-right: 4px;
+}
+.agent-history-row[data-active="true"] {
+  background: var(--color-line);
+  color: var(--color-ink);
+}
+.agent-history-open {
+  flex: 1;
+  min-width: 0;
+  min-height: 56px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 4px;
+  padding: 8px;
+  text-align: left;
+}
+.agent-history-open > span {
+  max-width: 100%;
+}
+.agent-question-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.agent-question-list button {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 10px 8px;
+  min-height: 44px;
+  border-radius: var(--radius-md);
+  text-align: left;
+  font-size: var(--text-meta);
+  color: var(--color-muted);
+}
+.agent-question-list button svg {
+  margin-top: 3px;
+}
+.agent-question-list button:hover,
+.agent-history-open:hover,
+.agent-source-title:is(button):hover {
+  background: var(--color-line);
+  color: var(--color-ink);
+}
+.agent-context-content button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.agent-context-sources {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.agent-source-title {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  min-width: 0;
+  max-width: 100%;
+  padding-block: 8px;
+  border-radius: var(--radius-md);
+  font-size: var(--text-meta);
+  line-height: 1.5;
+  text-align: left;
+  overflow-wrap: anywhere;
+}
+.agent-source-citation {
+  flex-shrink: 0;
+  color: var(--color-subtle);
+}
+.agent-source-title svg {
+  margin-top: 3px;
+}
+.agent-trace-link {
+  min-height: 32px;
+  font-size: var(--text-2xs);
+  color: var(--color-muted);
+  text-decoration: underline;
+  text-underline-offset: 4px;
+}
+.agent-context-toggle {
+  display: none;
+}
+@media (max-width: 1099px) {
+  .agent-workspace {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .agent-context-desktop {
+    display: none;
+  }
+  .agent-context-toggle {
+    display: inline-flex;
+  }
+}
+@media (max-width: 767px) {
+  .agent-shell {
+    padding-bottom: 56px;
+  }
+  .agent-shell-columns {
+    padding-inline: 0;
+  }
+  .agent-message-scroll,
+  .agent-settings-scroll {
+    padding: 16px;
+  }
+  .agent-composer {
+    padding: 8px 12px 12px;
+  }
+  .agent-input {
+    max-height: 120px;
+  }
+  .agent-permissions {
+    column-gap: 16px;
+  }
+  .agent-permissions label,
+  .agent-source-title:is(button),
+  .agent-trace-link {
+    min-height: 44px;
+  }
+  .agent-send {
+    width: 44px;
+    height: 44px;
+    right: 4px;
+    bottom: 4px;
+  }
+  .agent-context-content {
+    padding: 16px;
+  }
+}

@@ -506,7 +506,7 @@ function About() {
   }
 
   return (
-    <Section title={t("关于")} hint={t("司南 —— 个人数字资产指挥台。")}>
+    <Section title={t("关于")} hint={t("知屿 —— 个人数字资产指挥台。")}>
       <Row label={t("当前版本")}>
         <span className="font-mono text-meta tabular-nums">{info?.version ?? "—"}</span>
       </Row>

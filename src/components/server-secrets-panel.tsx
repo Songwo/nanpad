@@ -1,8 +1,9 @@
-import { Check, Copy, Eye, EyeOff, KeyRound, Link2, Lock, Plus, ShieldCheck, Trash2, Unlink } from "lucide-react";
+import { Copy, Eye, EyeOff, KeyRound, Link2, Lock, Plus, ShieldCheck, Trash2 } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
+import { Select } from "./ui/select";
 import { useAppStore } from "@/lib/store";
 import type { BoundSecretItem, Server } from "@/lib/types";
 import { uid } from "@/lib/utils";
@@ -138,12 +139,7 @@ export function ServerSecretsPanel({ server }: { server: Server }) {
               className="font-mono text-xs"
             />
           </div>
-          <Button
-            variant="primary"
-            size="sm"
-            onClick={handleAddCustomSecret}
-            className="btn-pill text-xs h-9 shrink-0"
-          >
+          <Button variant="primary" size="sm" onClick={handleAddCustomSecret} className="shrink-0">
             {t("添加密钥")}
           </Button>
         </div>
@@ -155,25 +151,21 @@ export function ServerSecretsPanel({ server }: { server: Server }) {
               <Link2 className="size-3" />
               {t("关联已有密钥库")}:
             </span>
-            <select
+            <Select
+              aria-label={t("关联已有密钥库")}
               value={selectedVaultId}
-              onChange={(e) => setSelectedVaultId(e.target.value)}
-              className="rounded-md border border-line bg-canvas px-2 py-1 text-xs text-ink max-w-[220px]"
-            >
-              <option value="">{t("选择全局密钥库中的凭据...")}</option>
-              {globalSecrets.map((sec) => (
-                <option key={sec.id} value={sec.id}>
-                  {sec.name} ({sec.kind.toUpperCase()})
-                </option>
-              ))}
-            </select>
+              onValueChange={setSelectedVaultId}
+              className="w-full sm:w-64"
+              options={[
+                { value: "", label: t("选择全局密钥库中的凭据...") },
+                ...globalSecrets.map((sec) => ({
+                  value: sec.id,
+                  label: `${sec.name} (${sec.kind.toUpperCase()})`,
+                })),
+              ]}
+            />
             {selectedVaultId && (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleBindVaultSecret}
-                className="btn-pill h-7 text-xs px-2.5"
-              >
+              <Button variant="outline" size="sm" onClick={handleBindVaultSecret}>
                 {t("确认关联")}
               </Button>
             )}
@@ -202,9 +194,7 @@ export function ServerSecretsPanel({ server }: { server: Server }) {
               >
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2">
-                    <span className="font-mono text-xs font-semibold text-ink">
-                      {item.key}
-                    </span>
+                    <span className="font-mono text-xs font-semibold text-ink">{item.key}</span>
                     {isVaultLinked && (
                       <span className="inline-flex items-center gap-0.5 rounded-full border border-sky-500/30 bg-sky-500/10 px-1.5 py-0.2 text-[9px] text-sky-400 font-mono">
                         <Link2 className="size-2.5" />
