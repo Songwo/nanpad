@@ -105,6 +105,164 @@ function assertNoSecrets(value, secrets = [CAPTURE.password, "embedded", "reset/
   for (const secret of secrets) assert.ok(!serialized.includes(secret));
 }
 
+test("自动账号建议不消耗用户保存的频率额度", async (t) => {
+  const value = await fixture(t, { accounts: { listForOrigin: async () => [] } });
+  const { token } = await pair(value);
+  for (let index = 0; index < 30; index++) {
+    assert.equal(
+      (
+        await send(value.port, "/v1/accounts/list", {
+          token,
+          body: { url: "https://example.test/" },
+        })
+      ).status,
+      200,
+    );
+  }
+  assert.equal((await send(value.port, "/v1/captures", { token, body: CAPTURE })).status, 201);
+});
+
+test("账号列表不含密码，选择票据绑定站点、客户端且只能使用一次", async (t) => {
+  const value = await fixture(t, {
+    accounts: {
+      listForOrigin: async () => [{ id: "account-1", title: "示例", username: "alice" }],
+      getForOrigin: async () => ({ username: "alice", password: "synthetic-secret" }),
+    },
+  });
+  const { token } = await pair(value);
+  const list = await send(value.port, "/v1/accounts/list", {
+    token,
+    body: { url: "https://example.test/login" },
+  });
+  assert.equal(list.status, 200);
+  assert.equal(list.text.includes("synthetic-secret"), false);
+  const selection = {
+    url: "https://example.test/",
+    id: "account-1",
+    selectionToken: list.body.selectionToken,
+  };
+  const other = await pair(value, OTHER_ORIGIN);
+  assert.equal(
+    (
+      await send(value.port, "/v1/accounts/fill", {
+        token: other.token,
+        origin: OTHER_ORIGIN,
+        body: selection,
+      })
+    ).status,
+    403,
+  );
+  assert.equal(
+    (
+      await send(value.port, "/v1/accounts/fill", {
+        token,
+        body: { ...selection, url: "https://evil.test/" },
+      })
+    ).status,
+    403,
+  );
+  const fresh = await send(value.port, "/v1/accounts/list", {
+    token,
+    body: { url: selection.url },
+  });
+  selection.selectionToken = fresh.body.selectionToken;
+  const filled = await send(value.port, "/v1/accounts/fill", { token, body: selection });
+  assert.equal(filled.status, 200);
+  assert.equal(filled.body.password, "synthetic-secret");
+  assert.equal(
+    (await send(value.port, "/v1/accounts/fill", { token, body: selection })).status,
+    403,
+  );
+});
+
+test("账号请求拒绝不安全站点与列表外账号，锁库期间不返回秘密", async (t) => {
+  let afterRead;
+  const value = await fixture(t, {
+    accounts: {
+      listForOrigin: async () => [{ id: "a", title: "示例", username: "alice" }],
+      getForOrigin: async () => {
+        afterRead();
+        return { username: "alice", password: "private-value" };
+      },
+    },
+  });
+  afterRead = () => value.lock();
+  const { token } = await pair(value);
+  for (const url of [
+    "http://example.test/",
+    "https://user:pass@example.test/",
+    "file:///etc/passwd",
+  ]) {
+    assert.equal(
+      (await send(value.port, "/v1/accounts/list", { token, body: { url } })).status,
+      400,
+    );
+  }
+  const getList = () =>
+    send(value.port, "/v1/accounts/list", { token, body: { url: "https://example.test/" } });
+  let list = await getList();
+  assert.equal(
+    (
+      await send(value.port, "/v1/accounts/fill", {
+        token,
+        body: {
+          url: "https://example.test/",
+          id: "other",
+          selectionToken: list.body.selectionToken,
+        },
+      })
+    ).status,
+    403,
+  );
+  list = await getList();
+  const filled = await send(value.port, "/v1/accounts/fill", {
+    token,
+    body: { url: "https://example.test/", id: "a", selectionToken: list.body.selectionToken },
+  });
+  assert.equal(filled.status, 423);
+  assert.equal(filled.text.includes("private-value"), false);
+});
+
+test("浏览器确认保存直接调用加密服务，文档采用单独的有界正文请求", async (t) => {
+  const saved = [];
+  const docs = [];
+  const value = await fixture(t, {
+    accounts: {
+      saveCapture: async (input) => {
+        saved.push(input);
+        return { id: "a", status: "created", assets: [] };
+      },
+    },
+    saveDocument: async (input) => {
+      docs.push(input);
+      return { id: "doc-a", status: "created" };
+    },
+  });
+  const { token } = await pair(value);
+  const result = await send(value.port, "/v1/accounts/save", {
+    token,
+    body: { ...CAPTURE, url: "https://example.test/" },
+  });
+  assert.equal(result.status, 201);
+  assert.equal(saved[0].password, CAPTURE.password);
+  assertNoSecrets(result);
+  const doc = await send(value.port, "/v1/documents", {
+    token,
+    body: { url: "https://docs.qq.com/doc/example", title: "测试文档", text: "正文".repeat(18000) },
+  });
+  assert.equal(doc.status, 201);
+  assert.equal(docs[0].text.length, 36000);
+  assert.equal(
+    (
+      await send(value.port, "/v1/documents", {
+        token,
+        body: { url: "https://docs.qq.com/doc/example", title: "测试", text: "a".repeat(200001) },
+      })
+    ).status,
+    400,
+  );
+});
+
 test("真实 HTTP 配对、核对元数据和一次性取出；响应与通知不含凭据", async (t) => {
   const value = await fixture(t);
   const pairing = await pair(value);

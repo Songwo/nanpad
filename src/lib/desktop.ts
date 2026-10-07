@@ -147,6 +147,23 @@ export interface PersistedFile extends Snapshot {
 }
 
 export interface DesktopBridge {
+  passwords: {
+    previewImport(): Promise<null | {
+      ticket: string;
+      total: number;
+      added: number;
+      duplicates: number;
+      conflicts: number;
+      invalid: number;
+      rows: Array<{ title: string; url: string; username: string; status: string }>;
+    }>;
+    commitImport(
+      ticket: string,
+    ): Promise<{ imported: number; skipped: number; assets: import("./types").Secret[] }>;
+    cancelImport(ticket: string): Promise<void>;
+    exportCsv(): Promise<null | { count: number }>;
+    onChanged(handler: (assets: import("./types").Secret[]) => void): () => void;
+  };
   images: import("./image-bed").ImageBedBridge;
   nodes: {
     check(

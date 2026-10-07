@@ -29,12 +29,14 @@ import {
   screen,
   powerMonitor,
 } from "electron";
-import { X509Certificate } from "node:crypto";
+import { X509Certificate, randomUUID } from "node:crypto";
 import { CaptureQueue } from "./services/browser-capture.mjs";
 import { ExtensionBridge } from "./services/extension-bridge.mjs";
-import { readFileSync } from "node:fs";
-import { readFile, writeFile, rename, mkdir, stat, readdir, rm } from "node:fs/promises";
-import { dirname, join, posix } from "node:path";
+import { BrowserPasswords } from "./services/browser-passwords.mjs";
+import { saveBrowserDocument } from "./services/browser-documents.mjs";
+import { readFileSync, renameSync } from "node:fs";
+import { readFile, writeFile, rename, mkdir, stat, readdir, rm, open } from "node:fs/promises";
+import { dirname, join, posix, relative, isAbsolute } from "node:path";
 import { fileURLToPath } from "node:url";
 import { SshManager } from "./services/ssh.mjs";
 import { probeCertificate, probeDomain } from "./services/net-probe.mjs";
@@ -91,6 +93,9 @@ let mailboxes;
 let mailClient;
 let mailPush;
 let extensionBridge;
+let browserPasswords;
+let assetWrites = Promise.resolve();
+const recoveredAccounts = new Map();
 let tray = null;
 let quitting = false;
 let notificationTimer;
@@ -141,6 +146,7 @@ function savePreferences(patch) {
 }
 
 function stopPrivateTasks() {
+  browserPasswords?.clear();
   extensionBridge?.revoke();
   mailPush?.stop();
   mailboxes?.stop();
@@ -225,6 +231,49 @@ function savedServer(id) {
 
 function dataFile() {
   return join(app.getPath("userData"), "assets.json");
+}
+
+function enqueueAssets(work) {
+  const task = assetWrites.then(work);
+  assetWrites = task.catch(() => {});
+  return task;
+}
+
+async function mergeBrowserAssets(snapshot) {
+  if (!recoveredAccounts.size) return snapshot;
+  const ids = new Set(await vault.list());
+  for (const id of recoveredAccounts.keys())
+    if (!ids.has("account:" + id)) recoveredAccounts.delete(id);
+  const secrets = snapshot.secrets ?? [];
+  return {
+    ...snapshot,
+    secrets: [
+      ...secrets,
+      ...[...recoveredAccounts.values()].filter(
+        (item) => !secrets.some((entry) => entry.id === item.id),
+      ),
+    ],
+  };
+}
+
+async function publishBrowserAssets(assets) {
+  if (!assets.length) return;
+  for (const asset of assets) recoveredAccounts.set(asset.id, asset);
+  await enqueueAssets(async () => {
+    const next = await mergeBrowserAssets(currentSnapshot);
+    await writeJson(dataFile(), { state: next, version: 0 });
+    currentSnapshot = next;
+  });
+  emit("passwords:changed", assets);
+}
+
+function unlockedSession() {
+  if (!vault?.unlocked) throw new Error("请先解锁密钥库。");
+  const session = vault.session;
+  return () => {
+    if (!vault.unlocked || vault.session !== session)
+      throw new Error("密钥库会话已失效，请重新操作。");
+  };
 }
 
 function conversationsFile() {
@@ -413,8 +462,26 @@ function registerIpc() {
     captures.discard(id);
   });
   vault = new Vault(vaultPath(app.getPath("userData")));
+  browserPasswords = new BrowserPasswords({
+    vault,
+    getAssets: () => currentSnapshot.secrets ?? [],
+  });
   extensionBridge = new ExtensionBridge({
     isUnlocked: () => Boolean(vault?.unlocked),
+    accounts: {
+      listForOrigin: (url) => browserPasswords.listForOrigin(url),
+      getForOrigin: (id, url) => browserPasswords.getForOrigin(id, url),
+      saveCapture: async (capture, assertCurrent) => {
+        const result = await browserPasswords.saveCapture(capture, assertCurrent);
+        await publishBrowserAssets(result.assets);
+        return result;
+      },
+    },
+    saveDocument: async (input, assertCurrent) => {
+      const result = await saveBrowserDocument(documents, input, assertCurrent);
+      emit("documents:changed", {});
+      return result;
+    },
     // 手动发送仍聚焦窗口引导确认；自动采集在用户浏览网页时到达，只更新待确认数，不抢前台。
     onCapture: (item) => {
       if (item?.source !== "auto") showWindow();
@@ -435,13 +502,91 @@ function registerIpc() {
   handle("extension:list", () => extensionBridge.list());
   handle("extension:take", (id) => extensionBridge.take(id));
   handle("extension:discard", (id) => extensionBridge.discard(id));
+  handle("passwords:preview-import", async () => {
+    const assertCurrent = unlockedSession();
+    const selected = await dialog.showOpenDialog(win, {
+      properties: ["openFile"],
+      filters: [{ name: "浏览器密码 CSV", extensions: ["csv"] }],
+    });
+    assertCurrent();
+    if (selected.canceled || !selected.filePaths[0]) return null;
+    const file = await open(selected.filePaths[0], "r");
+    try {
+      const limit = 10 * 1024 * 1024;
+      if (!(await file.stat()).isFile() || (await file.stat()).size > limit)
+        throw new Error("请选择不超过 10 MiB 的密码 CSV 文件。");
+      const buffer = Buffer.alloc(limit + 1);
+      let total = 0;
+      try {
+        while (total < buffer.length) {
+          const { bytesRead } = await file.read(buffer, total, buffer.length - total, null);
+          if (!bytesRead) break;
+          total += bytesRead;
+        }
+        assertCurrent();
+        if (total > limit) throw new Error("密码 CSV 不能超过 10 MiB。");
+        const csv = new TextDecoder("utf-8", { fatal: true }).decode(buffer.subarray(0, total));
+        return await browserPasswords.preview(csv);
+      } finally {
+        buffer.fill(0);
+      }
+    } finally {
+      await file.close();
+    }
+  });
+  handle("passwords:commit-import", async (ticket) => {
+    const result = await browserPasswords.commit(ticket);
+    await publishBrowserAssets(result.assets);
+    return result;
+  });
+  handle("passwords:cancel-import", (ticket) => browserPasswords.cancel(ticket));
+  handle("passwords:export-csv", async () => {
+    const assertCurrent = unlockedSession();
+    const confirm = await dialog.showMessageBox(win, {
+      type: "warning",
+      title: "导出浏览器密码",
+      message: "CSV 将包含未加密的网址、账号和密码。",
+      detail:
+        "请仅用于 Chrome / Edge 密码导入，不要发给他人或用表格软件打开；导入完成后删除此文件。",
+      buttons: ["取消", "继续导出"],
+      defaultId: 0,
+      cancelId: 0,
+      noLink: true,
+    });
+    assertCurrent();
+    if (confirm.response !== 1) return null;
+    const selected = await dialog.showSaveDialog(win, {
+      defaultPath: "知屿-浏览器密码.csv",
+      filters: [{ name: "浏览器密码 CSV", extensions: ["csv"] }],
+    });
+    assertCurrent();
+    if (selected.canceled || !selected.filePath) return null;
+    const pathFromData = relative(app.getPath("userData"), selected.filePath);
+    if (!pathFromData.startsWith("..") && !isAbsolute(pathFromData))
+      throw new Error("请将 CSV 保存到资料目录之外。");
+    const result = await browserPasswords.exportCsv();
+    assertCurrent();
+    const temporary = selected.filePath + "." + randomUUID() + ".tmp";
+    try {
+      await writeFile(temporary, result.csv, { encoding: "utf8", flag: "wx", mode: 0o600 });
+      assertCurrent();
+      renameSync(temporary, selected.filePath);
+    } finally {
+      await rm(temporary, { force: true }).catch(() => {});
+    }
+    return { count: result.count };
+  });
   const profile = new ProfileService(
     join(app.getPath("userData"), "profile.json"),
     vault,
     normalizeImage,
   );
   handle("profile:get", () => profile.get());
-  handle("profile:save", (value) => profile.save(value));
+  handle("profile:save", async (value) => {
+    const result = await profile.save(value);
+    if (vault.unlocked) await publishBrowserAssets(await browserPasswords.managedAssets());
+    return result;
+  });
   aiAccounts = new AiAccounts({
     vault,
     openExternal: (url) => shell.openExternal(url),
@@ -806,6 +951,7 @@ function registerIpc() {
 
   // ---- assets on disk -----------------------------------------------------
   handle("store:load", async () => {
+    await assetWrites;
     try {
       return normalizeSnapshotImages(JSON.parse(await readFile(dataFile(), "utf8")), {
         strict: false,
@@ -815,18 +961,20 @@ function registerIpc() {
       return null;
     }
   });
-  handle("store:save", async (snapshot) => {
-    const normalized = normalizeSnapshotImages(snapshot, { normalize: normalizeImage });
-    const next = normalized?.state ?? normalized ?? {};
-    for (const mailbox of next.mailboxes ?? []) {
-      if (mailbox.imap) mailbox.imap = validateMailboxConnection(mailbox.imap);
-      if (mailbox.smtp) mailbox.smtp = validateSmtp(mailbox.smtp);
-    }
-    await writeJson(dataFile(), normalized);
-    currentSnapshot = next;
-    notifyAttention();
-    return true;
-  });
+  handle("store:save", (snapshot) =>
+    enqueueAssets(async () => {
+      const normalized = normalizeSnapshotImages(snapshot, { normalize: normalizeImage });
+      const next = await mergeBrowserAssets(normalized?.state ?? normalized ?? {});
+      for (const mailbox of next.mailboxes ?? []) {
+        if (mailbox.imap) mailbox.imap = validateMailboxConnection(mailbox.imap);
+        if (mailbox.smtp) mailbox.smtp = validateSmtp(mailbox.smtp);
+      }
+      await writeJson(dataFile(), normalized?.state ? { ...normalized, state: next } : next);
+      currentSnapshot = next;
+      notifyAttention();
+      return true;
+    }),
+  );
   handle("store:load-conversations", async () => {
     try {
       return JSON.parse(await readFile(conversationsFile(), "utf8"));
@@ -839,13 +987,24 @@ function registerIpc() {
   // ---- vault --------------------------------------------------------------
   handle("vault:status", () => vault.status());
   handle("vault:create", (master) => vault.create(master));
-  handle("vault:unlock", (master) => vault.unlock(master));
+  handle("vault:unlock", async (master) => {
+    const result = await vault.unlock(master);
+    await publishBrowserAssets(await browserPasswords.managedAssets());
+    return result;
+  });
   handle("vault:lock", lockVault);
   handle("vault:change-password", (oldMaster, newMaster) =>
     vault.changePassword(oldMaster, newMaster),
   );
-  handle("vault:set", (id, secret) => {
+  handle("vault:set", async (id, secret) => {
     assertPublicVaultRecord(id);
+    if (id.startsWith("account:")) {
+      const assertCurrent = unlockedSession();
+      const previous = await vault.get(id);
+      assertCurrent();
+      if (previous?._browserAsset && secret && typeof secret === "object")
+        secret = { ...secret, _browserAsset: previous._browserAsset };
+    }
     return vault.set(id, secret);
   });
   handle("vault:get", (id) => {

@@ -11,7 +11,7 @@
       <img class="brand" src="icon.png" width="32" height="32" alt="" />
       <div>
         <h1>知屿 Zhiyu</h1>
-        <span class="subtitle">网站账号</span>
+        <span class="subtitle">本机账号 · 网页文档</span>
       </div>
       <button
         class="icon-button"
@@ -48,58 +48,95 @@
           </form>
         </details>
       </section>
-      <section class="auto-capture" aria-label="自动采集">
-        <label class="auto-row" for="auto-capture">
-          <span class="auto-title">登录时自动采集</span>
-          <input type="checkbox" id="auto-capture" checked />
-        </label>
-        <p class="auto-hint">
-          默认开启：在网站提交登录时自动把账号密码发送到知屿待确认队列，仍需桌面端核对后加密保存；取消勾选可关闭。
+
+      <section class="workspace-section" aria-label="本站账号">
+        <div class="section-heading">
+          <h2>本站账号</h2>
+          <span class="local-badge">本机密钥库</span>
+        </div>
+        <p class="section-hint" id="account-empty">连接桌面端后显示本站账号</p>
+        <div id="saved-accounts"></div>
+        <div id="pending-account" class="pending-account" hidden>
+          <span>刚刚登录 · <strong id="pending-name"></strong></span
+          ><button id="save-pending" class="secondary-button">加密保存</button>
+        </div>
+      </section>
+      <section class="workspace-section" aria-label="网页文档">
+        <div class="section-heading">
+          <h2>网页文档</h2>
+          <button id="save-document" class="text-button" disabled>保存当前文档</button>
+        </div>
+        <p class="section-hint">
+          保存已加载的可见正文和来源。受限或画布文档仅保存可读片段／来源链接。
         </p>
       </section>
-      <form id="capture" autocomplete="off">
-        <div class="site-heading">
-          <img src="icons/globe.svg" alt="" /><span id="url">正在读取当前网站</span>
-        </div>
-        <label for="title">网站名称</label
-        ><input id="title" maxlength="120" required autocomplete="off" />
-        <fieldset id="form-choices" hidden>
-          <legend>选择账号表单</legend>
-          <div id="choices"></div>
-        </fieldset>
-        <div class="field-label">
-          <label for="username">账号</label><span id="capture-hint"></span>
-        </div>
-        <input
-          id="username"
-          maxlength="320"
-          placeholder="邮箱 / 用户名"
-          autocomplete="off"
-          spellcheck="false"
-        />
-        <label for="password">密码</label>
-        <div class="password-field">
+      <details class="capture-details">
+        <summary>读取或保存当前账号<img src="icons/chevron-down.svg" alt="" /></summary>
+        <form id="capture" autocomplete="off">
+          <div class="site-heading">
+            <img src="icons/globe.svg" alt="" /><span id="url">正在读取当前网站</span>
+          </div>
+          <label for="title">网站名称</label
+          ><input id="title" maxlength="120" required autocomplete="off" />
+          <fieldset id="form-choices" hidden>
+            <legend>选择账号表单</legend>
+            <div id="choices"></div>
+          </fieldset>
+          <div class="field-label">
+            <label for="username">账号</label><span id="capture-hint"></span>
+          </div>
           <input
-            id="password"
-            type="password"
-            maxlength="4096"
+            id="username"
+            maxlength="320"
+            placeholder="邮箱 / 用户名"
             autocomplete="off"
-            placeholder="输入密码"
-          /><button
-            class="icon-button"
-            id="toggle-password"
-            type="button"
-            title="显示密码"
-            aria-label="显示密码"
-            aria-pressed="false"
-          >
-            <img src="icons/eye.svg" alt="" />
+            spellcheck="false"
+          />
+          <label for="password">密码</label>
+          <div class="password-field">
+            <input
+              id="password"
+              type="password"
+              maxlength="4096"
+              autocomplete="off"
+              placeholder="输入密码"
+            /><button
+              class="icon-button"
+              id="toggle-password"
+              type="button"
+              title="显示密码"
+              aria-label="显示密码"
+              aria-pressed="false"
+            >
+              <img src="icons/eye.svg" alt="" />
+            </button>
+          </div>
+          <button class="primary-button" type="submit" id="send" disabled>
+            <img src="icons/arrow-down-to-line.svg" alt="" /><span>加密保存到知屿</span>
           </button>
-        </div>
-        <button class="primary-button" type="submit" id="send" disabled>
-          <img src="icons/arrow-down-to-line.svg" alt="" /><span>发送到知屿</span>
-        </button>
-      </form>
+        </form>
+      </details>
+      <details class="preferences">
+        <summary>自动助手偏好<img src="icons/chevron-down.svg" alt="" /></summary>
+        <section class="auto-capture" aria-label="自动采集">
+          <label class="auto-row" for="auto-capture">
+            <span class="auto-title">登录时自动采集</span>
+            <input type="checkbox" id="auto-capture" checked />
+          </label>
+          <p class="auto-hint">
+            识别登录后提示保存，确认后在本机加密。同站多账号独立保留，不同密码存为新版本。临时记录最多保留
+            2 分钟，浏览器休眠后需重新读取。
+          </p>
+        </section>
+        <label class="auto-row" for="auto-suggest"
+          ><span>登录页自动建议账号</span><input id="auto-suggest" type="checkbox" checked /></label
+        ><label class="auto-row" for="auto-document"
+          ><span>文档页自动提示保存</span><input id="auto-document" type="checkbox" checked
+        /></label>
+        <p class="section-hint">
+          标签页权限用于核对当前网址及导航状态，防止把账号填入切换后的页面。
+        </p>
+      </details>
       <p id="status" role="status" aria-live="polite"></p>
     </main>
     <footer>

@@ -30,6 +30,8 @@ function controls() {
   $("#site-only").disabled = busy || !capture;
   $("#pair-button").disabled = busy;
   $("#disconnect").disabled = busy;
+  $("#save-document").disabled = busy || !capture || !connected;
+  $("#save-pending").disabled = busy || !connected;
 }
 function connection(text, state = "") {
   $("#connection-state").textContent = text;
@@ -44,6 +46,8 @@ async function forgetConnection() {
   await chrome.storage.session.remove(tokenKey);
   pairing.hidden = false;
   pairing.open = true;
+  $("#saved-accounts").replaceChildren();
+  $("#pending-account").hidden = true;
 }
 async function request(path, options = {}, authenticated = true) {
   const controller = new AbortController();
@@ -63,12 +67,12 @@ async function request(path, options = {}, authenticated = true) {
     if (response.status === 401) {
       await forgetConnection();
       connection("连接已失效，请重新配对", "error");
-      throw new Error("请在已解锁的司南桌面端生成新的配对码。");
+      throw new Error("请在已解锁的知屿桌面端生成新的配对码。");
     }
     if (response.status === 423) {
       await forgetConnection();
       connection("密钥库已锁定", "error");
-      throw new Error("请解锁司南，再生成新的配对码连接。");
+      throw new Error("请解锁知屿，再生成新的配对码连接。");
     }
     if (response.status === 429) throw new Error("操作过于频繁，请稍后再试。");
     if (!response.ok)
@@ -82,7 +86,7 @@ async function request(path, options = {}, authenticated = true) {
     if (error instanceof TypeError || error.name === "AbortError") {
       connected = false;
       connection("桌面端未连接", "error");
-      throw new Error("无法连接司南，请打开 0.7.0 或更新版本并解锁。请求未自动重试。");
+      throw new Error("无法连接知屿，请打开 1.3.0 或更新版本并解锁。请求未自动重试。");
     }
     throw error;
   } finally {
@@ -126,6 +130,7 @@ function showCandidates(records) {
     choices.append(label);
   });
   choose(0);
+  $(".capture-details").open = candidates.some((item) => item.username || item.password);
   $("#capture-hint").textContent = candidates.length
     ? `已读取 ${candidates.length} 个表单`
     : "手动填写";
@@ -147,7 +152,7 @@ async function readTab() {
     if (!candidates[0]?.oversized)
       message(
         candidates.length
-          ? "请核对账号密码，再发送到司南。"
+          ? "请核对账号密码，一次点击即可加密保存。"
           : "未找到可读取的登录表单，可以手动填写账号密码。",
       );
   } catch {
@@ -166,6 +171,7 @@ $("#refresh").addEventListener("click", async () => {
   controls();
   try {
     await readTab();
+    await loadAccounts();
   } catch {
     capture = null;
     showCandidates([]);
@@ -203,8 +209,9 @@ $("#pair-form").addEventListener("submit", async (event) => {
     if (!state.unlocked) throw new Error("请先解锁桌面端密钥库。");
     connected = true;
     pairing.open = false;
-    connection("已连接本机司南", "connected");
-    message("已配对，请核对后发送账号。", "success");
+    connection("已连接本机知屿", "connected");
+    await loadAccounts();
+    message("已配对，当前站点的账号与文档可以保存到知屿。", "success");
   } catch (error) {
     message(error.message, "error");
   } finally {
@@ -232,7 +239,7 @@ $("#capture").addEventListener("submit", async (event) => {
   event.preventDefault();
   if (!capture || !connected || busy) return;
   if (!username.value.trim() || !password.value) {
-    message("请填写账号和密码；只保存网址请使用“仅记录站点并打开司南”。", "error");
+    message("请填写账号和密码；只保存网址请使用“仅记录站点并打开知屿”。", "error");
     (!username.value.trim() ? username : password).focus();
     return;
   }
@@ -240,18 +247,19 @@ $("#capture").addEventListener("submit", async (event) => {
   controls();
   try {
     const site = await currentCapture();
-    const result = await request("/v1/captures", {
-      method: "POST",
-      body: JSON.stringify({ ...site, username: username.value.trim(), password: password.value }),
+    const result = await companion("zhiyu-save-account", {
+      capture: { ...site, username: username.value.trim(), password: password.value },
     });
     if (typeof result.id !== "string" || !result.id)
-      throw new Error("未收到桌面接收确认，请先查看司南中的待确认记录。");
+      throw new Error("未收到加密保存确认，请检查连接后重试。");
     candidates = [];
     password.value = "";
     $("#choices").replaceChildren();
     $("#form-choices").hidden = true;
     hidePassword();
-    message("已送达司南，请在桌面端确认加密保存。", "success");
+    $(".capture-details").open = false;
+    await loadAccounts();
+    message("已加密保存到知屿；同账号的不同密码会保留为新版本。", "success");
   } catch (error) {
     message(error.message, "error");
   } finally {
@@ -262,9 +270,9 @@ $("#capture").addEventListener("submit", async (event) => {
 $("#site-only").addEventListener("click", async () => {
   try {
     await chrome.tabs.create({ url: captureUrl(await currentCapture()) });
-    message("已请求打开司南，请在桌面端继续记录站点。");
+    message("已请求打开知屿，请在桌面端继续记录站点。");
   } catch (error) {
-    message(error.message || "无法打开司南，请安装桌面端并允许打开外部应用。", "error");
+    message(error.message || "无法打开知屿，请安装桌面端并允许打开外部应用。", "error");
   }
 });
 window.addEventListener("pagehide", () => {
@@ -301,10 +309,137 @@ await Promise.allSettled([
         return;
       }
       connected = true;
-      connection("已连接本机司南", "connected");
+      connection("已连接本机知屿", "connected");
     } catch (error) {
       connection("桌面连接不可用", "error");
       message(error.message, "error");
     }
   })(),
 ]);
+
+const companionErrors = {
+  unpaired: "请连接已解锁的知屿桌面端。",
+  locked: "请解锁知屿，再重新配对。",
+  offline: "桌面端未连接，请打开知屿后重试。",
+  expired: "记录已过期，请重新读取当前页。",
+  insecure: "为保护密码，仅支持在 HTTPS 网站保存和填写账号。",
+  navigated: "页面已切换，请重新读取后操作。",
+  "no-form": "没有可安全填写的登录表单；请先选中可见登录框，保持密码框为空。",
+};
+async function companion(type, extra = {}) {
+  const result = await chrome.runtime.sendMessage({ type, tabId, ...extra });
+  if (result?.reason === "unpaired" || result?.reason === "locked") {
+    await forgetConnection();
+    connection(
+      result.reason === "locked" ? "请解锁桌面端并重新配对" : "连接已失效，请重新配对",
+      "error",
+    );
+  }
+  if (!result?.ok)
+    throw Error(companionErrors[result?.reason] || "操作未完成，请重新读取当前页或检查桌面连接。");
+  return result;
+}
+async function loadAccounts() {
+  const list = $("#saved-accounts");
+  list.replaceChildren();
+  $("#account-empty").textContent = connected ? "正在查找本站账号…" : "连接桌面端后显示本站账号";
+  $("#save-document").disabled = !connected || !capture;
+  $("#pending-account").hidden = true;
+  if (!capture || !connected) return;
+  try {
+    const { accounts } = await companion("zhiyu-list");
+    $("#account-empty").textContent = accounts.length
+      ? "选择一个账号填写，网站不会自动提交登录。"
+      : "本站暂无账号。登录后可自动提示保存。";
+    for (const account of accounts) {
+      const button = document.createElement("button");
+      button.className = "saved-account";
+      const name = document.createElement("strong");
+      name.textContent = account.username;
+      const label = document.createElement("span");
+      label.textContent = account.title || "已加密保存";
+      button.append(name, label);
+      button.addEventListener("click", async (event) => {
+        if (!event.isTrusted || busy) return;
+        busy = true;
+        controls();
+        button.disabled = true;
+        try {
+          await currentCapture();
+          await companion("zhiyu-list");
+          await companion("zhiyu-fill", { id: account.id });
+          message("已填写到当前登录表单，请核对后自行登录。", "success");
+        } catch (error) {
+          message(error.message, "error");
+        } finally {
+          busy = false;
+          button.disabled = false;
+          controls();
+        }
+      });
+      list.append(button);
+    }
+    const result = await companion("zhiyu-pending");
+    if (result.pending) {
+      $("#pending-name").textContent = result.pending.username;
+      $("#pending-account").hidden = false;
+    }
+  } catch (error) {
+    $("#account-empty").textContent = error.message;
+  }
+}
+$("#save-pending").addEventListener("click", async (event) => {
+  if (!event.isTrusted || busy) return;
+  busy = true;
+  controls();
+  try {
+    await companion("zhiyu-save-pending");
+    $("#pending-account").hidden = true;
+    message("账号已加密保存；不同密码会保留为新版本。", "success");
+    await loadAccounts();
+  } catch (error) {
+    message(error.message, "error");
+  } finally {
+    busy = false;
+    controls();
+  }
+});
+$("#save-document").addEventListener("click", async (event) => {
+  if (!event.isTrusted || busy) return;
+  busy = true;
+  controls();
+  $("#save-document").disabled = true;
+  try {
+    const result = await companion("zhiyu-document");
+    message(
+      result.status === "existing"
+        ? "此来源已保存，未覆盖已有文档。"
+        : result.sourceOnly
+          ? "正文无法读取，已保存来源链接。"
+          : "已保存当前可见正文与来源链接；未加载部分不包含在快照内。",
+      "success",
+    );
+  } catch (error) {
+    message(error.message, "error");
+  } finally {
+    busy = false;
+    controls();
+    $("#save-document").disabled = !connected;
+  }
+});
+for (const [id, key] of [
+  ["auto-suggest", "nanpadAutoSuggest"],
+  ["auto-document", "nanpadAutoDocument"],
+]) {
+  const toggle = $("#" + id);
+  const stored = await chrome.storage.local.get(key);
+  toggle.checked = stored[key] !== false;
+  toggle.addEventListener(
+    "change",
+    () =>
+      void (toggle.checked
+        ? chrome.storage.local.remove(key)
+        : chrome.storage.local.set({ [key]: false })),
+  );
+}
+await loadAccounts();

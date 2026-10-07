@@ -204,3 +204,86 @@ test("连续改主密码与失败操作不会阻塞后续队列", async (t) => {
   await restarted.unlock("third-master-for-vault-test");
   assert.deepEqual(await restarted.get("credential"), { value: 1 });
 });
+
+test("批量写入一次提交，并按前缀读取独立副本", async (t) => {
+  const { file, vault } = await setup(t);
+  await vault.set("ssh:keep", { password: "ssh-private" });
+  await vault.batch([
+    { id: "account:a", secret: { username: "one", password: "batch-private-1" } },
+    { id: "account:b", secret: { username: "two", password: "batch-private-2" } },
+  ]);
+  const records = await vault.readAll("account:");
+  assert.deepEqual(Object.keys(records).sort(), ["account:a", "account:b"]);
+  records["account:a"].password = "mutated";
+  assert.equal((await vault.get("account:a")).password, "batch-private-1");
+  const restarted = new Vault(file);
+  await restarted.unlock(OLD_MASTER);
+  assert.equal((await restarted.readAll("account:"))["account:b"].username, "two");
+  assert.doesNotMatch(await readFile(file, "utf8"), /batch-private|ssh-private/);
+});
+
+test("批量序列化失败或落盘失败时没有部分记录", async (t) => {
+  const { directory, file, vault } = await setup(t);
+  await vault.set("keep", { value: "original" });
+  const cyclic = {};
+  cyclic.self = cyclic;
+  await assert.rejects(
+    vault.batch([
+      { id: "account:first", secret: { value: "never-saved" } },
+      { id: "account:invalid", secret: cyclic },
+    ]),
+  );
+  assert.deepEqual(await vault.list(), ["keep"]);
+  const backup = join(directory, "backup.enc");
+  await rename(file, backup);
+  await mkdir(file);
+  await assert.rejects(
+    vault.batch([
+      { id: "account:first", secret: { value: "never-saved" } },
+      { id: "account:second", secret: { value: "never-saved" } },
+    ]),
+    /保存失败/,
+  );
+  assert.deepEqual(await vault.list(), ["keep"]);
+});
+
+test("锁库使批量写入、全部读取和会话失效，并同步通知订阅者", async (t) => {
+  const { vault } = await setup(t);
+  const session = vault.session;
+  let locks = 0;
+  const unsubscribe = vault.onLock(() => {
+    locks += 1;
+  });
+  const pending = [
+    vault.batch([{ id: "account:a", secret: { value: 1 } }]),
+    vault.readAll("account:"),
+  ];
+  vault.lock();
+  assert.equal(locks, 1);
+  assert.notEqual(vault.session, session);
+  assert.ok((await Promise.allSettled(pending)).every((result) => result.status === "rejected"));
+  await assert.rejects(vault.batch([]), /锁定/);
+  await assert.rejects(vault.readAll("account:"), /锁定/);
+  unsubscribe();
+  vault.lock();
+  assert.equal(locks, 1);
+});
+
+test("原子替换前最后一次提交校验失败时保留旧库并清理临时密文", async (t) => {
+  const { directory, file, vault } = await setup(t);
+  await vault.set("keep", { value: "original" });
+  const original = await readFile(file, "utf8");
+  let checks = 0;
+  await assert.rejects(
+    vault.batch([{ id: "account:a", secret: { password: "never-committed" } }], {
+      beforeCommit() {
+        checks += 1;
+        if (checks >= 2) throw new Error("导入已取消");
+      },
+    }),
+    /取消/,
+  );
+  assert.equal(await readFile(file, "utf8"), original);
+  assert.equal(await vault.get("account:a"), null);
+  assert.deepEqual(await readdir(directory), ["vault.enc"]);
+});

@@ -25,6 +25,7 @@ import type { ViewId } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { startThemeSync, startLocaleSync, startDisplaySync, useSettings } from "@/lib/settings";
 import { useVault } from "@/lib/vault-state";
+import { useDocuments } from "@/lib/documents";
 import { t, subscribeLocale, getLocale } from "@/lib/i18n";
 
 export function AppShell() {
@@ -55,12 +56,28 @@ export function AppShell() {
       if (useAppStore.getState().composerPreset?._captureId) useAppStore.getState().closeComposer();
       void useVault.getState().refresh();
     });
+    const offPasswords = bridge.passwords.onChanged((assets) => {
+      useAppStore.setState((state) => ({
+        secrets: [
+          ...state.secrets,
+          ...assets.filter((asset) => !state.secrets.some((item) => item.id === asset.id)),
+        ],
+      }));
+    });
+    const offDocuments = bridge.documents.onChanged?.(() => {
+      void useDocuments
+        .getState()
+        .load()
+        .catch((error) => toast.error(String(error.message)));
+    });
     const offMetricError = bridge.metrics.onError((event) =>
       toast(t("指标记录失败：{0}", event.error)),
     );
     return () => {
       off();
       offVault();
+      offPasswords();
+      offDocuments?.();
       offMetricError();
     };
   }, []);

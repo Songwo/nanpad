@@ -12,12 +12,16 @@ const { version } = JSON.parse(await readFile("package.json", "utf8"));
 const extension = resolve(`release/v${version}/nanpad-browser-extension`);
 const manifest = JSON.parse(await readFile(join(extension, "manifest.json"), "utf8"));
 assert.equal(manifest.version, version);
-assert.deepEqual(manifest.permissions, ["activeTab", "scripting", "storage"]);
+assert.deepEqual(manifest.permissions, ["activeTab", "scripting", "storage", "tabs"]);
 assert.deepEqual(manifest.host_permissions, ["http://127.0.0.1/*"]);
-// 0.8.0 自动采集：后台服务与全站内容脚本，令牌仍只在扩展上下文流转。
+// 1.3.0 自动助手：tabs 仅核对目标页及导航，令牌仍只在扩展上下文流转。
 assert.equal(manifest.background?.service_worker, "background.mjs");
 assert.deepEqual(manifest.content_scripts, [
-  { matches: ["http://*/*", "https://*/*"], js: ["submit-capture.mjs"], run_at: "document_idle" },
+  {
+    matches: ["http://*/*", "https://*/*"],
+    js: ["companion-fields.js", "companion.mjs", "submit-capture.mjs"],
+    run_at: "document_idle",
+  },
 ]);
 const directory = await mkdtemp(join(tmpdir(), "nanpad-extension-"));
 const server = createServer(async (req, res) => {
@@ -87,15 +91,15 @@ try {
   });
   const base = `http://127.0.0.1:${server.address().port}`;
   await popup.goto(base);
-  await popup.getByRole("button", { name: "仅记录站点并打开司南" }).click();
-  await popup.getByRole("status").filter({ hasText: "已请求打开司南" }).waitFor();
+  await popup.getByRole("button", { name: "仅记录站点并打开知屿" }).click();
+  await popup.getByRole("status").filter({ hasText: "已请求打开知屿" }).waitFor();
   const result = await popup.evaluate(() => window.captureResult);
   assert.ok(!result.url.includes("private"));
   await popup.screenshot({ path: "screenshots/nanpad-v070-extension-site.png" });
   await popup.goto(`${base}/?blocked=1`);
   await popup.getByRole("status").filter({ hasText: "请在 HTTP" }).waitFor();
   assert.equal(
-    await popup.getByRole("button", { name: "仅记录站点并打开司南" }).isDisabled(),
+    await popup.getByRole("button", { name: "仅记录站点并打开知屿" }).isDisabled(),
     true,
   );
   await browser.close();
@@ -154,7 +158,10 @@ try {
   await page.getByText("第二个站点", { exact: true }).waitFor();
   await page.getByRole("button", { name: "忽略网站", exact: true }).click();
 
-  await page.getByRole("button", { name: "总览", exact: true }).click();
+  await page
+    .getByRole("navigation", { name: "主导航", exact: true })
+    .getByRole("button", { name: "标签", exact: true })
+    .click();
   await page.getByRole("button", { name: "批量整理", exact: true }).click();
   let organizer = page.getByRole("dialog", { name: "批量整理", exact: true });
   await organizer.getByLabel("选择搜索结果", { exact: false }).check();

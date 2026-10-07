@@ -86,6 +86,7 @@ async function buildSite(releaseFile, outputDirectory) {
     "overview.png",
     "documents.png",
     "usage.png",
+    "passwords.png",
     "robots.txt",
     "sitemap.xml",
   ];

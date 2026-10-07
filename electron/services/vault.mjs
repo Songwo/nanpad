@@ -32,6 +32,7 @@ export class Vault {
   #doc = null;
   #queue = Promise.resolve();
   #generation = 0;
+  #lockListeners = new Set();
 
   constructor(file) {
     this.#file = file;
@@ -39,6 +40,17 @@ export class Vault {
 
   get unlocked() {
     return this.#key !== null;
+  }
+
+  /** 锁库代次用于取消跨越锁定边界的上层异步操作。 */
+  get session() {
+    return this.#generation;
+  }
+
+  onLock(listener) {
+    if (typeof listener !== "function") throw new TypeError("锁库监听器无效");
+    this.#lockListeners.add(listener);
+    return () => this.#lockListeners.delete(listener);
   }
 
   #assertGeneration(generation) {
@@ -72,13 +84,14 @@ export class Vault {
     return this.#doc;
   }
 
-  async #write(doc, generation, nextKey) {
+  async #write(doc, generation, nextKey, beforeCommit) {
     const tmp = `${this.#file}.${randomBytes(12).toString("hex")}.tmp`;
     try {
       await mkdir(dirname(this.#file), { recursive: true });
       this.#assertGeneration(generation);
       await writeFile(tmp, JSON.stringify(doc), { encoding: "utf8", mode: 0o600, flag: "wx" });
       this.#assertGeneration(generation);
+      beforeCommit?.();
       // 提交段不让出事件循环，保证锁库不能插在落盘与切换解密密钥之间。
       renameSync(tmp, this.#file);
       this.#doc = doc;
@@ -86,6 +99,7 @@ export class Vault {
     } catch (error) {
       await rm(tmp, { force: true }).catch(() => {});
       this.#assertGeneration(generation);
+      beforeCommit?.();
       throw new Error("密钥库保存失败，请检查本地文件权限。", { cause: error });
     }
   }
@@ -167,6 +181,13 @@ export class Vault {
   lock() {
     this.#generation += 1;
     this.#replaceKey(null);
+    for (const listener of this.#lockListeners) {
+      try {
+        listener();
+      } catch {
+        // 清理回调异常不能阻止其他模块清除敏感状态。
+      }
+    }
     return { ok: true };
   }
 
@@ -243,6 +264,69 @@ export class Vault {
         const key = this.#require();
         if (!Object.hasOwn(doc?.records ?? {}, id)) return null;
         return JSON.parse(open(key, doc.records[id]).toString("utf8"));
+      },
+      { requireUnlocked: true },
+    );
+  }
+
+  /** 全部记录先加密，再一次落盘；任一条失败时保留整个旧库。 */
+  batch(entries, { beforeCommit } = {}) {
+    return this.#enqueue(
+      async (generation) => {
+        if (!Array.isArray(entries) || entries.length > 10000) throw new Error("批量凭据数量无效");
+        const doc = await this.#read();
+        this.#assertGeneration(generation);
+        const key = this.#require();
+        beforeCommit?.();
+        const records = { ...(doc?.records ?? {}) };
+        const ids = new Set();
+        for (const entry of entries) {
+          if (
+            !entry ||
+            typeof entry.id !== "string" ||
+            !entry.id ||
+            entry.id.length > 512 ||
+            ids.has(entry.id) ||
+            !entry.secret ||
+            typeof entry.secret !== "object" ||
+            Array.isArray(entry.secret)
+          )
+            throw new Error("批量凭据格式无效");
+          ids.add(entry.id);
+          Object.defineProperty(records, entry.id, {
+            value: seal(key, Buffer.from(JSON.stringify(entry.secret), "utf8")),
+            enumerable: true,
+            configurable: true,
+            writable: true,
+          });
+        }
+        if (entries.length)
+          await this.#write({ ...doc, records }, generation, undefined, beforeCommit);
+        return { ok: true, count: entries.length };
+      },
+      { requireUnlocked: true },
+    );
+  }
+
+  /** 同一个锁库代次内读取快照，不向调用方暴露内部缓存。 */
+  readAll(prefix = "") {
+    return this.#enqueue(
+      async (generation) => {
+        if (typeof prefix !== "string") throw new Error("凭据前缀无效");
+        const doc = await this.#read();
+        this.#assertGeneration(generation);
+        const key = this.#require();
+        const result = {};
+        for (const [id, record] of Object.entries(doc?.records ?? {})) {
+          if (!id.startsWith(prefix)) continue;
+          Object.defineProperty(result, id, {
+            value: JSON.parse(open(key, record).toString("utf8")),
+            enumerable: true,
+            configurable: true,
+            writable: true,
+          });
+        }
+        return result;
       },
       { requireUnlocked: true },
     );

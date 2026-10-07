@@ -19,6 +19,7 @@ export interface DocumentSummary extends Omit<DocumentAsset, "content"> {
   imageCount: number;
 }
 export interface DocumentsBridge {
+  onChanged?(handler: () => void): () => void;
   list(): Promise<DocumentSummary[]>;
   get(id: string): Promise<DocumentAsset>;
   save(doc: DocumentAsset & { createOnly?: boolean }): Promise<DocumentAsset>;

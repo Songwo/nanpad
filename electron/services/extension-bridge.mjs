@@ -4,6 +4,7 @@ import { normalizeCapture } from "./browser-capture.mjs";
 
 const DEFAULT_PORT = 47832;
 const MAX_BODY_BYTES = 16 * 1024;
+const MAX_DOCUMENT_BYTES = 1250000;
 const MAX_CLIENTS = 8;
 const MAX_PENDING = 10;
 const LIFETIME_MS = 5 * 60 * 1000;
@@ -83,7 +84,24 @@ function normalizeCredentialCapture(value) {
   }
 }
 
-function readJson(request) {
+function accountOrigin(value) {
+  try {
+    if (typeof value !== "string" || value.length > 4096) throw new Error();
+    const url = new URL(value);
+    const local = ["127.0.0.1", "localhost", "[::1]"].includes(url.hostname);
+    if (
+      url.username ||
+      url.password ||
+      !(url.protocol === "https:" || (local && url.protocol === "http:"))
+    )
+      throw new Error();
+    return url.origin;
+  } catch {
+    throw new RequestError(400, "账号填写仅支持 HTTPS 或本机测试网站。");
+  }
+}
+
+function readJson(request, limit = MAX_BODY_BYTES) {
   return new Promise((resolve, reject) => {
     let chunks = [];
     let size = 0;
@@ -105,7 +123,7 @@ function readJson(request) {
     };
     const onData = (chunk) => {
       size += chunk.length;
-      if (size > MAX_BODY_BYTES) {
+      if (size > limit) {
         finish(new RequestError(413, "请求内容过大。"));
         return;
       }
@@ -151,14 +169,19 @@ export class ExtensionBridge {
   #lastStop = 0;
   #requestRate = { startedAt: 0, count: 0 };
   #pairRate = { startedAt: 0, count: 0 };
+  #accounts;
+  #saveDocument;
+  #selections = new Map();
 
-  constructor({ isUnlocked, onCapture, onChange, port = DEFAULT_PORT }) {
+  constructor({ isUnlocked, onCapture, onChange, accounts, saveDocument, port = DEFAULT_PORT }) {
     if (typeof isUnlocked !== "function") throw new TypeError("需要提供密钥库状态检查函数。");
     if (!Number.isInteger(port) || port < 0 || port > 65535)
       throw new TypeError("本机连接端口不正确。");
     this.#isUnlocked = isUnlocked;
     this.#onCapture = onCapture;
     this.#onChange = onChange;
+    this.#accounts = accounts;
+    this.#saveDocument = saveDocument;
     this.#configuredPort = port;
     this.#port = port;
   }
@@ -346,6 +369,7 @@ export class ExtensionBridge {
     this.#pairing = null;
     this.#clients.clear();
     this.#pending.clear();
+    this.#selections.clear();
     clearTimeout(this.#timer);
     this.#timer = null;
     this.#notify();
@@ -448,7 +472,17 @@ export class ExtensionBridge {
       this.#refresh();
       const generation = this.#generation;
       const route = request.url;
-      if (!["/v1/pair", "/v1/status", "/v1/captures"].includes(route))
+      if (
+        ![
+          "/v1/pair",
+          "/v1/status",
+          "/v1/captures",
+          "/v1/accounts/list",
+          "/v1/accounts/fill",
+          "/v1/accounts/save",
+          "/v1/documents",
+        ].includes(route)
+      )
         throw new RequestError(404, "接口不存在。");
       const expectedMethod = "POST";
       if (request.method === "OPTIONS") {
@@ -478,14 +512,20 @@ export class ExtensionBridge {
         )
       )
         throw new RequestError(415, "仅支持 JSON 请求。");
-      if (Number(request.headers["content-length"] ?? 0) > MAX_BODY_BYTES)
+      const bodyLimit = route === "/v1/documents" ? MAX_DOCUMENT_BYTES : MAX_BODY_BYTES;
+      if (Number(request.headers["content-length"] ?? 0) > bodyLimit)
         throw new RequestError(413, "请求内容过大。");
       if (
         (route === "/v1/pair" && !this.#rateAllowed(this.#pairRate, 10)) ||
-        (route === "/v1/captures" && client && !this.#rateAllowed(client.rate, 30))
+        (client &&
+          route !== "/v1/status" &&
+          !this.#rateAllowed(
+            route === "/v1/accounts/list" ? client.readRate : client.rate,
+            route === "/v1/accounts/list" ? 120 : 30,
+          ))
       )
         throw new RequestError(429, "请求过于频繁，请稍后重试。");
-      const value = await readJson(request);
+      const value = await readJson(request, bodyLimit);
       // 读请求期间可能锁库或撤销授权，写入内存前必须重新核对这一代会话。
       this.#refresh();
       this.#requireCurrent(generation);
@@ -505,6 +545,7 @@ export class ExtensionBridge {
           token,
           origin,
           rate: { startedAt: Date.now(), count: 0 },
+          readRate: { startedAt: Date.now(), count: 0 },
         });
         this.#pairing = null;
         this.#scheduleExpiry();
@@ -517,6 +558,86 @@ export class ExtensionBridge {
       if (route === "/v1/status") {
         if (!objectWithKeys(value, [])) throw new RequestError(400, "状态请求内容必须为空对象。");
         this.#respond(response, 200, { unlocked: true });
+        return;
+      }
+      // 每次异步服务返回后重新校验，锁库、撤销与重新配对都不能漏回敏感结果。
+      const assertCurrent = () => {
+        this.#requireCurrent(generation);
+        this.#authenticate(request, origin);
+      };
+      if (route.startsWith("/v1/accounts/")) {
+        if (!this.#accounts) throw new RequestError(503, "请升级桌面端后使用账号助手。");
+        const site = accountOrigin(value?.url);
+        if (route === "/v1/accounts/list") {
+          if (!objectWithKeys(value, ["url"])) throw new RequestError(400, "账号查询格式无效。");
+          const accounts = await this.#accounts.listForOrigin(site);
+          assertCurrent();
+          for (const [key, entry] of this.#selections) {
+            if (entry.expiresAt <= Date.now()) this.#selections.delete(key);
+          }
+          while (this.#selections.size >= 128)
+            this.#selections.delete(this.#selections.keys().next().value);
+          const selectionToken = randomBytes(32).toString("hex");
+          // 只回传展示字段。服务内部新增字段也不会意外成为公开 API。
+          const choices = accounts
+            .slice(0, 100)
+            .map(({ id, title, username }) => ({ id, title, username }));
+          this.#selections.set(selectionToken, {
+            client: client.token,
+            site,
+            ids: new Set(choices.map((item) => item.id)),
+            expiresAt: Date.now() + 120000,
+          });
+          this.#respond(response, 200, { accounts: choices, selectionToken });
+          return;
+        }
+        if (route === "/v1/accounts/fill") {
+          if (
+            !objectWithKeys(value, ["url", "id", "selectionToken"]) ||
+            typeof value.selectionToken !== "string"
+          )
+            throw new RequestError(400, "账号选择格式无效。");
+          const selection = this.#selections.get(value.selectionToken);
+          if (
+            !selection ||
+            selection.client !== client.token ||
+            selection.site !== site ||
+            selection.expiresAt <= Date.now() ||
+            !selection.ids.has(value.id)
+          )
+            throw new RequestError(403, "账号选择已失效，请重新选择。");
+          this.#selections.delete(value.selectionToken);
+          const account = await this.#accounts.getForOrigin(value.id, site);
+          assertCurrent();
+          if (!account) throw new RequestError(404, "账号已删除或不属于此网站。");
+          this.#respond(response, 200, { username: account.username, password: account.password });
+          return;
+        }
+        const capture = normalizeCredentialCapture(value);
+        const result = await this.#accounts.saveCapture(
+          { ...capture, url: site + "/" },
+          assertCurrent,
+        );
+        assertCurrent();
+        this.#respond(response, 201, { id: result.id, status: result.status });
+        return;
+      }
+      if (route === "/v1/documents") {
+        if (
+          !objectWithKeys(value, ["url", "title", "text"]) ||
+          typeof value.url !== "string" ||
+          value.url.length > 4096 ||
+          typeof value.title !== "string" ||
+          value.title.length > 512 ||
+          typeof value.text !== "string" ||
+          value.text.length > 200000
+        )
+          throw new RequestError(400, "文档格式无效或正文超过 20 万字符。");
+        accountOrigin(value.url);
+        if (!this.#saveDocument) throw new RequestError(503, "请升级桌面端后保存文档。");
+        const result = await this.#saveDocument(value, assertCurrent);
+        assertCurrent();
+        this.#respond(response, 201, { id: result.id, status: result.status });
         return;
       }
       const capture = normalizeCredentialCapture(value);
@@ -533,16 +654,13 @@ export class ExtensionBridge {
       this.#scheduleExpiry();
       this.#notify();
       // 只把不含密码的元信息交给回调，桌面端据此决定是否聚焦窗口（自动采集不抢前台）。
-      this.#call(
-        this.#onCapture,
-        {
-          id,
-          url: capture.url,
-          title: capture.title,
-          username: capture.username,
-          source: capture.source === "auto" ? "auto" : "manual",
-        },
-      );
+      this.#call(this.#onCapture, {
+        id,
+        url: capture.url,
+        title: capture.title,
+        username: capture.username,
+        source: capture.source === "auto" ? "auto" : "manual",
+      });
       this.#respond(response, 201, { id });
     } catch (error) {
       this.#respond(response, error instanceof RequestError ? error.status : 500, {

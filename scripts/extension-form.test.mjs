@@ -119,8 +119,7 @@ async function withAutoCapture(t, html, stored) {
     globalThis.chrome = {
       storage: {
         local: {
-          get: async () =>
-            saved === undefined ? {} : { nanpadAutoCapture: saved },
+          get: async () => (saved === undefined ? {} : { nanpadAutoCapture: saved }),
         },
         onChanged: { addListener: (fn) => window.__changedListeners.push(fn) },
       },
@@ -132,45 +131,49 @@ async function withAutoCapture(t, html, stored) {
       },
     };
   }, stored);
+  await page.evaluate(
+    readFileSync(new URL("../browser-extension/companion-fields.js", import.meta.url), "utf8"),
+  );
+  await page.evaluate(() => {
+    globalThis.__zhiyuShowPending = () => {
+      const host = document.createElement("div");
+      host.style.position = "fixed";
+      document.documentElement.append(host);
+    };
+    for (const form of document.querySelectorAll("form")) {
+      form.addEventListener("submit", (event) => event.preventDefault());
+      const button = document.createElement("button");
+      button.type = "submit";
+      button.textContent = "登录";
+      form.append(button);
+    }
+  });
   await page.evaluate(submitCaptureSource);
   // 内容脚本的开关读取是异步的，等它完成再触发提交。
   await page.waitForTimeout(60);
   return { page, url };
 }
 async function submitForm(page, selector) {
-  await page.evaluate(
-    (formSelector) => {
-      document.querySelector(formSelector).dispatchEvent(
-        new Event("submit", { bubbles: true, cancelable: true }),
-      );
-    },
-    selector,
-  );
+  await page.locator(selector).locator('button[type="submit"]').click();
   await page.waitForTimeout(150);
   return page.evaluate(() => window.__messages);
 }
 async function clickButton(page, selector) {
-  await page.evaluate(
-    (buttonSelector) => {
-      document.querySelector(buttonSelector).click();
-    },
-    selector,
-  );
+  await page.locator(selector).click();
   await page.waitForTimeout(150);
   return page.evaluate(() => window.__messages);
 }
 
-test("自动采集默认开启：提交含密码表单时读取账号密码并发送到后台", async (t) => {
-  const { page, url } = await withAutoCapture(
+test("自动采集默认开启：真实提交含密码表单时临时记住账号，尚未写入桌面", async (t) => {
+  const { page } = await withAutoCapture(
     t,
     `<title>示例站</title><form><input name="user" value="alice@example.test"><input type="password" value="pw1"></form>`,
     undefined,
   );
   assert.deepEqual(await submitForm(page, "form"), [
     {
-      type: "nanpad-auto-capture",
+      type: "zhiyu-stage",
       capture: {
-        url: `${new URL(url).origin}/`,
         title: "示例站",
         username: "alice@example.test",
         password: "pw1",
@@ -187,15 +190,15 @@ test("显式关闭开关后不监听任何提交", async (t) => {
   assert.deepEqual(await submitForm(page, "form"), []);
 });
 test("无密码与验证码表单不采集，关闭开关即时生效", async (t) => {
-  const { page, url } = await withAutoCapture(
+  const { page } = await withAutoCapture(
     t,
     `<form id="no-pw"><input value="u"></form><form id="otp"><input value="u"><input name="otp" type="password" value="123"></form><form id="login"><input autocomplete="username" value="real"><input type="password" value="pw"></form>`,
     undefined,
   );
   assert.deepEqual(await submitForm(page, "#login"), [
     {
-      type: "nanpad-auto-capture",
-      capture: { url: `${new URL(url).origin}/`, title: "", username: "real", password: "pw" },
+      type: "zhiyu-stage",
+      capture: { title: "", username: "real", password: "pw" },
     },
   ]);
   // 模拟在弹窗中关闭开关：storage 变化通知内容脚本。
@@ -213,16 +216,15 @@ test("无密码与验证码表单不采集，关闭开关即时生效", async (t
   assert.equal(await page.evaluate(() => window.__messages.length), 0);
 });
 test("无表单的脚本登录：点击登录按钮捕获就近的账号密码", async (t) => {
-  const { page, url } = await withAutoCapture(
+  const { page } = await withAutoCapture(
     t,
     `<title>脚本站</title><div id="box"><input name="account" value="spa-user"><input type="password" value="spa-pass"><button type="button" id="go">登录</button></div>`,
     undefined,
   );
   assert.deepEqual(await clickButton(page, "#go"), [
     {
-      type: "nanpad-auto-capture",
+      type: "zhiyu-stage",
       capture: {
-        url: `${new URL(url).origin}/`,
         title: "脚本站",
         username: "spa-user",
         password: "spa-pass",
@@ -247,4 +249,28 @@ test("自动采集在页面角落给出结果提示", async (t) => {
       ),
     ),
   );
+});
+
+test("网页脚本伪造点击或提交不能触发账号采集", async (t) => {
+  const { page } = await withAutoCapture(
+    t,
+    '<form><input name="username" value="u"><input type="password" value="p"></form>',
+  );
+  await page.evaluate(() => {
+    document.querySelector("button").click();
+    document.querySelector("form").dispatchEvent(new Event("submit", { bubbles: true }));
+    document.querySelector("form").requestSubmit();
+  });
+  await page.waitForTimeout(150);
+  assert.equal(await page.evaluate(() => window.__messages.length), 0);
+});
+test("自动采集不截断超长密码且不读取隐藏和改密字段", async (t) => {
+  const { page } = await withAutoCapture(
+    t,
+    '<form id="change-password"><input name="username" value="u"><input type="password" value="old"><input type="password" autocomplete="new-password" value="new"></form><form id="long"><input name="username" value="u"><input type="password"></form><form id="invisible" style="opacity:0"><input name="username" value="u"><input type="password" value="p"></form>',
+  );
+  await page.locator('#long input[type="password"]').fill("a".repeat(4097));
+  assert.deepEqual(await submitForm(page, "#long"), []);
+  assert.deepEqual(await submitForm(page, "#change-password"), []);
+  assert.equal(await page.evaluate(() => globalThis.__zhiyuFields.forms().length), 1);
 });

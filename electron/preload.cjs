@@ -23,6 +23,13 @@ function on(channel, handler) {
 }
 
 contextBridge.exposeInMainWorld("sinan", {
+  passwords: {
+    previewImport: () => unwrap(ipcRenderer.invoke("passwords:preview-import")),
+    commitImport: (ticket) => unwrap(ipcRenderer.invoke("passwords:commit-import", ticket)),
+    cancelImport: (ticket) => unwrap(ipcRenderer.invoke("passwords:cancel-import", ticket)),
+    exportCsv: () => unwrap(ipcRenderer.invoke("passwords:export-csv")),
+    onChanged: (handler) => on("passwords:changed", handler),
+  },
   images: {
     status: () => unwrap(ipcRenderer.invoke("images:status")),
     configure: (input) => unwrap(ipcRenderer.invoke("images:configure", input)),
@@ -40,6 +47,7 @@ contextBridge.exposeInMainWorld("sinan", {
     refreshLocal: () => unwrap(ipcRenderer.invoke("usage:local-refresh")),
   },
   documents: {
+    onChanged: (handler) => on("documents:changed", handler),
     list: () => unwrap(ipcRenderer.invoke("documents:list")),
     get: (id) => unwrap(ipcRenderer.invoke("documents:get", id)),
     save: (doc) => unwrap(ipcRenderer.invoke("documents:save", doc)),

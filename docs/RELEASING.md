@@ -10,11 +10,11 @@
 
 本地预览先将 `gh api repos/Songwo/nanpad/releases/latest` 的 JSON 保存到 `release/pages-latest.json`，执行 `node scripts/build-site.mjs release/pages-latest.json release/site`，再使用静态服务器查看 `release/site`。页面为完整静态 HTML，访客无需请求 GitHub API；所有下载入口绑定同一个正式版本，资源使用内容摘要更新缓存。
 
-界面改动后，在开发预览已启动时运行 `node scripts/capture-site.mjs`，重新生成资产总览、文档阅读和用量图表三张展示图。脚本只使用独立浏览器上下文和示例资料，不连接真实桌面数据或外部账号。检查图片后随 `site/` 一起提交；截图不会在每次发布时自动重拍。
+界面改动后，在开发预览已启动时运行 `node scripts/capture-site.mjs`，重新生成资产总览、文档阅读、用量图表与浏览器密码迁移四张展示图。只更新迁移界面可使用 `--passwords-only`。脚本只使用独立浏览器上下文和示例资料，不连接真实桌面数据或外部账号。检查图片后随 `site/` 一起提交；截图不会在每次发布时自动重拍。
 
 ## 版本准备
 
-更新 package.json、package-lock.json、browser-extension/manifest.json 与 src/lib/changelog.ts，执行 `node scripts/write-changelog.mjs` 同步 CHANGELOG.md。本版说明保存在 `docs/releases/v0.8.0.md`。README 的安装包名、构建目录及教程应与版本一致；描述实际支持范围，不将本机协议测试写成真实账号登录成功。
+更新 package.json、package-lock.json、browser-extension/manifest.json 与 src/lib/changelog.ts，执行 `node scripts/write-changelog.mjs` 同步 CHANGELOG.md。本版说明保存在 `docs/releases/v1.3.0.md`。README 的安装包名、构建目录及教程应与版本一致；描述实际支持范围，不将本机协议测试写成真实账号登录成功。
 
 ## 必须验证
 
@@ -46,7 +46,9 @@ npm run desktop:dist -- --win --x64 --publish never
 
 打包脚本将主进程及编译后的界面放入系统临时目录中的独立暂存区，使用仓库锁文件版本安装 `ssh2`、`imapflow`、`openai`、`minisearch`、`nodemailer`、`mailparser`、`html-to-text`、`sanitize-html` 及其运行依赖，再通过 electron-builder 内置的目录遍历器收集依赖，避免将网页构建工具装进桌面包。排除可选原生加速模块，SSH 使用库自带的 JavaScript 实现；无需 Visual Studio 编译环境。复用本机已安装的同版本 Electron，输出到 `release/v版本号/`；构建结束清理暂存区。
 
-安装包生成后检查版本和包内容，运行 `node scripts/release-smoke.mjs release/v0.8.0/win-unpacked/Nanpad.exe` 验证打包程序，计算 SHA256，补齐 Release 说明中的验证记录。该脚本使用独立临时数据目录，不修改日常资料。发布时显式选择源码、文档和必要资源，不提交临时截图、日志、用户数据或运行目录。将发布标签指向已经验证的提交，再上传 `Nanpad-0.8.0-setup.exe`、浏览器扩展包与 `SHA256SUMS.txt`。
+安装包生成后检查版本和包内容，运行 `node scripts/release-smoke.mjs release/v1.3.0/win-unpacked/Nanpad.exe` 验证打包程序，计算 SHA256，补齐 Release 说明中的验证记录。该脚本使用独立临时数据目录，不修改日常资料。发布时显式选择源码、文档和必要资源，不提交临时截图、日志、用户数据或运行目录。将发布标签指向已经验证的提交，再上传 `Nanpad-1.3.0-setup.exe`、浏览器扩展包与 `SHA256SUMS.txt`。
+
+1.3.0 的 Windows 正式发布流水线额外运行 `passwords-desktop-integration.mjs` 验证实际打包程序的 CSV、加密库、后台资产同步、锁库与文档保存，并在 `extension:build` 后运行 `browser-companion-integration.mjs` 加载真实扩展，覆盖原生表单整页导航、多账号填写与文档提示。测试只使用独立临时资料和合成账号，不读取真实浏览器密码库；真实浏览器原生 CSV 导入结果与第三方在线文档兼容性应单独记录。
 
 0.5.0 还需验证文件夹默认收纳、自定义分组、批量移动及重载恢复，邮件阅读、显式已读、加密草稿、发送确认、锁库取消与窄窗口布局。协议使用本机 fixture 测试，不向真实收件人发送测试邮件；真实 IMAP/SMTP 登录与最终投递单独记录，不能由 mock IPC 成功推断。
 

@@ -39,6 +39,13 @@ jobs:
           $version = (Get-Content package.json | ConvertFrom-Json).version
           node scripts/brand-icons-integration.mjs "release/v$version/win-unpacked/Nanpad.exe"
       - run: npm run extension:build
+      - name: 验证正式程序的密码迁移与浏览器接口
+        shell: pwsh
+        run: |
+          $version = (Get-Content package.json | ConvertFrom-Json).version
+          node scripts/passwords-desktop-integration.mjs "release/v$version/win-unpacked/Nanpad.exe"
+      - name: 验证浏览器插件真实交互
+        run: node scripts/browser-companion-integration.mjs
       - name: 校验文件与发布
         shell: pwsh
         env:

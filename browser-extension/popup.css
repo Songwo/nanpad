@@ -386,11 +386,11 @@ footer {
   }
 }
 
-/* 自动采集开关：默认关闭，开启后由内容脚本在登录提交时采集。 */
+/* 自动采集偏好：默认开启，用户确认前只在扩展内短暂保存。 */
 .auto-capture {
-  padding: 10px 14px;
+  padding: 8px 0 12px;
   border-bottom: 1px solid var(--border);
-  background: var(--surface);
+  background: transparent;
 }
 .auto-row {
   display: flex;
@@ -413,4 +413,103 @@ footer {
   color: var(--muted);
   font-size: 11px;
   line-height: 1.5;
+}
+
+.workspace-section {
+  padding: 14px 0;
+  border-bottom: 1px solid var(--border);
+}
+.section-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+h2 {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 650;
+}
+.local-badge {
+  font-size: 10px;
+  background: var(--soft);
+  color: var(--primary);
+  padding: 2px 7px;
+  border-radius: 10px;
+}
+.section-hint {
+  color: var(--muted);
+  font-size: 11px;
+  margin: 7px 0 0;
+  line-height: 1.6;
+}
+#saved-accounts {
+  display: grid;
+  gap: 7px;
+  margin-top: 10px;
+  max-height: 160px;
+  overflow: auto;
+}
+.saved-account {
+  display: grid;
+  gap: 2px;
+  text-align: left;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--fg);
+  min-width: 0;
+  border-radius: 10px;
+}
+.saved-account:hover {
+  background: var(--soft);
+  border-color: var(--primary);
+}
+.saved-account strong,
+.saved-account span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.saved-account strong {
+  font-size: 12px;
+  font-weight: 600;
+}
+.saved-account span {
+  font-size: 10px;
+  color: var(--muted);
+}
+.pending-account {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--soft);
+  border-radius: 10px;
+  padding: 10px;
+  margin-top: 10px;
+  font-size: 11px;
+}
+.pending-account span {
+  min-width: 0;
+  flex: 1;
+  overflow-wrap: anywhere;
+}
+.pending-account button {
+  padding: 4px 10px;
+  flex: none;
+}
+.capture-details {
+  padding: 8px 0 14px;
+  border-bottom: 1px solid var(--border);
+}
+.preferences {
+  padding: 8px 0;
+}
+.preferences input {
+  width: 16px;
+  min-height: 16px;
+  accent-color: var(--primary);
+}
+.preferences .auto-row {
+  margin: 8px 0;
 }

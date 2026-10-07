@@ -9,6 +9,63 @@
  * not agree on where a possessive or a count belongs.
  */
 export const EN: Record<string, string> = {
+  浏览器密码: "Browser passwords",
+  网站: "Website",
+  可导入: "Ready to import",
+  完全重复: "Identical",
+  密码冲突: "Password conflict",
+  无效记录: "Invalid",
+  "导入浏览器密码需要先解锁密钥库。": "Unlock the vault to import browser passwords.",
+  读取密码文件失败: "Could not read the password file",
+  "导入失败，请重新选择文件后重试。": "Import failed. Select the file again and retry.",
+  "导出浏览器密码需要先解锁密钥库。": "Unlock the vault to export browser passwords.",
+  导出密码失败: "Could not export passwords",
+  "在 Chrome、Edge 与知屿之间迁移账号，让同一网站的每个账号各归其位。":
+    "Move accounts between Chrome, Edge and Zhiyu, keeping every account for a website separate.",
+  迁移方向: "Transfer direction",
+  导入到知屿: "Import to Zhiyu",
+  导出到浏览器: "Export to browser",
+  选择来源浏览器: "Source browser",
+  选择目标浏览器: "Destination browser",
+  浏览器类型: "Browser type",
+  "复制下方地址，在 {0} 地址栏粘贴打开密码设置，选择「导出密码」，再把 CSV 文件导入这里。浏览器可能要求验证系统身份。":
+    "Copy this address into the {0} address bar, choose Export passwords, then import the CSV here. Your browser may ask you to verify your system identity.",
+  "导出后，复制下方地址到 {0} 地址栏，在密码设置中选择「导入密码」，选择刚保存的 CSV。浏览器版本不同，入口可能位于设置或更多菜单。":
+    "After exporting, copy this address into the {0} address bar, choose Import passwords and select the saved CSV. Depending on your browser version, this option may be in Settings or the More menu.",
+  复制密码设置地址: "Copy password settings address",
+  "地址已复制，请粘贴到浏览器地址栏。": "Address copied. Paste it into your browser address bar.",
+  "复制失败，请手动选择上方地址。": "Could not copy. Select the address above manually.",
+  "同站不同账号独立保存。完全重复的记录会跳过；同账号密码不同的冲突会保留原记录并跳过导入。预览不展示密码，确认后加密保存到本机。":
+    "Different accounts on the same website stay separate. Identical records are skipped. Password conflicts keep the existing account and skip the import. Passwords are hidden in this preview and saved encrypted on this device after confirmation.",
+  导入预览: "Import preview",
+  新增账号: "New accounts",
+  不包含密码的账号预览: "Account preview without passwords",
+  未命名账号: "Unnamed account",
+  "共 {0} 条记录；预览显示 {1} 条。": "{0} records in total; showing {1} in this preview.",
+  "冲突账号不会覆盖。请核对现有账号，在账号详情中手动更新需要保留的密码。":
+    "Conflicting accounts are not overwritten. Review your existing account and update its password in account details if needed.",
+  "已导入 {0} 个账号": "Imported {0} accounts",
+  "跳过 {0} 条重复、冲突或无效记录。账号已加入密钥库，请删除浏览器导出的明文 CSV。":
+    "Skipped {0} duplicate, conflicting or invalid records. Accounts are now in your vault. Delete the unencrypted CSV exported by your browser.",
+  "支持 Chrome / Edge 标准 CSV，最多 10 MiB、10,000 条记录。":
+    "Supports standard Chrome / Edge CSV files, up to 10 MiB and 10,000 records.",
+  "导出的 CSV 含明文密码": "The exported CSV contains unencrypted passwords",
+  "用于浏览器导入，任何拿到文件的人都能读取账号和密码。请保存在自己的本机目录，导入浏览器后删除；不要用表格软件打开或共享此文件。":
+    "This file is for importing into a browser. Anyone with the file can read its accounts and passwords. Save it to your own device and delete it after importing. Do not open it in a spreadsheet or share it.",
+  "我了解明文风险，导入浏览器后会删除 CSV 文件。":
+    "I understand the risk and will delete the CSV after importing it into my browser.",
+  "导出密钥库中有网站地址的账号密码，保留同站多个账号。API Key、SSH 私钥和无网站地址的记录不导出。保存前还需在系统对话框确认。":
+    "Exports vault accounts with website addresses, including multiple accounts per site. API keys, SSH private keys and accounts without website addresses are excluded. A system dialog asks for confirmation before saving.",
+  "已导出 {0} 个账号。请到浏览器的密码设置完成导入。":
+    "Exported {0} accounts. Finish importing in your browser's password settings.",
+  重新选择: "Choose another file",
+  "导入 {0} 个账号": "Import {0} accounts",
+  "选择 CSV 文件": "Choose CSV file",
+  "导出 CSV 文件": "Export CSV file",
+  "配对并解锁后，登录页会建议本站账号，选择后填写，不自动提交登录。提交新账号时可确认保存；支持的在线文档会提示保存到知屿，点击后才读取当前可见正文。自动提示可在插件中关闭。":
+    "When paired and unlocked, login pages suggest accounts for that site. Choose one to fill it without submitting. Confirm saving new accounts after login. Supported document pages offer to save to Zhiyu and read visible content only after you choose to save. Automatic prompts can be disabled in the extension.",
+  "已有 Chrome / Edge 密码可在「密钥库 → 浏览器密码」中通过 CSV 批量迁移。插件不会读取浏览器的原生密码库；知屿锁定后停止读取和填写账号。":
+    "Migrate existing Chrome / Edge passwords via CSV under Vault → Browser passwords. The extension does not read the browser's native password store. Reading and filling accounts stops when Zhiyu is locked.",
   个人知识与资产空间: "Your knowledge and asset space",
   "AI 问答": "AI chat",
   对话上下文: "Conversation context",

@@ -11,6 +11,7 @@ import {
   Trash2,
   X,
   UserRound,
+  ArrowDownUp,
 } from "lucide-react";
 import { toast } from "sonner";
 import { useAppStore } from "@/lib/store";
@@ -29,6 +30,7 @@ import { Button } from "./ui/button";
 import { Field, Input, Select } from "./ui/input";
 import { openFromEvent } from "./asset-card";
 import { CollectionCard } from "./ui/collection-card";
+import { BrowserPasswordTransfer } from "./browser-password-transfer";
 
 const KIND_LABEL: Record<Secret["kind"], string> = {
   account: "账号密码",
@@ -50,6 +52,7 @@ export function VaultWorkspace() {
   const [selected, setSelected] = useState<string[]>([]);
   const [editor, setEditor] = useState<SecretFolder | "new" | null>(null);
   const [busy, setBusy] = useState(false);
+  const [transferOpen, setTransferOpen] = useState(false);
   const query = state.query.trim().toLocaleLowerCase();
   const matching = state.secrets.filter(
     (secret) =>
@@ -110,7 +113,11 @@ export function VaultWorkspace() {
             {t("{0} 项资料", active === null ? matching.length : displayed.length)}
           </span>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <Button variant="outline" size="sm" onClick={() => setTransferOpen(true)}>
+            <ArrowDownUp className="size-4" />
+            {t("浏览器密码")}
+          </Button>
           <Button
             variant="outline"
             size="sm"
@@ -288,6 +295,7 @@ export function VaultWorkspace() {
           )}
         </>
       )}
+      {transferOpen && <BrowserPasswordTransfer close={() => setTransferOpen(false)} />}
       {editor && (
         <FolderEditor
           key={editor === "new" ? "new" : editor.id}

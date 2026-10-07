@@ -1,4 +1,5 @@
 import { hostedImageUrl } from "./hosted-image.mjs";
+import { renameSync } from "node:fs";
 import { mkdir, readFile, readdir, writeFile, rename, unlink, lstat } from "node:fs/promises";
 import { join } from "node:path";
 import { inspectRaster } from "./image-data.mjs";
@@ -253,10 +254,11 @@ export class DocumentsStore {
     const doc = JSON.parse(await readFile(this.#path(id), "utf8"));
     return { ...normalizeDocument(doc), createdAt: doc.createdAt, updatedAt: doc.updatedAt };
   }
-  save(input) {
+  save(input, { assertCurrent = null } = {}) {
     const clean = normalizeDocument(input);
     const createOnly = input.createOnly === true;
     const job = this.#queue.then(async () => {
+      assertCurrent?.();
       const path = this.#path(clean.id);
       let createdAt = new Date().toISOString();
       try {
@@ -275,7 +277,16 @@ export class DocumentsStore {
       const doc = { ...clean, createdAt, updatedAt: new Date().toISOString() };
       await mkdir(this.#directory, { recursive: true });
       await writeFile(path + ".tmp", JSON.stringify(doc), "utf8");
-      await rename(path + ".tmp", path);
+      try {
+        if (assertCurrent) {
+          assertCurrent();
+          // 授权检查与提交在同一同步段完成，锁库不能插入二者之间。
+          renameSync(path + ".tmp", path);
+        } else await rename(path + ".tmp", path);
+      } catch (error) {
+        await unlink(path + ".tmp").catch(() => {});
+        throw error;
+      }
       this.#metadata.delete(clean.id);
       return doc;
     });
