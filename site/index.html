@@ -6,53 +6,86 @@
     <title>知屿 Zhiyu — 让数字资产有处安放</title>
     <meta
       name="description"
-      content="开源的个人数字资产桌面工作台。服务器、图文文档、自建节点、AI 用量与号码台账，集中管理。Windows 免费下载。"
+      content="知屿 Zhiyu：连接文档、账号与数字资产的开源本地工作空间。阅读与编辑文档、加密保存账号、查看 AI 用量图表。下载最新 Windows 正式版。"
     />
     <link rel="canonical" href="https://songwo.github.io/nanpad/" />
-    <link rel="icon" href="./icon.png" />
+    <link rel="icon" href="./icon.png?v={{ASSET_REVISION}}" />
     <meta property="og:title" content="知屿 Zhiyu · 你的数字工作空间" />
-    <meta property="og:description" content="主机、文档、节点与真实用量，一个本地工作台。" />
-    <meta property="og:image" content="https://songwo.github.io/nanpad/overview.png" />
+    <meta
+      property="og:description"
+      content="文档、账号、资产与 AI，让自己的资料彼此相连。最新正式版 v{{VERSION}}。"
+    />
+    <meta
+      property="og:image"
+      content="https://songwo.github.io/nanpad/overview.png?v={{ASSET_REVISION}}"
+    />
     <meta property="og:type" content="website" />
     <meta name="twitter:card" content="summary_large_image" />
-    <link rel="stylesheet" href="./style.css" />
+    <link rel="stylesheet" href="./style.css?v={{ASSET_REVISION}}" />
   </head>
   <body>
     <a class="skip" href="#main">跳到正文</a>
     <header class="wrap">
       <a class="brand" href="./"
-        ><img src="./icon.png" width="36" height="36" alt="" />知屿 <span>Zhiyu</span></a
+        ><img src="./icon.png?v={{ASSET_REVISION}}" width="36" height="36" alt="" />知屿
+        <span>Zhiyu</span></a
       >
       <nav aria-label="网站导航">
-        <a href="#features">功能</a><a href="#faq">常见问题</a
+        <a href="#features">功能</a><a href="#download">下载与更新</a
         ><a href="https://github.com/Songwo/nanpad">GitHub ↗</a>
       </nav>
     </header>
-    <main id="main">
+    <main id="main" data-app-ready="true">
       <section class="hero wrap">
-        <p class="eyebrow">OPEN SOURCE · LOCAL FIRST · v1.2.3</p>
+        <p class="eyebrow">OPEN SOURCE · LOCAL FIRST · v{{VERSION}}</p>
         <h1>让数字资产<br />有处安放。</h1>
         <p class="intro">
-          服务器的状态、部署时的笔记、每月的订阅与用量。<br />把散落的数字生活，收进一个自己的工作台。
+          文档里的经验、账号背后的资料、每月的订阅与用量。<br />把散落的数字生活，收进一个彼此相连的工作台。
         </p>
         <div class="actions">
-          <a class="button primary" href="https://github.com/Songwo/nanpad/releases/latest"
-            >下载 Windows 版 <span>↓</span></a
+          <a class="button primary" href="{{INSTALLER_URL}}">下载 Windows 版 <span>↓</span></a
           ><a class="button" href="https://github.com/Songwo/nanpad"
             >喜欢这个项目？Star on GitHub ↗</a
           >
         </div>
-        <p class="fine">Windows x64 · 开源免费 · 无需安装 Node.js</p>
+        <p class="fine">Windows x64 · v{{VERSION}} · {{INSTALLER_SIZE}} · 开源免费</p>
         <figure class="product">
           <img
-            src="./overview.png"
+            src="./overview.png?v={{ASSET_REVISION}}"
             width="1480"
             height="940"
-            alt="知屿资产总览：资产摘要、待处理事项和服务器列表"
+            alt="彩色知屿标记与资产总览：常用入口、资产摘要和每日活动"
             fetchpriority="high"
           />
           <figcaption>真实应用界面 · 展示数据，不含私人资产</figcaption>
         </figure>
+      </section>
+      <section class="wrap release-section" id="download" aria-labelledby="release-title">
+        <div class="release-meta">
+          <p class="eyebrow">LATEST RELEASE</p>
+          <h2 id="release-title">正式版 <span>v{{VERSION}}</span></h2>
+          <p><time datetime="{{RELEASE_ISO_DATE}}">{{RELEASE_DATE}}</time> 发布</p>
+          <a class="text-link" href="{{RELEASE_URL}}">查看完整更新说明 ↗</a>
+        </div>
+        <div class="release-content">
+          <p class="release-summary">{{RELEASE_SUMMARY}}</p>
+          <div class="download-options">
+            <a class="download-option" href="{{INSTALLER_URL}}"
+              ><strong>Windows 安装包 <span aria-hidden="true">↓</span></strong
+              ><span>x64 · {{INSTALLER_SIZE}} · 支持覆盖升级</span></a
+            >
+            <a class="download-option" href="{{EXTENSION_URL}}"
+              ><strong>浏览器插件 <span aria-hidden="true">↓</span></strong
+              ><span>Chrome / Edge · 收集网页与账号资料</span></a
+            >
+          </div>
+          <p class="release-links">
+            <a href="{{CHECKSUM_URL}}">SHA256 校验文件</a
+            ><a href="https://github.com/Songwo/nanpad/blob/main/docs/USER-GUIDE.md"
+              >安装与使用教程 ↗</a
+            >
+          </p>
+        </div>
       </section>
       <section class="wrap section" id="features">
         <p class="eyebrow">A PLACE FOR YOUR DIGITAL LIFE</p>
@@ -82,18 +115,18 @@
             </p>
           </article>
           <article>
-            <span class="number">04 / 本机工作台</span>
-            <h3>自己的资料，自己掌握</h3>
+            <span class="number">04 / 账号与密钥</span>
+            <h3>账号与说明，放在一起</h3>
             <p>
-              资产和文档保存在本机；凭据独立加密。邮箱、密钥分组、搜索和 AI 辅助问答，都在同一处。
+              独立保存 Apple
+              ID、网站账号、密码与登录地址，凭据加密存放。关联使用说明和相关文档，让一条账号记录成为完整资料。
             </p>
           </article>
           <article>
-            <span class="number">05 / 看清与上手</span>
-            <h3>从第一项记录开始</h3>
+            <span class="number">05 / 关联问答</span>
+            <h3>让 AI 找到资料之间的联系</h3>
             <p>
-              使用系统字体，界面大小可调并记住选择。服务器先记名称与地址，SSH
-              按需配置；首次使用无需注册。
+              检索文档和资产关系，回看对话历史、常用问题与回答来源。读取文档正文前需要授权，问答工具不会读取密钥库。
             </p>
           </article>
           <article>
@@ -105,6 +138,39 @@
             </p>
           </article>
         </div>
+      </section>
+      <section class="wrap showcase" aria-labelledby="showcase-title">
+        <p class="eyebrow">LESS SWITCHING, MORE CONTEXT</p>
+        <h2 id="showcase-title">资料有上下文，<br />用量有来处。</h2>
+        <div class="showcase-grid">
+          <figure class="product">
+            <img
+              src="./documents.png?v={{ASSET_REVISION}}"
+              width="1480"
+              height="940"
+              loading="lazy"
+              alt="文档阅读模式，侧栏目录与关联资产一起展示"
+            />
+            <figcaption>
+              <strong>安静地阅读，随时编辑</strong>文档与关联资产同屏，工具按需出现。
+            </figcaption>
+          </figure>
+          <figure class="product">
+            <img
+              src="./usage.png?v={{ASSET_REVISION}}"
+              width="1480"
+              height="940"
+              loading="lazy"
+              alt="用量工作台中的趋势图、来源构成与明细筛选"
+            />
+            <figcaption>
+              <strong>从趋势看到具体来源</strong>API、本机日志与订阅额度分别呈现。
+            </figcaption>
+          </figure>
+        </div>
+        <p class="showcase-note">
+          以上为当前应用界面，使用独立示例资料与示例用量展示，不含私人账号和资产。
+        </p>
       </section>
       <section class="statement">
         <div class="wrap">
@@ -118,6 +184,14 @@
       </section>
       <section class="wrap section faq" id="faq">
         <h2>开始之前，你可能想知道</h2>
+        <details>
+          <summary>能统计电脑上所有 AI 的 Token 吗？</summary>
+          <p>
+            本机采集支持 Codex、Claude Code、Grok Build 和 Gemini CLI
+            中可读取的用量日志，需要主动开启，锁库时暂停。未保存日志的网页或客户端无法据此取得精确
+            Token；没有日志、权限不足和确实没有用量会分别提示。
+          </p>
+        </details>
         <details>
           <summary>免费吗？支持什么系统？</summary>
           <p>
@@ -159,8 +233,7 @@
         <h2>少找一会儿，多做一点。</h2>
         <p>如果知屿解决了你的一个小麻烦，欢迎给项目一颗 Star。</p>
         <div class="actions">
-          <a class="button primary" href="https://github.com/Songwo/nanpad/releases/latest"
-            >下载并开始使用 ↓</a
+          <a class="button primary" href="{{INSTALLER_URL}}">下载并开始使用 ↓</a
           ><a class="button" href="https://github.com/Songwo/nanpad">支持开源 · Star ↗</a>
         </div>
       </section>

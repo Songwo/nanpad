@@ -2,6 +2,16 @@
 
 当前发布目标为 Windows x64 NSIS 安装包。其他平台的打包配置不代表已验证可发布。
 
+## 宣传与下载页同步
+
+[GitHub Pages 下载页](https://songwo.github.io/nanpad/)使用 `site/` 下的模板和图片，版本、日期、更新摘要、安装包、插件及校验文件地址由最新已发布的 GitHub 正式版生成，不读取尚未发布的 `package.json` 版本。
+
+`产品主页` 工作流在页面源码改动、正式 Release 发布或编辑、以及 `Windows 正式版` 流水线成功后自动部署，也支持手动运行。使用 `workflow_run` 接续自动发布，因为 `GITHUB_TOKEN` 创建的 Release 不会触发另一条 `release` 工作流。草稿、预发布、缺失或尚未上传完成的附件会使页面构建失败，现有线上页面保留。
+
+本地预览先将 `gh api repos/Songwo/nanpad/releases/latest` 的 JSON 保存到 `release/pages-latest.json`，执行 `node scripts/build-site.mjs release/pages-latest.json release/site`，再使用静态服务器查看 `release/site`。页面为完整静态 HTML，访客无需请求 GitHub API；所有下载入口绑定同一个正式版本，资源使用内容摘要更新缓存。
+
+界面改动后，在开发预览已启动时运行 `node scripts/capture-site.mjs`，重新生成资产总览、文档阅读和用量图表三张展示图。脚本只使用独立浏览器上下文和示例资料，不连接真实桌面数据或外部账号。检查图片后随 `site/` 一起提交；截图不会在每次发布时自动重拍。
+
 ## 版本准备
 
 更新 package.json、package-lock.json、browser-extension/manifest.json 与 src/lib/changelog.ts，执行 `node scripts/write-changelog.mjs` 同步 CHANGELOG.md。本版说明保存在 `docs/releases/v0.8.0.md`。README 的安装包名、构建目录及教程应与版本一致；描述实际支持范围，不将本机协议测试写成真实账号登录成功。

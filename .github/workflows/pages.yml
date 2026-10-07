@@ -2,7 +2,13 @@ name: 产品主页
 on:
   push:
     branches: [main]
-    paths: ['site/**', '.github/workflows/pages.yml']
+    paths: ["site/**", "scripts/build-site*", ".github/workflows/pages.yml"]
+  release:
+    types: [published, edited]
+  # GITHUB_TOKEN 创建的 Release 不会再次触发 release 事件；等待正式版流水线成功。
+  workflow_run:
+    workflows: ["Windows 正式版"]
+    types: [completed]
   workflow_dispatch:
 permissions:
   contents: read
@@ -11,8 +17,10 @@ concurrency:
   cancel-in-progress: false
 jobs:
   deploy:
+    if: github.event_name != 'workflow_run' || (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_repository.full_name == github.repository)
     runs-on: ubuntu-latest
     permissions:
+      contents: read
       pages: write
       id-token: write
     environment:
@@ -20,9 +28,22 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: main
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: 验证发布信息渲染
+        run: node --test scripts/build-site.test.mjs
+      - name: 同步最新正式版与下载入口
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh api repos/Songwo/nanpad/releases/latest > "$RUNNER_TEMP/zhiyu-release.json"
+          node scripts/build-site.mjs "$RUNNER_TEMP/zhiyu-release.json" "$RUNNER_TEMP/zhiyu-site"
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:
-          path: site
+          path: ${{ runner.temp }}/zhiyu-site
       - uses: actions/deploy-pages@v4
         id: deployment

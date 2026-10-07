@@ -9,6 +9,7 @@
   --line: #dce2dc;
   --accent: #28684c;
   --paper: #fff;
+  --tint: #e8eee7;
   font-family: LocalSans, "PingFang SC", "Microsoft YaHei", sans-serif;
   color: var(--ink);
   background: var(--bg);
@@ -120,7 +121,9 @@ h3 {
   text-decoration: none;
   background: var(--paper);
   font-size: 14px;
-  transition: transform 0.15s;
+  transition:
+    transform 0.18s ease,
+    border-color 0.18s ease;
 }
 .button:hover {
   transform: translateY(-2px);
@@ -155,6 +158,112 @@ h3 {
 .section {
   padding-block: 95px;
 }
+.release-section {
+  display: grid;
+  grid-template-columns: 1fr 2fr;
+  gap: 48px;
+  margin-top: 48px;
+  padding: 36px;
+  background: var(--tint);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  scroll-margin-top: 24px;
+}
+.release-meta .eyebrow {
+  margin-bottom: 16px;
+}
+.release-meta h2 {
+  font-size: 28px;
+  margin-bottom: 12px;
+}
+.release-meta h2 span {
+  white-space: nowrap;
+}
+.release-meta p:not(.eyebrow),
+.text-link,
+.release-links {
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.7;
+}
+.text-link {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+}
+.release-summary {
+  margin: 0 0 24px;
+  font-size: 17px;
+  line-height: 1.8;
+  overflow-wrap: anywhere;
+}
+.download-options {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+.download-option {
+  background: var(--paper);
+  padding: 20px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  text-decoration: none;
+  transition:
+    border-color 0.18s ease,
+    transform 0.18s ease;
+}
+.download-option:hover {
+  border-color: var(--accent);
+  transform: translateY(-2px);
+}
+.download-option strong {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 15px;
+}
+.download-option > span {
+  display: block;
+  margin-top: 10px;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--muted);
+}
+.release-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 24px;
+  margin: 12px 0 0;
+}
+.release-links a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+}
+.showcase {
+  padding-bottom: 80px;
+}
+.showcase-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 32px;
+}
+.showcase figcaption {
+  text-align: left;
+  line-height: 1.8;
+  padding-inline: 0;
+}
+.showcase figcaption strong {
+  display: block;
+  color: var(--ink);
+  font-size: 17px;
+  margin-bottom: 6px;
+}
+.showcase-note {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.8;
+}
 .features {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -179,7 +288,7 @@ h3 {
   max-width: 760px;
 }
 .statement {
-  background: #e8eee7;
+  background: var(--tint);
   padding-block: 75px;
 }
 .statement .button {
@@ -266,6 +375,19 @@ footer span {
     grid-template-columns: 1fr;
     gap: 0;
   }
+  .release-section {
+    grid-template-columns: 1fr;
+    gap: 20px;
+    padding: 24px;
+    margin-top: 24px;
+  }
+  .download-options,
+  .showcase-grid {
+    grid-template-columns: 1fr;
+  }
+  .showcase {
+    padding-bottom: 48px;
+  }
   .section {
     padding-block: 60px;
   }
@@ -283,10 +405,12 @@ footer span {
   html {
     scroll-behavior: auto;
   }
-  .button {
+  .button,
+  .download-option {
     transition: none;
   }
-  .button:hover {
+  .button:hover,
+  .download-option:hover {
     transform: none;
   }
 }
