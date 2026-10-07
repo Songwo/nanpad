@@ -33,6 +33,11 @@ jobs:
       - run: npm run i18n:check
       - run: npm test
       - run: npm run desktop:dist
+      - name: 验证正式版彩色图标
+        shell: pwsh
+        run: |
+          $version = (Get-Content package.json | ConvertFrom-Json).version
+          node scripts/brand-icons-integration.mjs "release/v$version/win-unpacked/Nanpad.exe"
       - run: npm run extension:build
       - name: 校验文件与发布
         shell: pwsh

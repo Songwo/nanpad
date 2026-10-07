@@ -284,7 +284,7 @@ async function createWindow() {
     win.setAppDetails({
       appId: windowsAppId(app.isPackaged),
       appIconPath: app.isPackaged
-        ? join(process.resourcesPath, "icon.ico")
+        ? join(process.resourcesPath, "zhiyu.ico")
         : join(here, "../build/icon.ico"),
       appIconIndex: 0,
       relaunchCommand: app.isPackaged
@@ -1070,7 +1070,11 @@ if (!app.requestSingleInstanceLock()) {
     if (app.isPackaged && !process.argv.some((arg) => arg.startsWith("--user-data-dir=")))
       app.setAsDefaultProtocolClient("nanpad");
     app.setAppUserModelId(windowsAppId(app.isPackaged));
-    if (process.platform === "win32" && !process.env.NANPAD_TEST_DATA_DIR) {
+    if (
+      process.platform === "win32" &&
+      !process.env.NANPAD_TEST_DATA_DIR &&
+      !process.argv.some((arg) => arg === "--user-data-dir" || arg.startsWith("--user-data-dir="))
+    ) {
       try {
         await migrateLegacyWindowsShortcut({
           programsDirectory: join(app.getPath("appData"), "Microsoft/Windows/Start Menu/Programs"),

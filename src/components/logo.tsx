@@ -1,12 +1,16 @@
 import { t } from "@/lib/i18n";
 import { BRAND_MARK } from "@/lib/brand-mark.mjs";
 
-/** 两片岛形纸页在留白中形成连接，小尺寸和单色主题下仍可辨认。 */
+/** 界面与桌面使用相同的品牌配色，浅深主题均保留彩色标记。 */
 export function LogoMark({ className = "size-9" }: { className?: string }) {
   return (
     <svg viewBox="0 0 64 64" className={className} fill="none" aria-hidden="true">
-      <path d={BRAND_MARK.upper} fill="currentColor" />
-      <path d={BRAND_MARK.lower} fill="currentColor" fillOpacity="0.55" />
+      <rect x="1" y="1" width="62" height="62" rx="16" fill={BRAND_MARK.plate} />
+      <rect x="1.5" y="1.5" width="61" height="61" rx="15.5" stroke={BRAND_MARK.edge} />
+      <g transform="translate(6 6) scale(.8125)">
+        <path d={BRAND_MARK.upper} fill={BRAND_MARK.paper} />
+        <path d={BRAND_MARK.lower} fill={BRAND_MARK.jade} />
+      </g>
     </svg>
   );
 }

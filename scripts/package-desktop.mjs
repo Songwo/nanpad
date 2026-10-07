@@ -69,6 +69,7 @@ const config = {
     from: resolve(root, entry.from),
   })),
   win: { ...manifest.build.win, icon: resolve(root, manifest.build.win.icon) },
+  nsis: { ...manifest.build.nsis, include: resolve(root, manifest.build.nsis.include) },
   electronDist: join(root, "node_modules", "electron", "dist"),
   electronVersion: JSON.parse(
     await readFile(join(root, "node_modules", "electron", "package.json"), "utf8"),
