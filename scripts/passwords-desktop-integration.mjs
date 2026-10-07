@@ -54,6 +54,7 @@ try {
   instance = await electron.launch({
     ...(packaged ? { executablePath: resolve(packaged) } : {}),
     args: packaged ? [`--user-data-dir=${directory}`] : [resolve("electron/main.mjs")],
+    locale: "zh-CN",
     env,
     timeout: 45000,
   });
