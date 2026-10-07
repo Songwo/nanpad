@@ -403,9 +403,13 @@ test("系统将缓存文件透明重定向时可重启读取，保留历史和�
   await mkdir(join(f.root, "package-cache"));
   await rename(f.file, backing);
   // 模拟 Windows 包应用文件虚拟化：目录没有链接，逻辑文件的元信息与句柄均指向系统映射后的文件。
-  const redirect = (path) => typeof path === "string" && (path === f.file || path.startsWith(`${f.file}.`))
-    ? backing + path.slice(f.file.length) : path;
-  const originals = Object.fromEntries(["lstat", "open", "realpath", "rename", "unlink"].map((key) => [key, fs.promises[key]]));
+  const redirect = (path) =>
+    typeof path === "string" && (path === f.file || path.startsWith(`${f.file}.`))
+      ? backing + path.slice(f.file.length)
+      : path;
+  const originals = Object.fromEntries(
+    ["lstat", "open", "realpath", "rename", "unlink"].map((key) => [key, fs.promises[key]]),
+  );
   for (const key of ["lstat", "open", "realpath", "unlink"])
     fs.promises[key] = (path, ...args) => originals[key](redirect(path), ...args);
   fs.promises.rename = (from, to) => originals.rename(redirect(from), redirect(to));
@@ -451,6 +455,68 @@ test("缓存 realpath 指向不同文件或缓存为硬链接时仍拒绝读取"
   const linked = f.monitor({ file: alias });
   assert.ok((await linked.status()).error);
   assert.equal((await linked.status()).enabled, false);
+});
+
+test("缓存父目录使用同身份路径别名时可首次写入并重启恢复", async (t) => {
+  const f = await fixture(t);
+  const alias = join(f.root, "short-cache-alias");
+  const canonical = join(f.root, "cache");
+  const file = join(alias, "usage.json");
+  const remap = (path) =>
+    typeof path === "string" &&
+    (path === alias || path.startsWith(alias + (process.platform === "win32" ? "\\" : "/")))
+      ? canonical + path.slice(alias.length)
+      : path;
+  const names = ["mkdir", "lstat", "open", "realpath", "rename", "unlink"];
+  const originals = Object.fromEntries(names.map((name) => [name, fs.promises[name]]));
+  for (const name of names.filter((name) => name !== "rename"))
+    fs.promises[name] = (path, ...args) => originals[name](remap(path), ...args);
+  fs.promises.rename = (from, to) => originals.rename(remap(from), remap(to));
+  syncBuiltinESMExports();
+  try {
+    await writeFile(
+      join(f.roots.codex[0], "session.jsonl"),
+      codexMeta() + context() + codex(100, 20),
+    );
+    const monitor = f.monitor({ file });
+    await monitor.configure({ enabled: true });
+    await monitor.refresh();
+    assert.equal((await monitor.list()).records[0].input, 100);
+    const restarted = f.monitor({ file });
+    assert.equal((await restarted.status()).enabled, true);
+    assert.equal((await restarted.status()).error, undefined);
+    await restarted.refresh();
+    assert.equal((await restarted.list()).records[0].input, 100, "目录别名重启不重复累计");
+  } finally {
+    Object.assign(fs.promises, originals);
+    syncBuiltinESMExports();
+  }
+});
+
+test("缓存父目录别名指向不同身份或显式 junction 时仍拒绝写入", async (t) => {
+  const f = await fixture(t);
+  const directory = join(f.root, "cache");
+  const different = join(f.root, "other-cache");
+  await mkdir(directory);
+  await mkdir(different);
+  const original = fs.promises.realpath;
+  fs.promises.realpath = (path, ...args) =>
+    original(path === directory ? different : path, ...args);
+  syncBuiltinESMExports();
+  try {
+    await assert.rejects(f.monitor().configure({ enabled: true }), /缓存保存失败/);
+    await assert.rejects(readFile(f.file), { code: "ENOENT" });
+  } finally {
+    fs.promises.realpath = original;
+    syncBuiltinESMExports();
+  }
+  const linked = join(f.root, "linked-cache");
+  await symlink(directory, linked, process.platform === "win32" ? "junction" : "dir");
+  await assert.rejects(
+    f.monitor({ file: join(linked, "usage.json") }).configure({ enabled: true }),
+    /缓存无法安全读取|缓存保存失败/,
+  );
+  await assert.rejects(readFile(f.file), { code: "ENOENT" });
 });
 
 test("并发刷新和暂停串行化，缓存损坏时停止而不重放历史", async (t) => {

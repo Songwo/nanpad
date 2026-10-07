@@ -1002,7 +1002,8 @@ export class LocalUsageMonitor {
   async persist() {
     if (!this.dirty) return;
     await mkdir(dirname(this.file), { recursive: true });
-    await safePath(dirname(this.file));
+    // Windows 8.3 短目录名也是同一目录的系统别名，沿用缓存读取的身份校验。
+    await safePath(dirname(this.file), { allowSystemMapping: true });
     try {
       if ((await lstat(this.file)).isSymbolicLink()) throw new Error("UNSAFE_PATH");
     } catch (error) {
