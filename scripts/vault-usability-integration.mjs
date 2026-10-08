@@ -24,7 +24,13 @@ const fixture = {
 let instance;
 let page;
 try {
-  instance = await electron.launch({ args: [resolve("electron/main.mjs")], env, timeout: 45000 });
+  // 测试按中文标签定位，固定语言，避免跟随 CI 主机的系统语言。
+  instance = await electron.launch({
+    args: [resolve("electron/main.mjs")],
+    env,
+    locale: "zh-CN",
+    timeout: 45000,
+  });
   assert.equal(await instance.evaluate(({ app }) => app.getPath("userData")), directory);
   page = await instance.firstWindow();
   page.setDefaultTimeout(12000);
