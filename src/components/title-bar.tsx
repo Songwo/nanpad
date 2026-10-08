@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Search, Sun, Moon, Menu, PanelLeftClose, PanelLeftOpen } from "lucide-react";
+import { Search, Sun, Moon, Settings2, Menu, PanelLeftClose, PanelLeftOpen } from "lucide-react";
 import { WindowControls } from "./window-controls";
 import { LogoMark } from "./logo";
 import { desktop } from "@/lib/desktop";
@@ -10,6 +10,7 @@ import { t } from "@/lib/i18n";
 export function TitleBar() {
   const bridge = desktop();
   const setCommandOpen = useAppStore((s) => s.setCommandOpen);
+  const setSettingsOpen = useAppStore((s) => s.setSettingsOpen);
   const resolved = useSettings((s) => s.resolved);
   const setTheme = useSettings((s) => s.setTheme);
   const sidebarCollapsed = useSettings((s) => s.sidebarCollapsed);
@@ -80,6 +81,14 @@ export function TitleBar() {
           onClick={() => setTheme(resolved === "dark" ? "light" : "dark")}
         >
           {resolved === "dark" ? <Sun className="size-4" /> : <Moon className="size-4" />}
+        </button>
+        <button
+          type="button"
+          className="chrome-action"
+          aria-label={t("系统设置…")}
+          onClick={() => setSettingsOpen(true)}
+        >
+          <Settings2 className="size-4" />
         </button>
         {bridge && <WindowControls />}
       </div>

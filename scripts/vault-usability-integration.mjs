@@ -91,13 +91,23 @@ try {
   await page.getByRole("button", { name: "打开分组 未分组", exact: true }).click();
   const row = page.getByRole("button", { name: `查看账号与凭据 ${fixture.name}`, exact: true });
   await row.waitFor();
-  const settingsBox = await sidebar
-    .getByRole("button", { name: "设置", exact: true })
-    .boundingBox();
+  assert.equal(await sidebar.getByRole("button", { name: "关系图", exact: true }).count(), 0);
+  assert.equal(await sidebar.getByRole("button", { name: "设置", exact: true }).count(), 0);
+  const titlebar = page.locator("header.app-titlebar");
+  const settings = titlebar.getByRole("button", { name: "系统设置…", exact: true });
+  const settingsBox = await settings.boundingBox();
+  const titlebarBox = await titlebar.boundingBox();
   assert.ok(
-    settingsBox && settingsBox.y > 600 && settingsBox.y + settingsBox.height <= 900,
-    "设置固定在导航底部并可见",
+    settingsBox &&
+      titlebarBox &&
+      settingsBox.y >= titlebarBox.y &&
+      settingsBox.y + settingsBox.height <= titlebarBox.y + titlebarBox.height,
+    "设置回到顶部标题栏原位置",
   );
+  await settings.click();
+  await page.getByRole("dialog", { name: "设置", exact: true }).waitFor();
+  await page.keyboard.press("Escape");
+  await page.getByRole("dialog", { name: "设置", exact: true }).waitFor({ state: "detached" });
   await sidebar.getByRole("button", { name: "锁定密钥库", exact: true }).click();
   await page.getByText("密钥库已锁定", { exact: true }).first().waitFor();
   await row.click();

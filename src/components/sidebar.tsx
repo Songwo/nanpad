@@ -17,8 +17,6 @@ import {
   Unlock,
   ChevronDown,
   Ellipsis,
-  Settings2,
-  Network,
   type LucideIcon,
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type HTMLAttributes } from "react";
@@ -55,7 +53,6 @@ export const NAV_GROUPS: NavGroup[] = [
     items: [
       { id: "overview", label: "资产总览", icon: House, badgeKey: "total" },
       { id: "docs", label: "文档资产", icon: FileText },
-      { id: "relations", label: "关系图", icon: Network },
       { id: "usage", label: "用量记录", icon: ChartNoAxesCombined },
       { id: "nodes", label: "自建节点", icon: Radio, countKey: "nodes" },
     ],
@@ -296,7 +293,7 @@ export function Sidebar({
           ))}
         </nav>
 
-        {/* 安全与设置始终固定在导航底部，收起后仍可直接操作。 */}
+        {/* 密钥库入口固定在导航底部，收起后仍可直接操作。 */}
         <div className="sidebar-profile-footer mt-auto shrink-0 space-y-1 border-t border-line/60 p-2.5">
           <SidebarUtilities compact={collapsed} />
           <ProfileMenu compact={collapsed} />
@@ -322,11 +319,6 @@ function SidebarUtilities({ compact }: { compact: boolean }) {
           },
         ]
       : []),
-    {
-      label: t("设置"),
-      icon: Settings2,
-      action: () => useAppStore.getState().setSettingsOpen(true),
-    },
   ];
   return entries.map(({ label, icon: Icon, action }) => (
     <Tooltip.Root key={label}>

@@ -218,14 +218,33 @@ try {
   await page.locator('[data-app-ready="true"]').waitFor();
 
   const sidebar = page.locator("aside.app-sidebar:visible");
-  const settings = sidebar.getByRole("button", { name: "设置", exact: true });
+  assert.equal(await sidebar.getByRole("button", { name: "关系图", exact: true }).count(), 0);
+  assert.equal(await sidebar.getByRole("button", { name: "设置", exact: true }).count(), 0);
+  const titlebar = page.locator("header.app-titlebar");
+  const settings = titlebar.getByRole("button", { name: "系统设置…", exact: true });
   const settingsBox = await settings.boundingBox();
-  assert.ok(settingsBox && settingsBox.y > 650 && settingsBox.y + settingsBox.height <= 900);
+  const titlebarBox = await titlebar.boundingBox();
+  assert.ok(
+    settingsBox &&
+      titlebarBox &&
+      settingsBox.y >= titlebarBox.y &&
+      settingsBox.y + settingsBox.height <= titlebarBox.y + titlebarBox.height,
+    "设置按钮保留在顶部标题栏",
+  );
   await settings.click();
   await page.getByRole("dialog", { name: "设置", exact: true }).waitFor();
   await page.keyboard.press("Escape");
   await page.getByRole("dialog", { name: "设置", exact: true }).waitFor({ state: "detached" });
-  checks.push("正式窗口设置入口固定在侧栏底部并可打开");
+  checks.push("侧栏不显示关系图和设置，顶部原位置设置入口可打开");
+  async function openAllResourceGraph() {
+    await sidebar.getByRole("button", { name: "标签", exact: true }).click();
+    await page
+      .getByRole("group", { name: "显示方式", exact: true })
+      .getByRole("button", { name: "关系图", exact: true })
+      .click();
+    await page.getByRole("button", { name: "全部资源", exact: true }).click();
+    await page.locator(".asset-graph").waitFor();
+  }
 
   await sidebar.getByRole("button", { name: "文档资产", exact: true }).click();
   await page.getByRole("button", { name: "添加文档", exact: true }).click();
@@ -245,12 +264,12 @@ try {
   assert.ok(documentId);
   checks.push("文档加号菜单打开真实文件选择器并导入 Markdown");
 
-  await sidebar.getByRole("button", { name: "关系图", exact: true }).click();
+  await openAllResourceGraph();
   await page.locator(`.asset-graph-node[data-asset-id="${fixture.id}"]`).waitFor();
   await page.locator(`.asset-graph-node[data-asset-id="${documentId}"]`).waitFor();
   assert.equal(await page.locator(".react-flow__edge").count(), 0);
   await page.screenshot({ path: "screenshots/workspace-v150-graph-before.png" });
-  checks.push("关系图入口展示真实账号与文档且没有虚构连线");
+  checks.push("标签页现有关系图视图可查看全部资源，展示真实账号与文档且没有虚构连线");
 
   await sidebar.getByRole("button", { name: "用量记录", exact: true }).click();
   await page.getByRole("button", { name: "采集与监控", exact: true }).click();
@@ -365,7 +384,7 @@ try {
       to: { kind: "secret", id: "secret-packaged-backup" },
     },
   ]);
-  await sidebar.getByRole("button", { name: "关系图", exact: true }).click();
+  await openAllResourceGraph();
   await page
     .locator(`.asset-graph-node[data-asset-id="${fixture.id}"]`)
     .getByText(accountArgs.patch.name, { exact: true })

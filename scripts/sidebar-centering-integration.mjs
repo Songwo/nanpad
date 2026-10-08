@@ -33,6 +33,17 @@ try {
   await completeOnboarding(page);
   await page.locator('[data-app-ready="true"]').waitFor();
   const sidebar = page.locator("#primary-navigation");
+  assert.equal(await sidebar.getByRole("button", { name: "关系图", exact: true }).count(), 0);
+  assert.equal(await sidebar.getByRole("button", { name: "设置", exact: true }).count(), 0);
+  await page
+    .locator("header.app-titlebar")
+    .getByRole("button", { name: "系统设置…", exact: true })
+    .click();
+  await page.getByRole("dialog", { name: "设置", exact: true }).waitFor();
+  await page.keyboard.press("Escape");
+  await page.getByRole("dialog", { name: "设置", exact: true }).waitFor({ state: "detached" });
+  await sidebar.getByRole("button", { name: "锁定密钥库", exact: true }).click();
+  await sidebar.getByRole("button", { name: "解锁密钥库", exact: true }).waitFor();
   await sidebar.getByRole("button", { name: "文档资产", exact: true }).click();
   await mkdir("screenshots", { recursive: true });
   for (const zoom of [100, 125, 150]) {
@@ -52,7 +63,7 @@ try {
         const rect = root.getBoundingClientRect();
         const border = parseFloat(getComputedStyle(root).borderRightWidth);
         const nav = root.querySelector("nav");
-        const names = ["文档资产", "关系图", "设置", "锁定密钥库"];
+        const names = ["文档资产", "用量记录", "解锁密钥库"];
         return {
           railCenter: rect.left + (rect.width - border) / 2,
           scrolls: nav.scrollHeight > nav.clientHeight,
@@ -88,8 +99,8 @@ try {
       }
       measurements.push({ zoom, collapsed, ...geometry });
     }
-    await sidebar.getByRole("button", { name: "设置", exact: true }).hover();
-    await page.getByRole("tooltip").filter({ hasText: "设置" }).waitFor();
+    await sidebar.getByRole("button", { name: "解锁密钥库", exact: true }).hover();
+    await page.getByRole("tooltip").filter({ hasText: "解锁密钥库" }).waitFor();
     await page.mouse.move(200, 100);
     for (const theme of ["light", "dark"]) {
       if ((await page.locator("html").getAttribute("data-theme")) !== theme)
