@@ -1,10 +1,23 @@
 import { hostedImageUrl } from "./hosted-image.mjs";
+import { createHash } from "node:crypto";
 import { renameSync } from "node:fs";
 import { mkdir, readFile, readdir, writeFile, rename, unlink, lstat } from "node:fs/promises";
 import { join } from "node:path";
 import { inspectRaster } from "./image-data.mjs";
 
 const KINDS = new Set(["server", "domain", "mail", "ai", "secret", "cert"]);
+export function documentRevision(doc) {
+  return createHash("sha256")
+    .update(
+      JSON.stringify({
+        title: doc.title,
+        content: doc.content,
+        bindings: doc.bindings,
+        updatedAt: doc.updatedAt,
+      }),
+    )
+    .digest("hex");
+}
 const TYPES = new Set([
   "doc",
   "paragraph",
@@ -260,7 +273,7 @@ export class DocumentsStore {
     const doc = JSON.parse(await readFile(this.#path(id), "utf8"));
     return { ...normalizeDocument(doc), createdAt: doc.createdAt, updatedAt: doc.updatedAt };
   }
-  save(input, { assertCurrent = null } = {}) {
+  save(input, { assertCurrent = null, expectedRevision = null } = {}) {
     const clean = normalizeDocument(input);
     const createOnly = input.createOnly === true;
     const job = this.#queue.then(async () => {
@@ -269,6 +282,8 @@ export class DocumentsStore {
       let createdAt = new Date().toISOString();
       try {
         const existing = JSON.parse(await readFile(path, "utf8"));
+        if (expectedRevision && documentRevision(existing) !== expectedRevision)
+          throw new Error("文档已在其他位置修改，请重新生成建议，避免覆盖新内容。");
         // 显式迁移只创建缺失文档，队列内检查避免并发导入覆盖用户后续编辑。
         if (createOnly)
           return {
@@ -279,6 +294,7 @@ export class DocumentsStore {
         createdAt = existing.createdAt || createdAt;
       } catch (error) {
         if (error.code !== "ENOENT") throw error;
+        if (expectedRevision) throw new Error("文档已删除，未应用修改建议。");
       }
       const doc = { ...clean, createdAt, updatedAt: new Date().toISOString() };
       await mkdir(this.#directory, { recursive: true });

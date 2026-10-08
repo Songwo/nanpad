@@ -52,6 +52,8 @@ import { EditorDialog } from "./ui/editor-dialog";
 import { t } from "@/lib/i18n";
 import { useSettings } from "@/lib/settings";
 import { DocumentMarkdownImport } from "./document-markdown-import";
+import { MARKDOWN_IMPORTED } from "@/lib/document-import-events";
+import { DocumentNavigation } from "./document-navigation";
 import "./document-reading.css";
 import "./document-actions.css";
 
@@ -68,6 +70,16 @@ export function DocumentsWorkspace() {
   const [newDocumentId, setNewDocumentId] = useState<string | null>(null);
   const [wideLayout, setWideLayout] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<DeleteTarget | null>(null);
+  useEffect(() => {
+    const imported = () => {
+      setQuery("");
+      setFilter("all");
+      setBrowsing(false);
+      setNewDocumentId(null);
+    };
+    window.addEventListener(MARKDOWN_IMPORTED, imported);
+    return () => window.removeEventListener(MARKDOWN_IMPORTED, imported);
+  }, []);
   useEffect(() => {
     const media = window.matchMedia("(min-width: 1101px)");
     const update = () => setWideLayout(media.matches);
@@ -135,27 +147,9 @@ export function DocumentsWorkspace() {
             <FileText className="size-4" aria-hidden="true" />
             {t("文档资产")} <span className="documents-count">{list.length}</span>
           </h2>
-          <Button
-            size="icon"
-            variant="ghost"
-            className="documents-create-button"
-            aria-label={t("新建文档")}
-            title={t("新建文档")}
-            onClick={() => void newDocument()}
-          >
-            <Plus />
-          </Button>
+          <DocumentMarkdownImport onCreate={() => void newDocument()} />
         </div>
         <div className="documents-list-heading">
-          <DocumentMarkdownImport
-            onImported={() => {
-              setQuery("");
-              setFilter("all");
-              setBrowsing(false);
-              setNewDocumentId(null);
-              useSettings.getState().setDocumentListCollapsed(false);
-            }}
-          />
           <label className="documents-search">
             <Search className="size-4" />
             <input
@@ -1079,6 +1073,7 @@ function DocumentEditor({
           />
         </article>
       </div>
+      <DocumentNavigation editor={editor} readerRef={readerRef} />
       {infoOpen && (
         <EditorDialog title={t("文档信息")} onClose={() => setInfoOpen(false)}>
           <div className="editor-scroll">

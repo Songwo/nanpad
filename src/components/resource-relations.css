@@ -1,0 +1,102 @@
+.resource-graph-workspace {
+  display: grid;
+  gap: 16px;
+  min-width: 0;
+}
+.resource-graph-intro {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+}
+.resource-graph-intro p {
+  color: var(--color-muted);
+  font-size: 13px;
+  line-height: 1.6;
+}
+.resource-graph-workspace .asset-graph {
+  height: clamp(360px, 58vh, 680px);
+}
+.resource-relations-panel {
+  border: 1px solid var(--color-line);
+  border-radius: 16px;
+  background: var(--color-card);
+  padding: 16px;
+  display: grid;
+  gap: 16px;
+  animation: usage-detail-in 180ms ease-out;
+}
+.resource-panel-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.resource-add-form {
+  display: grid;
+  gap: 12px;
+}
+.resource-add-fields {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+}
+.resource-relation-list {
+  display: grid;
+  max-height: 340px;
+  overflow: auto;
+}
+.resource-relation-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  border-bottom: 1px solid var(--color-line);
+  padding: 12px 0;
+  min-width: 0;
+}
+.resource-relation-row:last-child {
+  border-bottom: 0;
+}
+.resource-relation-row > span {
+  flex: 1;
+  min-width: 0;
+}
+.resource-relation-row strong {
+  display: block;
+  font-size: 13px;
+  font-weight: 500;
+  overflow-wrap: anywhere;
+}
+.resource-relation-row small {
+  display: block;
+  margin-top: 4px;
+  font-size: 12px;
+  color: var(--color-muted);
+  overflow-wrap: anywhere;
+}
+.resource-relation-row input {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--color-ink);
+}
+.resource-graph-workspace .graph-count {
+  max-width: 50%;
+  white-space: normal;
+}
+@media (max-width: 640px) {
+  .resource-add-fields {
+    grid-template-columns: 1fr;
+  }
+  .resource-add-fields > svg {
+    display: none;
+  }
+  .resource-panel-tabs button {
+    flex: 1;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .resource-relations-panel {
+    animation: none;
+  }
+}

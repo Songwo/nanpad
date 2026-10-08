@@ -197,7 +197,7 @@ try {
   assert.equal((await page.evaluate(() => window.sinan.agent.knowledge())).documents.length, 1);
   await mkdir("screenshots", { recursive: true });
   await page.screenshot({ path: "screenshots/nanpad-agent-settings.png" });
-  await page.getByRole("button", { name: "模型与知识库", exact: true }).click();
+  await page.getByRole("button", { name: "返回对话", exact: true }).click();
   await page.getByRole("textbox", { name: "向模型提问" }).fill("API 高负载处理");
   await page.getByRole("button", { name: "发送", exact: true }).click();
   await page.getByText(/integration-model · 生成完成/).waitFor();

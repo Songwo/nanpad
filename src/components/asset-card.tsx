@@ -58,9 +58,7 @@ export function ServerCard({ data, compact = true }: { data: ServerT; compact?: 
     <article
       className={cn(
         "group relative bg-card text-left transition-all",
-        compact
-          ? "asset-card-valuable card-tap cursor-pointer"
-          : "asset-card-valuable rounded-2xl shadow-float",
+        compact ? "asset-card-valuable card-tap cursor-pointer" : "asset-card-detail",
       )}
       data-asset-id={compact ? data.id : undefined}
       onClick={compact ? (e) => openFromEvent(e, "server", data.id) : undefined}
@@ -253,9 +251,7 @@ export function DomainCard({ data, compact = true }: { data: Domain; compact?: b
     <article
       className={cn(
         "group relative bg-card text-left transition-all",
-        compact
-          ? "asset-card-valuable card-tap cursor-pointer"
-          : "asset-card-valuable rounded-2xl shadow-float",
+        compact ? "asset-card-valuable card-tap cursor-pointer" : "asset-card-detail",
       )}
       data-asset-id={compact ? data.id : undefined}
       onClick={compact ? (e) => openFromEvent(e, "domain", data.id) : undefined}
@@ -325,9 +321,7 @@ export function MailCard({ data, compact = true }: { data: Mailbox; compact?: bo
     <article
       className={cn(
         "group relative bg-card text-left transition-all",
-        compact
-          ? "asset-card-valuable card-tap cursor-pointer"
-          : "asset-card-valuable rounded-2xl shadow-float",
+        compact ? "asset-card-valuable card-tap cursor-pointer" : "asset-card-detail",
       )}
       data-asset-id={compact ? data.id : undefined}
       onClick={compact ? (e) => openFromEvent(e, "mail", data.id) : undefined}
@@ -373,9 +367,7 @@ export function AiCard({ data, compact = true }: { data: AiAsset; compact?: bool
     <article
       className={cn(
         "group relative bg-card text-left transition-all",
-        compact
-          ? "asset-card-valuable card-tap cursor-pointer"
-          : "asset-card-valuable rounded-2xl shadow-float",
+        compact ? "asset-card-valuable card-tap cursor-pointer" : "asset-card-detail",
       )}
       data-asset-id={compact ? data.id : undefined}
       onClick={compact ? (e) => openFromEvent(e, "ai", data.id) : undefined}
@@ -451,7 +443,7 @@ export function AiCard({ data, compact = true }: { data: AiAsset; compact?: bool
 }
 
 export function SecretCard({ data, compact = true }: { data: Secret; compact?: boolean }) {
-  const account = data.kind === "account";
+  const account = data.kind === "account" || data.kind === "password";
   const kindLabel = account
     ? t("账号密码")
     : data.kind === "api"
@@ -465,9 +457,7 @@ export function SecretCard({ data, compact = true }: { data: Secret; compact?: b
     <article
       className={cn(
         "group relative bg-card text-left transition-all",
-        compact
-          ? "asset-card-valuable card-tap cursor-pointer"
-          : "asset-card-valuable rounded-2xl shadow-float",
+        compact ? "asset-card-valuable card-tap cursor-pointer" : "asset-card-detail",
       )}
       data-asset-id={compact ? data.id : undefined}
       onClick={compact ? (e) => openFromEvent(e, "secret", data.id) : undefined}
@@ -537,9 +527,7 @@ export function CertCard({ data, compact = true }: { data: Certificate; compact?
     <article
       className={cn(
         "group relative bg-card text-left transition-all",
-        compact
-          ? "asset-card-valuable card-tap cursor-pointer"
-          : "asset-card-valuable rounded-2xl shadow-float",
+        compact ? "asset-card-valuable card-tap cursor-pointer" : "asset-card-detail",
       )}
       data-asset-id={compact ? data.id : undefined}
       onClick={compact ? (e) => openFromEvent(e, "cert", data.id) : undefined}

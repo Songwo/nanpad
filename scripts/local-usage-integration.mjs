@@ -106,7 +106,9 @@ async function waitForLocalInput(page, input) {
       expected: input,
       actual,
       status: await page.evaluate(() => window.sinan.usage.localStatus()),
-      ui: await page.locator(".local-usage-panel").innerText(),
+      ui: (await page.locator(".local-usage-panel").count())
+        ? await page.locator(".local-usage-panel").innerText()
+        : await page.locator(".usage-insights").innerText(),
     }),
   );
   assert.equal(actual, input, "后台定时采集必须真正读取新增用量");
@@ -149,6 +151,7 @@ try {
     .getByRole("button", { name: /^用量记录/ })
     .first()
     .click();
+  await page.getByRole("button", { name: "采集与监控", exact: true }).click();
   await page.evaluate(() => window.sinan.vault.lock());
   await page.getByRole("button", { name: "立即采集", exact: true }).click();
   assert.equal(await page.getByRole("heading", { name: "解锁密钥库", exact: true }).count(), 0);
@@ -227,6 +230,8 @@ try {
     ),
   );
   await mkdir("release/screenshots", { recursive: true });
+  await page.getByRole("button", { name: "关闭监控详情", exact: true }).click();
+  await page.locator(".local-monitor-dialog").waitFor({ state: "detached" });
   await page.locator(".usage-record").filter({ hasText: "Codex" }).locator("summary").click();
   await page.screenshot({ path: "release/screenshots/usage-desktop-integrated.png" });
   await instance.evaluate(({ powerMonitor }) => powerMonitor.emit("lock-screen"));

@@ -149,7 +149,7 @@ try {
       await page
         .getByRole("checkbox", { name: "选择密钥 Alice 已取消保存", exact: true })
         .locator("..")
-        .getByRole("button", { name: "密钥详情", exact: true })
+        .getByRole("button", { name: "查看账号与凭据 Alice 已取消保存", exact: true })
         .click();
       const recoverable = page.getByRole("dialog", { name: "资产详情", exact: true });
       await recoverable.getByText("alice-delayed@example.test", { exact: true }).waitFor();
@@ -216,7 +216,7 @@ try {
     await page
       .getByRole("checkbox", { name: `选择密钥 ${fixture.name}`, exact: true })
       .locator("..")
-      .getByRole("button", { name: "密钥详情", exact: true })
+      .getByRole("button", { name: `查看账号与凭据 ${fixture.name}`, exact: true })
       .click();
     const details = page.getByRole("dialog", { name: "资产详情", exact: true });
     await details.waitFor();
@@ -394,6 +394,8 @@ try {
     .click();
   await page.locator(".z-gate").locator('input[type="password"]').fill("integration-master-2026");
   await page.locator(".z-gate").getByRole("button", { name: "解锁", exact: true }).click();
+  // Radix解锁层会暂时从可访问树隐藏底层详情，必须先等解锁结束再判断删除完成。
+  await page.locator(".z-gate").waitFor({ state: "detached" });
   await details.waitFor({ state: "detached" });
   assert.equal(await credential(), null);
   await page.waitForFunction(

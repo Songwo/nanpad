@@ -65,7 +65,9 @@ export function ExpandLayer() {
     visible?.kind === "server" ? servers.find((s) => s.id === visible.id) : null;
   const currentAccount =
     visible?.kind === "secret"
-      ? secrets.find((item) => item.id === visible.id && item.kind === "account")
+      ? secrets.find(
+          (item) => item.id === visible.id && ["account", "password"].includes(item.kind),
+        )
       : null;
 
   useEffect(() => {

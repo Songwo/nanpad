@@ -286,6 +286,7 @@ export interface DesktopBridge {
   openExternal(url: string): Promise<boolean>;
   pickJson(): Promise<unknown | null>;
   store: {
+    onChanged?(handler: (change: import("./snapshot-merge").SnapshotChange) => void): () => void;
     addDemo(): Promise<Snapshot>;
     load(): Promise<PersistedFile | null>;
     save(snapshot: PersistedFile): Promise<boolean>;

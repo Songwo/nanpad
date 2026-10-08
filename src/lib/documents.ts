@@ -18,8 +18,12 @@ export interface DocumentSummary extends Omit<DocumentAsset, "content"> {
   excerpt: string;
   imageCount: number;
 }
+export interface DocumentChange {
+  document?: DocumentAsset;
+  removedId?: string;
+}
 export interface DocumentsBridge {
-  onChanged?(handler: () => void): () => void;
+  onChanged?(handler: (change: DocumentChange) => void): () => void;
   list(): Promise<DocumentSummary[]>;
   get(id: string): Promise<DocumentAsset>;
   save(doc: DocumentAsset & { createOnly?: boolean }): Promise<DocumentAsset>;
@@ -72,13 +76,14 @@ export function summary(doc: DocumentAsset): DocumentSummary {
   };
 }
 interface State {
+  acceptChange(change: DocumentChange): void;
   list: DocumentSummary[];
   drafts: Record<string, DocumentAsset>;
   status: Record<string, "saved" | "saving" | "dirty" | "error">;
   errors: Record<string, string>;
   selected: string | null;
   loaded: boolean;
-  load(): Promise<void>;
+  load(force?: boolean): Promise<void>;
   open(id: string): Promise<void>;
   create(bindings?: AssetRef[], initial?: Pick<DocumentAsset, "title" | "content">): Promise<void>;
   importServer(server: { id: string; name: string; docs?: string }): Promise<void>;
@@ -88,6 +93,8 @@ interface State {
 }
 const timers = new Map<string, ReturnType<typeof setTimeout>>();
 const running = new Map<string, Promise<void>>();
+let loading: Promise<void> | null = null;
+let reloadRequested = false;
 export const useDocuments = create<State>((set, get) => ({
   list: [],
   drafts: {},
@@ -95,9 +102,90 @@ export const useDocuments = create<State>((set, get) => ({
   errors: {},
   selected: null,
   loaded: false,
-  async load() {
-    const list = await api().list();
-    set({ list, loaded: true });
+  acceptChange({ document, removedId }) {
+    const id = document?.id ?? removedId;
+    if (!id) return;
+    set((state) => {
+      // 自身保存的通知早于响应；正在编辑/保存的草稿由原保存队列收尾。
+      if (state.drafts[id] && state.status[id] !== "saved") return state;
+      if (document)
+        return {
+          list: [summary(document), ...state.list.filter((item) => item.id !== id)].sort((a, b) =>
+            b.updatedAt.localeCompare(a.updatedAt),
+          ),
+          drafts: state.drafts[id] ? { ...state.drafts, [id]: document } : state.drafts,
+        };
+      const drafts = { ...state.drafts },
+        status = { ...state.status },
+        errors = { ...state.errors };
+      delete drafts[id];
+      delete status[id];
+      delete errors[id];
+      return {
+        list: state.list.filter((item) => item.id !== id),
+        drafts,
+        status,
+        errors,
+        selected: state.selected === id ? null : state.selected,
+      };
+    });
+  },
+  async load(force = false) {
+    if (loading) {
+      if (force) reloadRequested = true;
+      return loading;
+    }
+    if (get().loaded && !force) return;
+    let resolveLoad!: () => void;
+    let rejectLoad!: (error: unknown) => void;
+    const task = new Promise<void>((resolve, reject) => {
+      resolveLoad = resolve;
+      rejectLoad = reject;
+    });
+    loading = task;
+    void (async () => {
+      try {
+        do {
+          reloadRequested = false;
+          const before = new Map(get().list.map((doc) => [doc.id, doc]));
+          let list: DocumentSummary[];
+          try {
+            list = await api().list();
+          } catch (error) {
+            // 请求期间收到保存/删除通知，即使旧请求失败也要补读最新文件。
+            if (reloadRequested) continue;
+            throw error;
+          }
+          set((state) => {
+            const current = new Map(state.list.map((doc) => [doc.id, doc]));
+            const merged = new Map(
+              list
+                .filter((doc) => !before.has(doc.id) || current.has(doc.id))
+                .map((doc) => [doc.id, doc]),
+            );
+            // 刷新期间新建、删除或编辑的本地文档优先，远端摘要不能覆盖未保存草稿。
+            for (const doc of state.list) {
+              if (
+                before.get(doc.id) !== doc ||
+                (state.drafts[doc.id] && state.status[doc.id] !== "saved")
+              )
+                merged.set(doc.id, doc);
+            }
+            return {
+              list: [...merged.values()].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)),
+              loaded: true,
+            };
+          });
+        } while (reloadRequested);
+        // 清理与完成处于同一微任务，失效通知不会落进“请求已完成但仍显示在途”的空档。
+        loading = null;
+        resolveLoad();
+      } catch (error) {
+        loading = null;
+        rejectLoad(error);
+      }
+    })();
+    return task;
   },
   async open(id) {
     const existing = get().selected;
@@ -124,7 +212,7 @@ export const useDocuments = create<State>((set, get) => ({
     set((s) => ({
       selected: doc.id,
       drafts: { ...s.drafts, [doc.id]: doc },
-      list: [summary(doc), ...s.list],
+      list: [summary(doc), ...s.list.filter((item) => item.id !== doc.id)],
       status: { ...s.status, [doc.id]: "saved" },
     }));
   },

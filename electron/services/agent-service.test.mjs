@@ -43,6 +43,7 @@ async function fixture(t, handler, options = {}) {
     getSnapshot: () => snapshot,
     emit: (event) => events.push(event),
     checkMailbox: options.checkMailbox,
+    workspaceActions: options.workspaceActions,
   });
   await service.saveConfig({
     ...DEFAULT_CONFIG,
@@ -348,7 +349,10 @@ test("从缓存复用的索引与全量重建结果一致，损坏缓存回退�
       `查询 ${query} 的复用结果必须与重建一致`,
     );
   }
-  assert.equal(new LocalIndex(snapshot, documents, { ...saved, signature: "不匹配" }).reused, false);
+  assert.equal(
+    new LocalIndex(snapshot, documents, { ...saved, signature: "不匹配" }).reused,
+    false,
+  );
   assert.equal(
     new LocalIndex(snapshot, documents, { ...saved, index: "{broken json" }).reused,
     false,
@@ -1000,10 +1004,41 @@ const groupedSecrets = () => ({
       lastRotated: "2026-09-01T00:00:00.000Z",
       tags: [],
     },
-    { id: "site-login", name: "站点登录", folderId: "work", kind: "password", value: "", lastRotated: "2026-09-01T00:00:00.000Z", tags: [] },
-    { id: "personal-token", name: "个人令牌", folderId: "personal", kind: "token", value: "", lastRotated: "2026-09-01T00:00:00.000Z", tags: [] },
-    { id: "unfiled-key", name: "未分组密钥", kind: "ssh", value: "", lastRotated: "2026-09-01T00:00:00.000Z", tags: [] },
-    { id: "orphan-key", name: "孤儿密钥", folderId: "removed", kind: "api", value: "", lastRotated: "2026-09-01T00:00:00.000Z", tags: [] },
+    {
+      id: "site-login",
+      name: "站点登录",
+      folderId: "work",
+      kind: "password",
+      value: "",
+      lastRotated: "2026-09-01T00:00:00.000Z",
+      tags: [],
+    },
+    {
+      id: "personal-token",
+      name: "个人令牌",
+      folderId: "personal",
+      kind: "token",
+      value: "",
+      lastRotated: "2026-09-01T00:00:00.000Z",
+      tags: [],
+    },
+    {
+      id: "unfiled-key",
+      name: "未分组密钥",
+      kind: "ssh",
+      value: "",
+      lastRotated: "2026-09-01T00:00:00.000Z",
+      tags: [],
+    },
+    {
+      id: "orphan-key",
+      name: "孤儿密钥",
+      folderId: "removed",
+      kind: "api",
+      value: "",
+      lastRotated: "2026-09-01T00:00:00.000Z",
+      tags: [],
+    },
   ],
 });
 test("密钥 RAG 包含分组归属与空组统计，密钥值不进入索引", () => {
@@ -1072,4 +1107,87 @@ test("密钥分组工具已注册且只读元信息", () => {
   assert.ok(listSecrets);
   assert.match(listSecrets.function.description, /never included/i);
   assert.ok(listSecrets.function.parameters.properties.folderId);
+});
+
+test("真实模型HTTP链路仅生成提案，未获授权时即使模型调用也不会生成", async (t) => {
+  let proposed = 0;
+  const workspaceActions = {
+    async propose(name, args, options) {
+      proposed++;
+      assert.equal(name, "propose_account_edit");
+      assert.equal(args.patch.name, "工作账号");
+      assert.equal(options.allowDocumentContent, false);
+      return {
+        id: "review-only",
+        type: "account-edit",
+        title: "测试",
+        before: "旧名称",
+        after: "工作账号",
+        reason: "用户要求",
+        expiresAt: Date.now() + 10000,
+      };
+    },
+    discardRequest() {},
+    apply() {
+      throw new Error("模型运行不得执行写入");
+    },
+  };
+  const f = await fixture(
+    t,
+    (_req, res, body) => {
+      if (body.messages.at(-1).role !== "tool") {
+        callTool(res, "propose_account_edit", {
+          assetId: "account-1",
+          patch: { name: "工作账号" },
+          reason: "用户要求",
+        });
+      } else
+        sse(res, [{ delta: { content: "建议已准备，请在界面审阅。" }, finish_reason: "stop" }]);
+    },
+    { workspaceActions },
+  );
+  const denied = await f.service.run({ id: "denied-proposals", question: "整理账号" });
+  assert.equal(denied.proposals.length, 0);
+  assert.equal(proposed, 0);
+  assert.ok(!f.requests[0].body.tools.some((entry) => entry.function.name.startsWith("propose_")));
+  const allowed = await f.service.run({
+    id: "allowed-proposals",
+    question: "整理账号",
+    allowWorkspaceChanges: true,
+  });
+  assert.equal(allowed.proposals[0].id, "review-only");
+  assert.equal(proposed, 1);
+  assert.ok(
+    !f.requests[2].body.tools.some((entry) => entry.function.name === "propose_document_edit"),
+  );
+});
+
+test("模型失败后重试读取已修正的模型配置，不保留失败任务", async (t) => {
+  const f = await fixture(t, (_req, res, body) => {
+    if (body.model === "contract-test-model") {
+      res.writeHead(401, { "content-type": "application/json" });
+      res.end(JSON.stringify({ error: { message: "test-invalid-auth" } }));
+    } else sse(res, [{ delta: { content: "已恢复连接。" }, finish_reason: "stop" }]);
+  });
+  await assert.rejects(f.service.run({ id: "first", question: "检查我的资产" }), /鉴权失败/);
+  await f.service.saveConfig({ ...(await f.service.config()), model: "corrected-model" });
+  const retry = await f.service.run({ id: "retry", question: "检查我的资产" });
+  assert.equal(retry.model, "corrected-model");
+  assert.equal(retry.text, "已恢复连接。");
+  assert.equal(f.service.jobs.size, 0);
+});
+
+test("未变化资料复用内存索引，知识库与资产变化后重新索引", async (t) => {
+  const f = await fixture(t, () => {});
+  const index = await f.service.localIndex();
+  const same = await f.service.localIndex();
+  assert.strictEqual(same, index);
+  await f.service.addDocument("缓存测试", "这是新增的唯一资料内容");
+  const updated = await f.service.localIndex();
+  assert.notStrictEqual(updated, index);
+  assert.ok(updated.search("唯一资料").some((source) => source.title.includes("缓存测试")));
+  f.setSnapshot({ secrets: [{ id: "added", name: "新增账户", tags: [], kind: "网站账号" }] });
+  const changed = await f.service.localIndex();
+  assert.notStrictEqual(changed, updated);
+  assert.ok(changed.byId.has("asset:secret:added"));
 });

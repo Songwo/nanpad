@@ -9,6 +9,7 @@ import { CaptureInbox } from "./capture-inbox";
 import { ExpandLayer } from "./expand-layer";
 import { RightRail } from "./right-rail";
 import { Sidebar } from "./sidebar";
+import { GlobalMarkdownImport } from "./global-markdown-import";
 import { Settings } from "./settings";
 import { SshTerminal } from "./ssh-terminal";
 import { TitleBar } from "./title-bar";
@@ -22,6 +23,7 @@ import { refreshAll } from "@/lib/probes";
 import { migrateSecretValues } from "@/lib/vault-migrate";
 import { useAppStore } from "@/lib/store";
 import type { ViewId } from "@/lib/types";
+import { mergeSnapshotChange } from "@/lib/snapshot-merge";
 import { cn } from "@/lib/utils";
 import { startThemeSync, startLocaleSync, startDisplaySync, useSettings } from "@/lib/settings";
 import { useVault } from "@/lib/vault-state";
@@ -64,11 +66,19 @@ export function AppShell() {
         ],
       }));
     });
-    const offDocuments = bridge.documents.onChanged?.(() => {
+    const offDocuments = bridge.documents.onChanged?.((change) => {
+      if (change?.document || change?.removedId) {
+        useDocuments.getState().acceptChange(change);
+        return;
+      }
       void useDocuments
         .getState()
-        .load()
+        .load(true)
         .catch((error) => toast.error(String(error.message)));
+    });
+    const offAssets = bridge.store.onChanged?.((change) => {
+      const state = useAppStore.getState();
+      state.importSnapshot(mergeSnapshotChange(state, change));
     });
     const offMetricError = bridge.metrics.onError((event) =>
       toast(t("指标记录失败：{0}", event.error)),
@@ -78,6 +88,7 @@ export function AppShell() {
       offVault();
       offPasswords();
       offDocuments?.();
+      offAssets?.();
       offMetricError();
     };
   }, []);
@@ -93,7 +104,8 @@ export function AppShell() {
     view === "nodes" ||
     view === "phones" ||
     view === "agent" ||
-    view === "overview";
+    view === "overview" ||
+    view === "relations";
   const setCommandOpen = useAppStore((s) => s.setCommandOpen);
   const vaultUnlocked = useVault((s) => s.unlocked);
 
@@ -142,7 +154,8 @@ export function AppShell() {
     if (!isDesktop() || !vaultUnlocked) return;
     let cancelled = false;
     const sweep = () => {
-      if (!cancelled && document.visibilityState === "visible") void refreshAll("server");
+      if (!cancelled && document.visibilityState === "visible")
+        void refreshAll("server", { force: false });
     };
     sweep();
     const t = window.setInterval(sweep, 90_000);
@@ -259,6 +272,7 @@ export function AppShell() {
       <Composer />
       <CreateAssetPicker />
       <CaptureInbox />
+      <GlobalMarkdownImport />
       <CommandPalette />
       <VaultGate />
       <Onboarding />

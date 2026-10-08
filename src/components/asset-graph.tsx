@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ReactFlow,
   ReactFlowProvider,
+  BaseEdge,
   Handle,
   Position,
   useNodesState,
@@ -10,6 +11,7 @@ import {
   useUpdateNodeInternals,
   type Node,
   type NodeProps,
+  type EdgeProps,
 } from "@xyflow/react";
 import {
   Globe,
@@ -23,10 +25,20 @@ import {
   Plus,
   RotateCcw,
   Link2,
+  FileText,
 } from "lucide-react";
 import "@xyflow/react/dist/style.css";
-import { assetGraph, type AssetRow } from "@/lib/asset-view";
-import type { AssetLink } from "@/lib/operations";
+import {
+  resourceGraph,
+  resourceKey,
+  resourceRelationPath,
+  type ResourceRow,
+  type Relation,
+} from "@/lib/resource-relations.mjs";
+import { updateResourceRelation } from "@/lib/resource-relation-actions";
+import { useDocuments } from "@/lib/documents";
+import type { AssetKind } from "@/lib/types";
+import { toast } from "sonner";
 import { KIND_LABEL } from "@/lib/status";
 import { t } from "@/lib/i18n";
 import { reduceMotion } from "@/lib/motion";
@@ -35,9 +47,10 @@ import { openFromEvent } from "./asset-card";
 import { StatusBadge } from "./ui/status-badge";
 import { Button } from "./ui/button";
 import { useAppStore } from "@/lib/store";
-import { refKey } from "@/lib/operations";
+import { ResourceRelationsPanel } from "./resource-relations-panel";
+import "./resource-relations.css";
 
-type AssetNode = Node<{ asset: AssetRow; vertical: boolean }, "asset">;
+type AssetNode = Node<{ asset: ResourceRow; vertical: boolean }, "asset">;
 const ICONS = {
   domain: Globe,
   cert: Shield,
@@ -45,6 +58,7 @@ const ICONS = {
   mail: Mail,
   ai: Sparkles,
   secret: KeyRound,
+  document: FileText,
 };
 function GraphNode({ id, data, isConnectable }: NodeProps<AssetNode>) {
   const updateNodeInternals = useUpdateNodeInternals();
@@ -61,14 +75,22 @@ function GraphNode({ id, data, isConnectable }: NodeProps<AssetNode>) {
       <div className="graph-node-meta">
         <span>
           <Icon className="size-4" />
-          {t(KIND_LABEL[asset.kind])}
+          {t(asset.kind === "document" ? "文档" : KIND_LABEL[asset.kind])}
         </span>
-        <StatusBadge status={asset.status} pending={asset.pending} />
+        {asset.kind !== "document" && <StatusBadge status={asset.status} pending={asset.pending} />}
       </div>
       <button
         className="nodrag asset-name"
         title={t("查看 {0}", asset.name)}
-        onClick={(e) => openFromEvent(e, asset.kind, asset.id)}
+        onClick={(e) => {
+          if (asset.kind === "document") {
+            void useDocuments
+              .getState()
+              .open(asset.id)
+              .then(() => useAppStore.getState().setView("docs"))
+              .catch((error) => toast.error(String(error.message)));
+          } else openFromEvent(e, asset.kind as AssetKind, asset.id);
+        }}
       >
         <span>{asset.name}</span>
         <small>{asset.detail}</small>
@@ -82,28 +104,110 @@ function GraphNode({ id, data, isConnectable }: NodeProps<AssetNode>) {
   );
 }
 const nodeTypes = { asset: GraphNode };
+function ResourceEdge(props: EdgeProps) {
+  const path = resourceRelationPath({
+    sourceX: props.sourceX,
+    sourceY: props.sourceY,
+    targetX: props.targetX,
+    targetY: props.targetY,
+    vertical: Boolean(props.data?.vertical),
+    bypass: Boolean(props.data?.bypass),
+    lane: Number(props.data?.lane ?? -40),
+  });
+  return <BaseEdge id={props.id} path={path} style={props.style} />;
+}
+const edgeTypes = { resource: ResourceEdge };
 
-export default function AssetGraph(props: { rows: AssetRow[]; links: AssetLink[] }) {
+export default function AssetGraph(props: {
+  rows: ResourceRow[];
+  resources: ResourceRow[];
+  relations: Relation[];
+}) {
+  const [manage, setManage] = useState(false);
   return (
-    <ReactFlowProvider>
-      <GraphCanvas {...props} />
-    </ReactFlowProvider>
+    <div className="resource-graph-workspace">
+      <div className="resource-graph-intro">
+        <p>{t("实线表示已保存关联，虚线表示文档绑定。拖动连线或通过管理面板自由组合资源。")}</p>
+        <Button
+          variant="outline"
+          size="sm"
+          aria-expanded={manage}
+          onClick={() => setManage(!manage)}
+        >
+          <Link2 />
+          {t("管理资源关联")}
+        </Button>
+      </div>
+      {manage && <ResourceRelationsPanel resources={props.resources} relations={props.relations} />}
+      {props.rows.length > 300 && (
+        <p className="text-sm text-muted">
+          {t("画布显示前 300 项资源，请缩小筛选范围查看其余资源。")}
+        </p>
+      )}
+      <ReactFlowProvider>
+        <GraphCanvas rows={props.rows.slice(0, 300)} relations={props.relations} />
+      </ReactFlowProvider>
+    </div>
   );
 }
 
-function GraphCanvas({ rows, links }: { rows: AssetRow[]; links: AssetLink[] }) {
+function GraphCanvas({ rows, relations }: { rows: ResourceRow[]; relations: Relation[] }) {
   const container = useRef<HTMLDivElement>(null);
   const [vertical, setVertical] = useState(false);
   const [frameSize, setFrameSize] = useState("");
+  const [layoutRevision, setLayoutRevision] = useState(0);
   const nodesInitialized = useNodesInitialized();
   const [linkMode, setLinkMode] = useState(false);
-  const graph = useMemo(() => assetGraph(rows, links, vertical), [rows, links, vertical]);
+  const graph = useMemo(
+    () => resourceGraph(rows, relations, vertical),
+    [rows, relations, vertical],
+  );
   const [nodes, setNodes, onNodesChange] = useNodesState<AssetNode>(graph.nodes);
-  const { fitView, zoomIn, zoomOut } = useReactFlow();
+  const edges = useMemo(() => {
+    const outerBoundary = Math.min(
+      0,
+      ...nodes.map((node) => (vertical ? node.position.x : node.position.y)),
+    );
+    return graph.edges.map((edge) => ({
+      ...edge,
+      data: { ...edge.data, lane: outerBoundary - edge.data.laneOffset },
+    }));
+  }, [graph.edges, nodes, vertical]);
+  const { fitBounds, getNodes, getNodesBounds, zoomIn, zoomOut } = useReactFlow();
   const theme = useSettings((s) => s.resolved);
   const duration = reduceMotion() ? 0 : 180;
   const topology = JSON.stringify([vertical, graph.nodes.map((node) => node.id)]);
   const previousTopology = useRef(topology);
+  const routeMargin = Math.max(
+    24,
+    ...graph.edges.filter((edge) => edge.data.bypass).map((edge) => edge.data.laneOffset + 16),
+  );
+  const fitGraph = useCallback(
+    (transition = 0) => {
+      const expectedIds = new Set<string>(JSON.parse(topology)[1]);
+      const current = getNodes();
+      if (
+        !current.length ||
+        current.length !== expectedIds.size ||
+        current.some(
+          (node) => !expectedIds.has(node.id) || !node.measured?.width || !node.measured?.height,
+        )
+      )
+        return;
+      const bounds = getNodesBounds(current);
+      // 适配须纳入外侧绕线，不能只按卡片边界缩放，否则窄屏会裁掉跨列关联。
+      void fitBounds(
+        {
+          x: bounds.x - (vertical ? routeMargin : 32),
+          y: bounds.y - (vertical ? 32 : routeMargin),
+          width: bounds.width + (vertical ? routeMargin : 32) + 32,
+          height: bounds.height + (vertical ? 32 : routeMargin) + 32,
+        },
+        { padding: 0.12, duration: transition },
+      );
+    },
+    [fitBounds, getNodes, getNodesBounds, topology, routeMargin, vertical],
+  );
   useEffect(() => {
     const element = container.current;
     if (!element) return;
@@ -121,36 +225,43 @@ function GraphCanvas({ rows, links }: { rows: AssetRow[]; links: AssetLink[] }) 
     const preserve = previousTopology.current === topology;
     previousTopology.current = topology;
     setNodes((previous) =>
-      graph.nodes.map((node) => ({
-        ...node,
-        position:
-          (preserve && previous.find((old) => old.id === node.id)?.position) || node.position,
-      })),
+      graph.nodes.map((node) => {
+        const old = previous.find((item) => item.id === node.id);
+        return {
+          ...old,
+          ...node,
+          position: (preserve && old?.position) || node.position,
+        };
+      }),
     );
   }, [graph.nodes, setNodes, topology]);
   useEffect(() => {
     if (!nodesInitialized) return;
-    const frame = requestAnimationFrame(() => {
-      void fitView({ padding: 0.2, duration: 0 });
+    // 等受控节点和连接点完成测量，再统一适配，避免两套初始 fit 互相覆盖。
+    let frame = requestAnimationFrame(() => {
+      frame = requestAnimationFrame(() => fitGraph());
     });
     return () => cancelAnimationFrame(frame);
-  }, [topology, fitView, nodesInitialized, frameSize]);
+  }, [fitGraph, nodesInitialized, frameSize, layoutRevision]);
   return (
     <div ref={container} className="asset-graph" role="region" aria-label={t("资产关系图")}>
       <ReactFlow
         nodes={nodes}
-        edges={graph.edges}
+        edges={edges}
         onNodesChange={onNodesChange}
         nodeTypes={nodeTypes}
-        fitView
+        edgeTypes={edgeTypes}
         minZoom={0.1}
         maxZoom={1.8}
         nodesConnectable={linkMode}
         onConnect={({ source, target }) => {
           if (!linkMode) return;
-          const from = rows.find((row) => encodeURIComponent(refKey(row)) === source);
-          const to = rows.find((row) => encodeURIComponent(refKey(row)) === target);
-          if (from && to) useAppStore.getState().linkAssets(from, to);
+          const from = rows.find((row) => encodeURIComponent(resourceKey(row)) === source);
+          const to = rows.find((row) => encodeURIComponent(resourceKey(row)) === target);
+          if (from && to)
+            void updateResourceRelation(from, to).catch((error) =>
+              toast.error(t(String(error.message))),
+            );
         }}
         edgesFocusable={false}
         deleteKeyCode={null}
@@ -161,7 +272,9 @@ function GraphCanvas({ rows, links }: { rows: AssetRow[]; links: AssetLink[] }) 
         }}
       />
       <div className="graph-toolbar">
-        <span className="graph-count">{t("{0} 条关联", graph.edges.length)}</span>
+        <span className="graph-count">
+          {t("{0} 项资源 · {1} 条已确认关联", rows.length, graph.edges.length)}
+        </span>
         <div className="graph-controls">
           <Button
             size="icon-sm"
@@ -196,7 +309,7 @@ function GraphCanvas({ rows, links }: { rows: AssetRow[]; links: AssetLink[] }) 
             variant="ghost"
             title={t("适应画布")}
             aria-label={t("适应画布")}
-            onClick={() => void fitView({ padding: 0.2, duration })}
+            onClick={() => fitGraph(duration)}
           >
             <Maximize className="size-4" />
           </Button>
@@ -207,7 +320,7 @@ function GraphCanvas({ rows, links }: { rows: AssetRow[]; links: AssetLink[] }) 
             aria-label={t("重排节点")}
             onClick={() => {
               setNodes(graph.nodes);
-              requestAnimationFrame(() => void fitView({ padding: 0.2, duration }));
+              setLayoutRevision((value) => value + 1);
             }}
           >
             <RotateCcw className="size-4" />

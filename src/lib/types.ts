@@ -3,6 +3,7 @@ export type Status = "online" | "warning" | "offline";
 export type ViewId =
   | "phones"
   | "docs"
+  | "relations"
   | "usage"
   | "overview"
   | "nodes"

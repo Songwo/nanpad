@@ -83,6 +83,8 @@ function ViewBody() {
   )
     return <AssetWorkspace />;
   switch (view) {
+    case "relations":
+      return <AssetWorkspace />;
     case "docs":
       return <DocumentsWorkspace />;
     case "usage":
@@ -254,6 +256,7 @@ function ListHeader() {
 
 /** Which live probe the refresh button in this view should run. */
 const PROBE_KIND: Record<ViewId, ProbeKind | null> = {
+  relations: null,
   phones: null,
   docs: null,
   usage: null,
@@ -271,6 +274,7 @@ const PROBE_KIND: Record<ViewId, ProbeKind | null> = {
 };
 
 const BADGE_KEY: Record<ViewId, keyof ReturnType<typeof attentionOf>> = {
+  relations: "total",
   phones: "phones",
   docs: "total",
   usage: "total",

@@ -147,7 +147,8 @@ try {
       await details.waitFor({ state: "hidden" });
       await search.fill("不存在的文档");
       await page.getByText("暂无匹配文档", { exact: true }).waitFor();
-      await page.getByRole("button", { name: "新建文档", exact: true }).click();
+      await page.getByRole("button", { name: "添加文档", exact: true }).click();
+      await page.getByRole("menuitem", { name: "新建文档", exact: true }).click();
       await page.waitForFunction(
         () => document.querySelector(".document-title")?.value === "未命名文档",
       );

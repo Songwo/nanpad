@@ -9,6 +9,94 @@
  * not agree on where a possessive or a count belongs.
  */
 export const EN: Record<string, string> = {
+  "{0} 项资源": "{0} resources",
+  "解锁后在这里查看账号，当前页面和选择都会保留。":
+    "Unlock to view the account here. Your page and selection will stay in place.",
+  重新读取: "Reload",
+  "复制失败，请重试": "Copy failed. Please try again.",
+  内置能力: "Workspace tools",
+  "先生成建议，审阅后应用": "Generate a proposal, then review and apply it",
+  本次生成修改建议: "Allow change proposals for this request",
+  重试这条问题: "Retry this question",
+  检查模型设置: "Check model settings",
+  "重试使用当前模型设置和下方勾选的本次权限。":
+    "Retry uses your current model settings and the permissions selected below.",
+  "文档在应用期间又被编辑，请保留当前草稿并重新打开核对。":
+    "The document was edited while applying this change. Keep your draft and reopen it to compare.",
+  "已应用 AI 修改建议：{0}": "Applied AI change proposal: {0}",
+  待审阅修改建议: "Change proposal awaiting review",
+  修改前: "Before",
+  修改后: "After",
+  忽略: "Dismiss",
+  已忽略: "Dismissed",
+  "建议已过期，请重新生成": "Proposal expired. Generate a new one.",
+  确认应用这项修改: "Confirm and apply this change",
+  "修改已保存到本机。": "Changes saved locally.",
+  "已保留原有内容。": "Original content kept.",
+  "实线表示已保存关联，虚线表示文档绑定。拖动连线或通过管理面板自由组合资源。":
+    "Solid lines show saved relationships; dashed lines show document bindings. Connect resources by dragging or use the management panel.",
+  管理资源关联: "Manage relationships",
+  "画布显示前 300 项资源，请缩小筛选范围查看其余资源。":
+    "The canvas shows the first 300 resources. Narrow your filters to view the rest.",
+  "{0} 项资源 · {1} 条已确认关联": "{0} resources · {1} confirmed relationships",
+  添加文档: "Add document",
+  "也可以将 Markdown 拖入窗口任意位置": "You can also drop Markdown files anywhere in the window",
+  未命名章节: "Untitled section",
+  文档导航: "Document navigation",
+  阅读进度: "Reading progress",
+  目录: "Contents",
+  文档目录: "Document contents",
+  关闭目录: "Close contents",
+  "暂无章节标题，添加标题后会自动生成目录。":
+    "No headings yet. Add headings to generate a table of contents.",
+  文档开头: "Start of document",
+  回到顶部: "Back to top",
+  前往底部: "Go to bottom",
+  "支持 .md / .markdown · 最多 50 篇 · 每篇最多 1 MiB":
+    ".md / .markdown · Up to 50 files · 1 MiB per file",
+  "在任意页面拖入，导入后自动打开文档": "Drop on any page to import and open your documents",
+  "Markdown 导入结果": "Markdown import results",
+  "文档正在导入，请稍候": "Importing documents. Please wait.",
+  采集与监控: "Collection & monitoring",
+  "查看客户端状态、管理采集，统计与图表保留在用量页面。":
+    "View client status and manage collection. Statistics and charts stay on the usage page.",
+  关闭监控详情: "Close monitoring details",
+  关联已保存: "Relationship saved",
+  关联操作: "Relationship actions",
+  已确认关联: "Confirmed",
+  发现关联: "Find relationships",
+  新增关联: "Add relationship",
+  "选择两项资源，把账号、服务器和文档自由组成一组。":
+    "Select two resources to connect accounts, servers and documents into a group.",
+  起始资源: "Source resource",
+  选择资源: "Choose a resource",
+  目标资源: "Target resource",
+  "关联资源已不存在，请刷新后重试。": "A linked resource no longer exists. Refresh and try again.",
+  保存关联: "Save relationship",
+  "依据公开元数据在本机匹配，不读取密码或文档正文。建议确认后才会出现在关系图中。":
+    "Matches use local metadata without reading passwords or document bodies. Suggestions appear in the graph only after confirmation.",
+  待确认: "Unconfirmed",
+  "没有新的关联建议，可手动连接，或请 AI 助手根据所选资料提出建议。":
+    "No new suggestions. Connect resources manually or ask the AI assistant to review selected material.",
+  "确认选中的 {0} 条关联": "Confirm {0} selected relationships",
+  "解除 {0} 与 {1} 的关联": "Unlink {0} and {1}",
+  "尚无已确认关联。先添加关联，或查看自动发现的建议。":
+    "No confirmed relationships yet. Add one or review suggested matches.",
+  "解锁后继续查看和编辑账号。": "Unlock to continue viewing and editing accounts.",
+  "本次运行内无需重复解锁；锁屏、休眠或退出后会重新锁定。":
+    "Stay unlocked during this session. Locking the screen, sleeping or quitting locks the vault again.",
+  "查看账号与凭据 {0}": "View account and credentials: {0}",
+  编辑账号与凭据: "Edit account and credentials",
+  "编辑账号与凭据 {0}": "Edit account and credentials: {0}",
+  当前资产与关联资源: "Current assets and related resources",
+  全部资源: "All resources",
+  文档绑定: "Document binding",
+  已保存关联: "Saved relationship",
+  "主机地址一致：{0}": "Matching host address: {0}",
+  "共有标签：{0}": "Shared tag: {0}",
+  "标题提及：{0}": "Mentioned in title: {0}",
+  "请选择至少一项账号或其他资产，文档通过共同资产组成关联组。":
+    "Select at least one account or other asset. Documents form groups through shared assets.",
   "默认开启，无需解锁密钥库。应用运行时约每 10 秒检查，仅在本机保存用量数字、模型与匿名会话标识，不保存对话、密钥或完整日志路径。":
     "Enabled by default without unlocking the vault. Checks every 10 seconds while the app runs. Only usage counts, models and anonymous session identifiers are stored locally, never conversations, keys or full log paths.",
   软件更新: "Software updates",

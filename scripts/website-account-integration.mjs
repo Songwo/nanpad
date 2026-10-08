@@ -11,7 +11,12 @@ delete env.ELECTRON_RUN_AS_NODE;
 delete env.SINAN_DEV_URL;
 let instance;
 try {
-  instance = await electron.launch({ args: [resolve("electron/main.mjs")], env, timeout: 45000 });
+  instance = await electron.launch({
+    args: [resolve("electron/main.mjs")],
+    env,
+    locale: "zh-CN",
+    timeout: 45000,
+  });
   assert.equal(await instance.evaluate(({ app }) => app.getPath("userData")), directory);
   const page = await instance.firstWindow();
   const errors = [];
@@ -31,8 +36,15 @@ try {
   await composer.getByRole("button", { name: "添加", exact: true }).click();
   await composer.waitFor({ state: "detached" });
 
-  await page.getByRole("button", { name: "密钥", exact: true }).click();
-  await page.getByRole("button", { name: "添加密钥", exact: true }).click();
+  await page
+    .locator("aside.app-sidebar:visible")
+    .getByRole("button", { name: "密钥库", exact: true })
+    .click();
+  await page.getByRole("button", { name: "打开分组 未分组", exact: true }).click();
+  await page
+    .getByRole("region", { name: "密钥分组", exact: true })
+    .getByRole("button", { name: "添加密钥", exact: true })
+    .click();
   composer = page.getByRole("dialog", { name: "密钥", exact: true });
   await composer.getByRole("combobox", { name: "类型", exact: true }).click();
   await page.getByRole("option", { name: "网站账号 / 密码", exact: true }).click();
@@ -69,6 +81,7 @@ try {
   gate = page.locator(".z-gate");
   await gate.locator('input[type="password"]').fill("integration-master-2026");
   await gate.getByRole("button", { name: "解锁", exact: true }).click();
+  await gate.waitFor({ state: "detached" });
   await composer.waitFor({ state: "detached" });
   const stored = () => page.evaluate(() => window.sinan.store.load());
   let snapshot = await stored();
@@ -84,7 +97,9 @@ try {
   assert.equal(credentials.password, "website-test-password-2026");
   assert.equal(credentials.note, "website-recovery-code-fixture");
 
-  await page.locator(`[data-asset-id="${website.id}"]`).click();
+  const accountRow = () =>
+    page.getByRole("button", { name: `查看账号与凭据 ${website.name}`, exact: true });
+  await accountRow().click();
   let details = page.getByRole("dialog", { name: "资产详情", exact: true });
   await details.getByText("website-test-user", { exact: true }).waitFor();
   assert.equal(await details.getByText("website-test-password-2026", { exact: true }).count(), 0);
@@ -120,8 +135,12 @@ try {
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.reload();
   await page.locator('[data-app-ready="true"]').waitFor();
-  await page.getByRole("button", { name: "密钥", exact: true }).click();
-  await page.locator(`[data-asset-id="${website.id}"]`).click();
+  await page
+    .locator("aside.app-sidebar:visible")
+    .getByRole("button", { name: "密钥库", exact: true })
+    .click();
+  await page.getByRole("button", { name: "打开分组 未分组", exact: true }).click();
+  await accountRow().click();
   details = page.getByRole("dialog", { name: "资产详情", exact: true });
   await details.getByText("website-test-user", { exact: true }).waitFor();
   await details.getByRole("button", { name: "解除关联", exact: true }).waitFor();
@@ -163,7 +182,7 @@ try {
     });
   }, exportPath);
   await page.getByRole("button", { name: "更多操作", exact: true }).click();
-  await page.getByRole("button", { name: "导出 JSON", exact: true }).click();
+  await page.getByRole("button", { name: "导出 JSON 快照", exact: true }).click();
   const downloadState = await instance.evaluate(() => globalThis.websiteAccountExportCompletion);
   assert.equal(downloadState, "completed", "导出下载必须成功完成后才能读取文件");
   const exported = await readFile(exportPath, "utf8");
@@ -183,13 +202,28 @@ try {
   }
   assert.equal(JSON.parse(exported).links.length, 1);
 
-  await page.getByRole("button", { name: "更多操作", exact: true }).click();
-  await page.getByRole("button", { name: "锁定密钥库", exact: true }).click();
-  await page.locator(`[data-asset-id="${website.id}"]`).click();
+  await page
+    .locator("aside.app-sidebar:visible")
+    .getByRole("button", { name: "锁定密钥库", exact: true })
+    .click();
+  await accountRow().click();
+  gate = page.getByRole("dialog", { name: "解锁密钥库", exact: true });
+  await gate.waitFor();
+  assert.equal(await page.getByText(credentials.username, { exact: true }).count(), 0);
+  assert.equal(await page.getByText(credentials.url, { exact: true }).count(), 0);
+  await gate.getByRole("button", { name: "取消", exact: true }).click();
+  await gate.waitFor({ state: "detached" });
   details = page.getByRole("dialog", { name: "资产详情", exact: true });
   await details.getByRole("button", { name: "解锁查看", exact: true }).waitFor();
   assert.equal(await details.getByText(credentials.username, { exact: true }).count(), 0);
   assert.equal(await details.getByText(credentials.url, { exact: true }).count(), 0);
+  await details.getByRole("button", { name: "解锁查看", exact: true }).click();
+  gate = page.getByRole("dialog", { name: "解锁密钥库", exact: true });
+  await gate.getByLabel("主密码", { exact: true }).fill("integration-master-2026");
+  await gate.getByRole("button", { name: "解锁", exact: true }).click();
+  await gate.waitFor({ state: "detached" });
+  await details.getByText(credentials.username, { exact: true }).waitFor();
+  await details.getByRole("button", { name: "解除关联", exact: true }).waitFor();
   assert.deepEqual(errors, []);
   console.log(
     JSON.stringify({

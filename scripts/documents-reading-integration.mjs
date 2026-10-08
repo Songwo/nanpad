@@ -148,11 +148,9 @@ try {
   );
   await reader.click();
   await page.keyboard.type("accidental edit");
-  await reader
-    .locator("img")
-    .dispatchEvent("dragstart", {
-      dataTransfer: await page.evaluateHandle(() => new DataTransfer()),
-    });
+  await reader.locator("img").dispatchEvent("dragstart", {
+    dataTransfer: await page.evaluateHandle(() => new DataTransfer()),
+  });
   await reader.dispatchEvent("drop", {
     dataTransfer: await page.evaluateHandle(() => new DataTransfer()),
   });
@@ -236,7 +234,8 @@ try {
   await page.locator(".document-list-item").filter({ hasText: "切换前的草稿" }).click();
   await reader.waitFor();
   assert.equal(await title.count(), 0);
-  await page.getByRole("button", { name: "新建文档", exact: true }).click();
+  await page.getByRole("button", { name: "添加文档", exact: true }).click();
+  await page.getByRole("menuitem", { name: "新建文档", exact: true }).click();
   await title.waitFor();
   assert.equal(await title.inputValue(), "未命名文档");
   await title.fill("新建即编辑");
@@ -250,13 +249,11 @@ try {
   await page.locator(".document-list-item").filter({ hasText: "切换前的草稿" }).click();
   await edit.click();
   const raster = await page.evaluate(() => window.__raster.split(",")[1]);
-  await page
-    .locator('input[type="file"]')
-    .setInputFiles({
-      name: "isolated.png",
-      mimeType: "image/png",
-      buffer: Buffer.from(raster, "base64"),
-    });
+  await page.locator('input[type="file"]').setInputFiles({
+    name: "isolated.png",
+    mimeType: "image/png",
+    buffer: Buffer.from(raster, "base64"),
+  });
   await page.waitForFunction(() => typeof window.__releaseUpload === "function");
   assert.equal(await finish.isDisabled(), true, "图片上传期间不能提前完成编辑");
   await page.locator(".document-list-item").filter({ hasText: "交接与维护记录" }).click();

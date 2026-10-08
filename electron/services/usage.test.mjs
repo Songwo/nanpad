@@ -1,10 +1,131 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, rm, readFile } from "node:fs/promises";
+import { mkdtemp, rm, readFile, writeFile, mkdir, stat, utimes } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { UsageStore, collectUsage, panelUsage, subscriptionUsage } from "./usage.mjs";
+import {
+  UsageStore,
+  collectUsage,
+  panelUsage,
+  subscriptionUsage,
+  usageNeedsRefresh,
+  AUTOMATIC_USAGE_TTL_MS,
+} from "./usage.mjs";
 const json = (data, headers = {}) => new Response(JSON.stringify(data), { headers });
+
+test("用量缓存返回副本、识别外部修改和删除；原子写失败不能污染旧数据", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "nanpad-usage-cache-"));
+  try {
+    const file = join(dir, "history.json");
+    const initial = {
+      sources: [{ id: "usage-test", name: "甲" }],
+      records: [{ nested: { value: 1 } }],
+    };
+    await writeFile(file, JSON.stringify(initial));
+    const store = new UsageStore(file, {});
+    const first = await store.list();
+    first.sources[0].name = "调用方的修改";
+    first.records[0].nested.value = 99;
+    assert.deepEqual(await store.list(), initial);
+
+    const before = await stat(file);
+    const changed = structuredClone(initial);
+    changed.sources[0].name = "乙";
+    await writeFile(file, JSON.stringify(changed));
+    // 即使外部程序保留文件mtime且字节数一致，ctime也会使旧缓存失效。
+    await utimes(file, before.atime, before.mtime);
+    assert.deepEqual(await store.list(), changed);
+    await mkdir(file + ".tmp");
+    await assert.rejects(store.markFailure("usage-test", "测试失败"));
+    assert.deepEqual(await store.list(), changed);
+    await rm(file + ".tmp", { recursive: true });
+    await store.markFailure("usage-test", "一次真实失败");
+    assert.equal((await store.list()).sources[0].error, "一次真实失败");
+    await rm(file);
+    assert.deepEqual(await store.list(), { sources: [], records: [] });
+    await writeFile(file, JSON.stringify(initial));
+    assert.deepEqual(await store.list(), initial);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("自动用量采集复用5分钟结果及失败退避，人工刷新强制采集且并发不重复", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "nanpad-usage-ttl-"));
+  const secrets = new Map();
+  let calls = 0;
+  let fail = false;
+  const vault = {
+    set: async (id, value) => secrets.set(id, value),
+    get: async (id) => secrets.get(id),
+  };
+  const fetchImpl = async () => {
+    calls++;
+    return fail
+      ? new Response("", { status: 403 })
+      : new Response("", { headers: { "subscription-userinfo": "upload=10; download=20" } });
+  };
+  try {
+    const file = join(dir, "history.json");
+    const store = new UsageStore(file, vault, fetchImpl);
+    const source = await store.add({
+      name: "合成订阅",
+      type: "subscription",
+      url: "https://example.test/sub",
+    });
+    await store.refresh(source.id, { force: false });
+    await store.refresh(source.id, { force: false });
+    assert.equal(calls, 1);
+    assert.equal((await store.list()).records.length, 1);
+    await Promise.all([store.refresh(source.id, { force: false }), store.refresh(source.id)]);
+    assert.equal(calls, 2, "人工调用升级自动缓存检查，执行一次请求");
+
+    fail = true;
+    await assert.rejects(store.refresh(source.id), /403/);
+    assert.equal(calls, 3);
+    const cached = await store.refresh(source.id, { force: false });
+    assert.match(cached.sources[0].error, /403/);
+    assert.equal(calls, 3, "失败后的自动任务应退避");
+    assert.equal(cached.records.length, 2, "保留最近成功记录");
+    cached.sources[0].checkedAt = new Date(
+      Date.now() - AUTOMATIC_USAGE_TTL_MS - 1000,
+    ).toISOString();
+    cached.sources[0].attemptedAt = cached.sources[0].checkedAt;
+    await writeFile(file, JSON.stringify(cached));
+    fail = false;
+    await store.refresh(source.id, { force: false });
+    assert.equal(calls, 4, "过期后自动重新采集");
+    assert.equal((await store.list()).sources[0].error, "");
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("用量TTL边界、无效和未来时间不会无限阻止采集", () => {
+  const now = Date.parse("2026-10-08T10:00:00Z");
+  assert.equal(usageNeedsRefresh({}, now), true);
+  assert.equal(
+    usageNeedsRefresh(
+      { checkedAt: "invalid", attemptedAt: new Date(now + 1000).toISOString() },
+      now,
+    ),
+    true,
+  );
+  assert.equal(
+    usageNeedsRefresh({ checkedAt: new Date(now - AUTOMATIC_USAGE_TTL_MS).toISOString() }, now),
+    true,
+  );
+  assert.equal(
+    usageNeedsRefresh(
+      {
+        checkedAt: new Date(now - AUTOMATIC_USAGE_TTL_MS - 1000).toISOString(),
+        attemptedAt: new Date(now - 1000).toISOString(),
+      },
+      now,
+    ),
+    false,
+  );
+});
 test("机场用量头按字节解析，缺字段不能生成假 0", () => {
   assert.deepEqual(
     subscriptionUsage("upload=123; download=456; total=1024; expire=1900000000")[0],

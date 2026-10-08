@@ -7,11 +7,13 @@ import {
   KeyRound,
   Pencil,
   Plus,
-  Settings2,
   Trash2,
   X,
   UserRound,
   ArrowDownUp,
+  LockKeyhole,
+  ShieldCheck,
+  ChevronRight,
 } from "lucide-react";
 import { toast } from "sonner";
 import { useAppStore } from "@/lib/store";
@@ -31,6 +33,8 @@ import { Field, Input, Select } from "./ui/input";
 import { openFromEvent } from "./asset-card";
 import { CollectionCard } from "./ui/collection-card";
 import { BrowserPasswordTransfer } from "./browser-password-transfer";
+import { isDesktop } from "@/lib/desktop";
+import { useVault } from "@/lib/vault-state";
 
 const KIND_LABEL: Record<Secret["kind"], string> = {
   account: "账号密码",
@@ -47,6 +51,8 @@ const KIND_LABEL: Record<Secret["kind"], string> = {
  */
 export function VaultWorkspace() {
   const state = useAppStore();
+  const unlocked = useVault((s) => s.unlocked);
+  const requireVault = useVault((s) => s.require);
   const folders = normalizeSecretFolders(state.secretFolders);
   const [active, setActive] = useState<string | null>(null);
   const [selected, setSelected] = useState<string[]>([]);
@@ -90,6 +96,43 @@ export function VaultWorkspace() {
   }
   return (
     <section className="p-4" aria-label={t("密钥分组")}>
+      {isDesktop() && (
+        <div
+          className="mb-5 flex flex-wrap items-center gap-3 rounded-xl border border-line bg-card px-4 py-3"
+          role="status"
+        >
+          {unlocked ? (
+            <ShieldCheck className="size-5 shrink-0 text-ok" />
+          ) : (
+            <LockKeyhole className="size-5 shrink-0 text-muted" />
+          )}
+          <div className="min-w-0 flex-1">
+            <p className="text-meta font-semibold">
+              {t(unlocked ? "密钥库已解锁" : "密钥库已锁定")}
+            </p>
+            <p className="mt-1 text-2xs text-muted">
+              {t(
+                unlocked
+                  ? "本次运行内无需重复解锁；锁屏、休眠或退出后会重新锁定。"
+                  : "资料仍然保留。点击账号即可解锁并查看，无需前往设置。",
+              )}
+            </p>
+          </div>
+          {!unlocked && (
+            <Button
+              size="sm"
+              onClick={() =>
+                void requireVault(t("解锁后继续查看和编辑账号。")).catch((error) =>
+                  toast.error(String(error)),
+                )
+              }
+            >
+              <LockKeyhole className="size-4" />
+              {t("解锁密钥库")}
+            </Button>
+          )}
+        </div>
+      )}
       <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
         <div className="flex min-w-0 items-center gap-2">
           {active !== null && (
@@ -248,7 +291,10 @@ export function VaultWorkspace() {
           </div>
           <div className="divide-y divide-line border-y border-line">
             {displayed.map((secret) => (
-              <div key={secret.id} className="flex items-center gap-3 py-4">
+              <div
+                key={secret.id}
+                className="group flex items-center gap-3 rounded-lg px-2 transition-colors duration-150 hover:bg-card"
+              >
                 <input
                   type="checkbox"
                   aria-label={t("选择密钥 {0}", secret.name)}
@@ -262,27 +308,49 @@ export function VaultWorkspace() {
                     )
                   }
                 />
-                {secret.kind === "account" ? (
-                  <UserRound className="size-5 shrink-0 text-muted" />
-                ) : (
-                  <KeyRound className="size-5 shrink-0 text-muted" />
-                )}
-                <div className="min-w-0 flex-1">
-                  <span className="block truncate font-medium">{secret.name}</span>
-                  <span className="mt-1 block truncate text-meta text-muted">
-                    {t(KIND_LABEL[secret.kind] ?? secret.kind)}
-                    {secret.hint ? ` · ${secret.hint}` : ""}
-                    {secret.tags.length ? ` · ${secret.tags.join(" / ")}` : ""}
+                <button
+                  type="button"
+                  className="flex min-w-0 flex-1 items-center gap-3 rounded-lg py-4 text-left outline-none focus-visible:ring-2 focus-visible:ring-ink"
+                  aria-label={t("查看账号与凭据 {0}", secret.name)}
+                  onClick={(event) => {
+                    openFromEvent(event, "secret", secret.id);
+                    if (isDesktop() && !useVault.getState().unlocked)
+                      void requireVault(t("解锁后继续查看和编辑账号。")).catch((error) =>
+                        toast.error(String(error)),
+                      );
+                  }}
+                >
+                  {["account", "password"].includes(secret.kind) ? (
+                    <UserRound className="size-5 shrink-0 text-muted" />
+                  ) : (
+                    <KeyRound className="size-5 shrink-0 text-muted" />
+                  )}
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate font-medium">{secret.name}</span>
+                    <span className="mt-1 block truncate text-meta text-muted">
+                      {t(KIND_LABEL[secret.kind] ?? secret.kind)}
+                      {secret.hint ? ` · ${secret.hint}` : ""}
+                      {secret.tags.length ? ` · ${secret.tags.join(" / ")}` : ""}
+                    </span>
                   </span>
-                </div>
+                  <ChevronRight className="size-4 shrink-0 text-subtle transition-transform duration-150 group-hover:translate-x-0.5 motion-reduce:transition-none" />
+                </button>
                 <Button
                   variant="ghost"
                   size="icon-sm"
-                  title={t("密钥详情")}
-                  aria-label={t("密钥详情")}
-                  onClick={(event) => openFromEvent(event, "secret", secret.id)}
+                  title={t("编辑账号与凭据")}
+                  aria-label={t("编辑账号与凭据 {0}", secret.name)}
+                  onClick={async () => {
+                    try {
+                      if (isDesktop() && !(await requireVault(t("解锁后继续查看和编辑账号。"))))
+                        return;
+                      state.openComposer("secret", secret.id);
+                    } catch (error) {
+                      toast.error(String(error));
+                    }
+                  }}
                 >
-                  <Settings2 className="size-4" />
+                  <Pencil className="size-4" />
                 </Button>
               </div>
             ))}

@@ -1,5 +1,6 @@
 import {
   ArrowUp,
+  ArrowLeft,
   Copy,
   Eye,
   EyeOff,
@@ -15,10 +16,16 @@ import {
   Square,
   Settings2,
   Loader2,
+  RotateCcw,
+  WandSparkles,
+  Check,
+  PencilLine,
+  Link2,
 } from "lucide-react";
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { toast } from "sonner";
 import { EditorDialog } from "./ui/editor-dialog";
+import { modelHistory, retryRequest } from "@/lib/agent-retry.mjs";
 import { useDocuments } from "@/lib/documents";
 import "./agent-workspace.css";
 import { LogoMark } from "./logo";
@@ -27,11 +34,12 @@ import { TimeAgo } from "./ui/time-ago";
 import { type Block, type SecretField } from "@/lib/agent";
 import { AgentSettings } from "./agent-settings";
 import { Markdown } from "./markdown";
-import type { Source } from "@/lib/agent-client";
+import type { Source, WorkspaceProposal } from "@/lib/agent-client";
 import { useConversations, type Message } from "@/lib/conversations";
 import { accountId, credentialId, desktop } from "@/lib/desktop";
 import { chipClass, dotClass, KIND_LABEL } from "@/lib/status";
 import { useAppStore } from "@/lib/store";
+import { mergeSnapshotChange } from "@/lib/snapshot-merge";
 import type { AssetKind } from "@/lib/types";
 import { copyText } from "@/lib/utils";
 import { useVault } from "@/lib/vault-state";
@@ -50,10 +58,14 @@ const toolLabel = (name: string) =>
       list_mail_folders: "查询邮箱分组",
       list_mailboxes: "查询邮箱账号",
       asset_summary: "资产统计",
+      propose_document_edit: "建议修改文档",
+      propose_account_edit: "建议修改账号",
+      propose_asset_link: "建议关联资产",
+      propose_document_binding: "建议关联文档",
     }[name] ?? name,
   );
 
-/** 本机负责检索和只读工具执行，模型请求由桌面主进程发送。 */
+/** 本机执行检索和提案校验，修改只有在用户审阅后才会应用。 */
 export function AgentView() {
   const conversations = useConversations((s) => s.conversations);
   const activeId = useConversations((s) => s.activeId);
@@ -65,6 +77,8 @@ export function AgentView() {
   const [model, setModel] = useState("");
   const [allowMailboxChecks, setAllowMailboxChecks] = useState(false);
   const [allowDocumentContent, setAllowDocumentContent] = useState(false);
+  const [allowWorkspaceChanges, setAllowWorkspaceChanges] = useState(false);
+  const [capabilitiesOpen, setCapabilitiesOpen] = useState(false);
   const [contextOpen, setContextOpen] = useState(false);
   const [preparing, setPreparing] = useState(false);
   const preparingRef = useRef(false);
@@ -95,6 +109,7 @@ export function AgentView() {
     setError("");
     setAllowMailboxChecks(false);
     setAllowDocumentContent(false);
+    setAllowWorkspaceChanges(false);
     followBottom.current = true;
   }, [activeId]);
   const visibleMessages = messages.slice(-visibleCount);
@@ -135,7 +150,7 @@ export function AgentView() {
     [api],
   );
 
-  async function send(text: string) {
+  async function send(text: string, retry?: { history: Message[]; appendQuestion: boolean }) {
     const question = text.trim();
     if (!question || runRef.current || preparingRef.current || !hydrated) return;
     if (!api) {
@@ -149,6 +164,7 @@ export function AgentView() {
     }
     const checkMailboxes = allowMailboxChecks;
     const readDocuments = allowDocumentContent;
+    const proposeChanges = allowWorkspaceChanges;
     preparingRef.current = true;
     setPreparing(true);
     try {
@@ -163,24 +179,12 @@ export function AgentView() {
     if (runRef.current) return;
     setAllowMailboxChecks(false);
     setAllowDocumentContent(false);
+    setAllowWorkspaceChanges(false);
     const conversationId = activeId ?? start();
     followBottom.current = true;
-    const history = messages
-      .filter(
-        (m) =>
-          !m.blocks.some(
-            (b) => b.type === "secret" || (b.type === "run" && b.status !== "success"),
-          ),
-      )
-      .map((m) => ({
-        role: m.role === "you" ? ("user" as const) : ("assistant" as const),
-        documentContent: m.blocks.some((b) => b.type === "run" && b.documentContent === true),
-        content: m.blocks
-          .filter((b) => b.type === "text")
-          .map((b) => b.text)
-          .join("\n"),
-      }));
-    append("you", [{ type: "text", text: question }], conversationId);
+    const history = modelHistory(retry?.history ?? messages);
+    if (!retry || retry.appendQuestion)
+      append("you", [{ type: "text", text: question }], conversationId);
     setDraft("");
     setError("");
     const id = crypto.randomUUID();
@@ -211,6 +215,7 @@ export function AgentView() {
         id,
         question,
         history,
+        allowWorkspaceChanges: proposeChanges,
         allowMailboxChecks: checkMailboxes,
         allowDocumentContent: readDocuments,
       });
@@ -219,6 +224,7 @@ export function AgentView() {
         [
           { type: "text", text: result.text },
           { type: "sources", sources: result.sourceItems },
+          ...(result.proposals ?? []).map((proposal): Block => ({ type: "proposal", proposal })),
           {
             type: "run",
             model: result.model,
@@ -232,7 +238,6 @@ export function AgentView() {
       );
     } catch (e) {
       const reason = e instanceof Error ? e.message : String(e);
-      setError(reason);
       append(
         "agent",
         [
@@ -310,16 +315,69 @@ export function AgentView() {
             <PanelRightOpen className="size-4" />
           </Button>
           <Button
+            size="sm"
+            variant="ghost"
+            disabled={busy}
+            onClick={() => setCapabilitiesOpen((open) => !open)}
+            aria-expanded={capabilitiesOpen}
+          >
+            <WandSparkles className="size-4" />
+            {t("内置能力")}
+          </Button>
+          <Button
             size="icon-sm"
             variant="ghost"
             disabled={busy}
-            aria-label={t("模型与知识库")}
-            title={t("模型与知识库")}
+            aria-label={t(configOpen ? "返回对话" : "模型与知识库")}
+            title={t(configOpen ? "返回对话" : "模型与知识库")}
             onClick={() => setConfigOpen((open) => !open)}
           >
-            <Settings2 className="size-4" />
+            {configOpen ? <ArrowLeft className="size-4" /> : <Settings2 className="size-4" />}
           </Button>
         </header>
+        {capabilitiesOpen && !configOpen && (
+          <div className="agent-capabilities">
+            <p className="text-meta font-medium">{t("先生成建议，审阅后应用")}</p>
+            <div className="agent-capability-grid">
+              {[
+                {
+                  icon: PencilLine,
+                  label: "修改文档",
+                  prompt: "请查找我指定的文档，按以下要求生成局部修改建议：",
+                  note: "需要勾选本次正文权限",
+                },
+                {
+                  icon: ShieldCheck,
+                  label: "整理账号资料",
+                  prompt: "请查找我指定的账号，建议修改名称或标签：",
+                  note: "密码等凭据在本机编辑",
+                },
+                {
+                  icon: Link2,
+                  label: "发现资源关联",
+                  prompt: "请检查账号、服务器和文档，基于具体依据给出尚未保存的关联建议。",
+                  note: "区分已有关系与建议",
+                },
+              ].map(({ icon: Icon, label, prompt, note }) => (
+                <button
+                  key={label}
+                  type="button"
+                  onClick={() => {
+                    fillDraft(t(prompt));
+                    setAllowWorkspaceChanges(true);
+                    setCapabilitiesOpen(false);
+                  }}
+                >
+                  <Icon className="size-4" />
+                  <span>
+                    <strong>{t(label)}</strong>
+                    <small>{t(note)}</small>
+                  </span>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
         {configOpen ? (
           <div className="agent-settings-scroll">
             <AgentSettings onConfigChange={(config) => setModel(config.model)} />
@@ -360,7 +418,16 @@ export function AgentView() {
                     </Button>
                   )}
                   {visibleMessages.map((message) => (
-                    <MessageRow key={message.id} message={message} />
+                    <MessageRow
+                      key={message.id}
+                      message={message}
+                      busy={busy}
+                      onSettings={() => setConfigOpen(true)}
+                      onRetry={() => {
+                        const retry = retryRequest(messages, message.id);
+                        if (retry) void send(retry.question, retry);
+                      }}
+                    />
                   ))}
                   {running?.conversationId === activeId && (
                     <div className="agent-pending" aria-live="polite">
@@ -451,6 +518,15 @@ export function AgentView() {
                   />
                   {t("本次允许检索文档正文")}
                 </label>
+                <label>
+                  <input
+                    type="checkbox"
+                    checked={allowWorkspaceChanges}
+                    disabled={busy || !api}
+                    onChange={(event) => setAllowWorkspaceChanges(event.target.checked)}
+                  />
+                  {t("本次生成修改建议")}
+                </label>
               </div>
               <p className="agent-privacy-note">
                 {t(
@@ -501,7 +577,17 @@ function Welcome({ onPick }: { onPick: (q: string) => void }) {
   );
 }
 
-function MessageRow({ message }: { message: Message }) {
+function MessageRow({
+  message,
+  busy,
+  onRetry,
+  onSettings,
+}: {
+  message: Message;
+  busy: boolean;
+  onRetry: () => void;
+  onSettings: () => void;
+}) {
   if (message.role === "you") {
     const text = message.blocks.find((b) => b.type === "text");
     return (
@@ -520,6 +606,19 @@ function MessageRow({ message }: { message: Message }) {
         {message.blocks.map((block, i) => (
           <BlockView key={i} block={block} />
         ))}
+        {message.blocks.some((block) => block.type === "run" && block.status !== "success") && (
+          <div className="agent-retry-actions">
+            <Button size="sm" variant="outline" onClick={onRetry} disabled={busy}>
+              <RotateCcw className="size-3.5" />
+              {t("重试这条问题")}
+            </Button>
+            <Button size="sm" variant="ghost" onClick={onSettings} disabled={busy}>
+              <Settings2 className="size-3.5" />
+              {t("检查模型设置")}
+            </Button>
+            <p>{t("重试使用当前模型设置和下方勾选的本次权限。")}</p>
+          </div>
+        )}
         <TimeAgo iso={message.at} className="block text-2xs text-subtle" />
       </div>
     </div>
@@ -541,6 +640,8 @@ function BlockView({ block }: { block: Block }) {
   };
 
   switch (block.type) {
+    case "proposal":
+      return <ProposalCard proposal={block.proposal} />;
     case "sources":
       return block.sources.length > 0 ? (
         <details className="agent-sources">
@@ -649,6 +750,139 @@ function BlockView({ block }: { block: Block }) {
         </ul>
       );
   }
+}
+
+function ProposalCard({ proposal }: { proposal: WorkspaceProposal }) {
+  const [state, setState] = useState<"pending" | "applying" | "applied" | "dismissed">(
+    proposal.status ?? "pending",
+  );
+  const [failure, setFailure] = useState("");
+  const [dismissing, setDismissing] = useState(false);
+  const expired = Date.now() > proposal.expiresAt;
+  const finish = (status: "applied" | "dismissed") => {
+    setState(status);
+    useConversations.setState((current) => ({
+      conversations: current.conversations.map((conversation) => ({
+        ...conversation,
+        messages: conversation.messages.map((message) => ({
+          ...message,
+          blocks: message.blocks.map((block) =>
+            block.type === "proposal" && block.proposal.id === proposal.id
+              ? { ...block, proposal: { ...block.proposal, status } }
+              : block,
+          ),
+        })),
+      })),
+    }));
+  };
+  const dismiss = async () => {
+    if (state !== "pending" || dismissing) return;
+    const api = desktop()?.agent;
+    if (!api) return;
+    setDismissing(true);
+    setFailure("");
+    try {
+      await api.discardProposal(proposal.id);
+      finish("dismissed");
+    } catch (error) {
+      setFailure(error instanceof Error ? error.message : String(error));
+    } finally {
+      setDismissing(false);
+    }
+  };
+  const apply = async () => {
+    if (state !== "pending" || dismissing) return;
+    const api = desktop()?.agent;
+    if (!api) return;
+    setState("applying");
+    setFailure("");
+    try {
+      if (proposal.documentId) await useDocuments.getState().flush(proposal.documentId);
+      const before = useAppStore.getState();
+      const result = await api.applyProposal(proposal.id);
+      if (result.document) {
+        const document = result.document;
+        // 只替换本次涉及且已保存的草稿，其他编辑中的文档不受影响。
+        if (["dirty", "saving", "error"].includes(useDocuments.getState().status[document.id]))
+          throw new Error(t("文档在应用期间又被编辑，请保留当前草稿并重新打开核对。"));
+        useDocuments.setState((current) => ({
+          drafts: { ...current.drafts, [document.id]: document },
+          status: { ...current.status, [document.id]: "saved" },
+        }));
+        useDocuments.getState().acceptChange({ document });
+      }
+      if (result.snapshot) {
+        const current = useAppStore.getState();
+        current.importSnapshot(
+          mergeSnapshotChange(current, {
+            before: result.before ?? before,
+            snapshot: result.snapshot,
+          }),
+        );
+      }
+      finish("applied");
+      useAppStore.getState().log(t("已应用 AI 修改建议：{0}", proposal.title));
+    } catch (error) {
+      setState("pending");
+      setFailure(error instanceof Error ? error.message : String(error));
+    }
+  };
+  return (
+    <section className="agent-proposal" aria-label={t("待审阅修改建议")}>
+      <header>
+        <WandSparkles className="size-4" />
+        <span>
+          {t(state === "applied" ? "已应用" : state === "dismissed" ? "已忽略" : "待审阅修改建议")}
+        </span>
+      </header>
+      <h3>{proposal.title}</h3>
+      <p className="agent-proposal-reason">{proposal.reason}</p>
+      <div className="agent-proposal-diff">
+        <div>
+          <span>{t("修改前")}</span>
+          <pre>{proposal.before}</pre>
+        </div>
+        <div>
+          <span>{t("修改后")}</span>
+          <pre>{proposal.after}</pre>
+        </div>
+      </div>
+      {failure && (
+        <p role="alert" className="text-meta text-crit">
+          {failure}
+        </p>
+      )}
+      {state === "pending" || state === "applying" ? (
+        <footer>
+          <Button
+            size="sm"
+            disabled={state === "applying" || dismissing || expired}
+            onClick={() => void apply()}
+          >
+            {state === "applying" ? (
+              <Loader2 className="size-3.5 animate-spin" />
+            ) : (
+              <Check className="size-3.5" />
+            )}
+            {t(expired ? "建议已过期，请重新生成" : "确认应用这项修改")}
+          </Button>
+          <Button
+            size="sm"
+            variant="ghost"
+            disabled={state === "applying" || dismissing}
+            onClick={() => void dismiss()}
+          >
+            {dismissing && <Loader2 className="size-3.5 animate-spin" />}
+            {t("忽略")}
+          </Button>
+        </footer>
+      ) : (
+        <p className="text-2xs text-subtle">
+          {t(state === "applied" ? "修改已保存到本机。" : "已保留原有内容。")}
+        </p>
+      )}
+    </section>
+  );
 }
 
 /**

@@ -52,7 +52,6 @@ const input = () => page.getByLabel("选择 Markdown 文件", { exact: true });
 const reader = () => page.getByRole("region", { name: "文档正文", exact: true });
 const report = () => page.locator(".document-import-report");
 async function results(success, failed) {
-  await page.getByRole("button", { name: "导入 Markdown", exact: true }).waitFor();
   await page.waitForFunction(
     (text) => document.querySelector(".document-import-report")?.textContent.includes(text),
     `导入完成：${success} 篇成功，${failed} 篇未导入。`,
@@ -71,6 +70,14 @@ try {
       viewport: { width: 1440, height: 900 },
       locale: "zh-CN",
     });
+    if (process.env.NANPAD_QA_DISABLE_HMR)
+      await context.routeWebSocket("**/*", (socket) => {
+        const server = socket.connectToServer();
+        server.onMessage((message) => {
+          const type = JSON.parse(String(message)).type;
+          if (!["update", "full-reload"].includes(type)) socket.send(message);
+        });
+      });
     await context.addInitScript(() => {
       if (!localStorage.getItem("sinan-settings-v1"))
         localStorage.setItem(
@@ -92,8 +99,9 @@ try {
   await page.emulateMedia({ reducedMotion: "reduce" });
   await page.locator('[data-app-ready="true"]').waitFor({ timeout: 60000 });
   await page.getByRole("button", { name: "文档资产", exact: true }).click();
+  await page.getByRole("button", { name: "添加文档", exact: true }).click();
   const chooser = page.waitForEvent("filechooser");
-  await page.getByRole("button", { name: "导入 Markdown", exact: true }).click();
+  await page.getByRole("menuitem", { name: "导入 Markdown", exact: true }).click();
   const picker = await chooser;
   assert.equal(picker.isMultiple(), true);
   await picker.setFiles([
@@ -140,6 +148,7 @@ try {
   assert.match(await reader().innerText(), /追加的验证记录/);
   checks.push("富文本结构正确、导入前保存当前草稿、同名文档独立创建");
 
+  await page.getByRole("button", { name: "资产总览", exact: true }).click();
   const transfer = await page.evaluateHandle(() => {
     const data = new DataTransfer();
     data.items.add(
@@ -147,18 +156,19 @@ try {
     );
     return data;
   });
-  const zone = page.locator(".document-import-zone");
+  const zone = page.locator("body");
   await zone.dispatchEvent("dragenter", { dataTransfer: transfer });
-  await page.waitForFunction(
-    () => document.querySelector(".document-import-zone")?.getAttribute("data-dragging") === "true",
-  );
-  assert.equal(await zone.getAttribute("data-dragging"), "true");
+  await page.locator(".global-markdown-drop").waitFor();
+  await page.keyboard.press("Escape");
+  await page.locator(".global-markdown-drop").waitFor({ state: "detached" });
+  await zone.dispatchEvent("dragenter", { dataTransfer: transfer });
+  await page.locator(".global-markdown-drop").waitFor();
   await zone.dispatchEvent("drop", { dataTransfer: transfer });
   await transfer.dispose();
   await results(1, 0);
   assert.match(await reader().innerText(), /拖入后可阅读/);
-  assert.equal(await zone.getAttribute("data-dragging"), "false");
-  checks.push("拖入提示和实际文件导入");
+  assert.equal(await page.locator(".global-markdown-drop").count(), 0);
+  checks.push("从资产总览全局拖入并自动打开文档、Escape关闭覆盖层");
 
   await input().setInputFiles([file("超大.md", "x".repeat(1024 * 1024 + 1))]);
   await results(0, 1);
@@ -206,9 +216,7 @@ try {
   if (web) {
     await page.setViewportSize({ width: 390, height: 844 });
     await page.getByRole("button", { name: "文档列表", exact: true }).click();
-    const button = await page
-      .getByRole("button", { name: "导入 Markdown", exact: true })
-      .boundingBox();
+    const button = await page.getByRole("button", { name: "添加文档", exact: true }).boundingBox();
     assert.ok(button.width >= 44 && button.height >= 44);
     await input().setInputFiles(file("手机导入.md", "# 窄屏阅读\n\n手机导入正文"));
     await reader().waitFor();

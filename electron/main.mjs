@@ -12,8 +12,10 @@ import {
 import { ImageBed } from "./services/image-bed.mjs";
 import { checkNode } from "./services/node-check.mjs";
 import { UsageStore } from "./services/usage.mjs";
+import { createRefreshBatch } from "./services/refresh-batch.mjs";
 import { LocalUsageMonitor } from "./services/local-usage.mjs";
 import { DocumentsStore } from "./services/documents.mjs";
+import { WorkspaceActions } from "./services/workspace-actions.mjs";
 import electronUpdater from "electron-updater";
 import { DesktopUpdater } from "./services/app-updater.mjs";
 import {
@@ -458,7 +460,12 @@ function registerIpc() {
   handle("nodes:check", checkNode);
   const documents = new DocumentsStore(join(app.getPath("userData"), "documents"));
   for (const method of ["list", "get", "save", "remove"])
-    handle("documents:" + method, (...args) => documents[method](...args));
+    handle("documents:" + method, async (...args) => {
+      const result = await documents[method](...args);
+      if (method === "save") emit("documents:changed", { document: result });
+      if (method === "remove") emit("documents:changed", { removedId: args[0] });
+      return result;
+    });
   handle("capture:list", () => captures.list());
   handle("capture:discard", (id) => {
     captures.discard(id);
@@ -481,7 +488,7 @@ function registerIpc() {
     },
     saveDocument: async (input, assertCurrent) => {
       const result = await saveBrowserDocument(documents, input, assertCurrent);
-      emit("documents:changed", {});
+      emit("documents:changed", { document: await documents.get(result.id) });
       return result;
     },
     // 手动发送仍聚焦窗口引导确认；自动采集在用户浏览网页时到达，只更新待确认数，不抢前台。
@@ -665,41 +672,34 @@ function registerIpc() {
       throw error;
     }
   });
-  let usageRefresh = null;
-  const refreshUsage = () => {
-    if (usageRefresh) return usageRefresh;
-    usageRefresh = (async () => {
-      if (!vault.unlocked) throw new Error("请先解锁密钥库");
-      const failures = [];
-      const state = await usage.list();
-      for (const source of state.sources.filter((s) => s.type !== "oauth")) {
-        try {
-          await usage.refresh(source.id);
-        } catch (e) {
-          failures.push(source.name + "：" + e.message);
-        }
+  const refreshUsage = createRefreshBatch(async (force) => {
+    if (!vault.unlocked) throw new Error("请先解锁密钥库");
+    const failures = [];
+    const state = await usage.list();
+    for (const source of state.sources.filter((s) => s.type !== "oauth")) {
+      try {
+        await usage.refresh(source.id, { force });
+      } catch (e) {
+        failures.push(source.name + "：" + e.message);
       }
-      for (const account of await aiAccounts.list()) {
-        try {
-          await usage.recordAccount(await aiAccounts.refresh(account.id));
-        } catch (e) {
-          await usage.markFailure("oauth:" + account.id, e.message);
-          failures.push(account.provider + "：" + e.message);
-        }
+    }
+    for (const account of await aiAccounts.list()) {
+      try {
+        await usage.recordAccount(await aiAccounts.refresh(account.id));
+      } catch (e) {
+        await usage.markFailure("oauth:" + account.id, e.message);
+        failures.push(account.provider + "：" + e.message);
       }
-      return { failures };
-    })().finally(() => {
-      usageRefresh = null;
-    });
-    return usageRefresh;
-  };
-  handle("usage:refresh-all", refreshUsage);
+    }
+    return { failures };
+  });
+  handle("usage:refresh-all", () => refreshUsage(true));
   const usageTimer = setInterval(() => {
     if (
       vault.unlocked &&
       BrowserWindow.getAllWindows().some((w) => w.isVisible() && !w.isMinimized())
     )
-      void refreshUsage().catch(() => {});
+      void refreshUsage(false).catch(() => {});
   }, 300000);
   usageTimer.unref();
   app.once("before-quit", () => clearInterval(usageTimer));
@@ -856,16 +856,40 @@ function registerIpc() {
     }
     throw new Error("未知的清理范围");
   });
+  const workspaceActions = new WorkspaceActions({
+    getSnapshot: () => currentSnapshot,
+    documents,
+    mutateAssets: (mutate) =>
+      enqueueAssets(async () => {
+        const before = currentSnapshot;
+        const next = mutate(before);
+        await writeJson(dataFile(), { state: next, version: 0 });
+        currentSnapshot = next;
+        emit("assets:changed", { before, snapshot: next });
+        return { before, snapshot: next };
+      }),
+  });
   agent = new AgentService({
     directory: app.getPath("userData"),
     secureStorage: safeStorage,
     getSnapshot: () => currentSnapshot,
+    workspaceActions,
     workspaceDocuments: {
       list: () => documents.listMetadata(),
       get: (id) => documents.get(id),
     },
     checkMailbox: (id, options) => mailboxes.check(id, options),
     emit: (event) => emit("agent:event", event),
+  });
+  handle("agent:apply-proposal", async (id) => {
+    if (typeof id !== "string" || id.length > 100) throw new Error("修改建议标识无效。");
+    const result = await workspaceActions.apply(id);
+    if (result.document) emit("documents:changed", { document: result.document });
+    return result;
+  });
+  handle("agent:discard-proposal", (id) => {
+    if (typeof id !== "string" || id.length > 100) throw new Error("修改建议标识无效。");
+    return workspaceActions.discard(id);
   });
   handle("agent:config", () => agent.config());
   handle("agent:save-config", (config) => agent.saveConfig(config));

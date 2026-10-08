@@ -10,7 +10,8 @@ import { type UsageState, type UsageRecord, type LocalUsageStatus, usageBytes } 
 import { Button } from "./ui/button";
 import { Select } from "./ui/select";
 import { UsageInsights } from "./usage-insights";
-import { LocalUsagePanel } from "./local-usage-panel";
+import { LocalUsageControl } from "./local-usage-control";
+import { usageCache } from "@/lib/usage-cache";
 
 const names: Record<string, string> = {
   "3x-ui": "3x-ui 面板",
@@ -27,11 +28,15 @@ function amount(row: UsageRecord) {
   return row.usedPercent == null ? "未提供百分比" : `${row.usedPercent.toFixed(1)}% 已用`;
 }
 export function UsageWorkspace() {
-  const [data, setData] = useState<UsageState>({ sources: [], records: [] });
+  const [data, setData] = useState<UsageState>(
+    () => usageCache.peek()?.data ?? { sources: [], records: [] },
+  );
   const [error, setError] = useState("");
   const [adding, setAdding] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [localStatus, setLocalStatus] = useState<LocalUsageStatus | null>(null);
+  const [localStatus, setLocalStatus] = useState<LocalUsageStatus | null>(
+    () => usageCache.peek()?.status ?? null,
+  );
   const [localHistoryRequest, setLocalHistoryRequest] = useState(0);
   const [form, setForm] = useState(() => usageFormFromDraft(null));
   const setup = useAppStore((s) => s.usageSetupDraft);
@@ -49,19 +54,20 @@ export function UsageWorkspace() {
     useAppStore.getState().clearUsageSetup();
   }, [setup]);
   const servers = useAppStore((s) => s.servers);
-  const load = useCallback(async () => {
+  const load = useCallback(async (force = true) => {
     const api = desktop()?.usage;
     if (api) {
-      const [usage, status] = await Promise.all([api.list(), api.localStatus()]);
+      const { data: usage, status } = await usageCache.read(force);
       setData(usage);
       setLocalStatus(status);
       setError("");
     }
   }, []);
   useEffect(() => {
-    void load().catch((e) => setError(errorText(e)));
+    void load(false).catch((e) => setError(errorText(e)));
     const timer = setInterval(() => {
-      if (document.visibilityState === "visible") void load().catch((e) => setError(errorText(e)));
+      if (document.visibilityState === "visible")
+        void load(false).catch((e) => setError(errorText(e)));
     }, 10000);
     return () => clearInterval(timer);
   }, [load]);
@@ -116,7 +122,12 @@ export function UsageWorkspace() {
             秒检查。
           </p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
+          <LocalUsageControl
+            status={localStatus}
+            onChange={load}
+            onViewHistory={() => setLocalHistoryRequest((value) => value + 1)}
+          />
           <Button variant="outline" disabled={busy} onClick={() => void refresh()}>
             <RefreshCw className={busy ? "animate-spin" : ""} />
             刷新全部
@@ -341,11 +352,6 @@ export function UsageWorkspace() {
           </div>
         </form>
       )}
-      <LocalUsagePanel
-        status={localStatus}
-        onChange={load}
-        onViewHistory={() => setLocalHistoryRequest((value) => value + 1)}
-      />
       <UsageInsights data={data} localHistoryRequest={localHistoryRequest} />
       <details className="rounded-xl border border-line bg-card p-4 text-sm leading-relaxed">
         <summary className="cursor-pointer font-semibold">订阅额度与账号授权</summary>

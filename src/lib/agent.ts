@@ -14,6 +14,7 @@ import { t } from "./i18n.ts";
  * 用户问题和获得授权的文档片段仍可能包含敏感信息，并会保存在本机对话历史中。
  */
 export type Block =
+  | { type: "proposal"; proposal: import("./agent-client").WorkspaceProposal }
   | { type: "sources"; sources: import("./agent-client").Source[] }
   | {
       type: "run";

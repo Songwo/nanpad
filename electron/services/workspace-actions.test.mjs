@@ -1,0 +1,235 @@
+import assert from "node:assert/strict";
+import { test } from "node:test";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { WorkspaceActions } from "./workspace-actions.mjs";
+import { DocumentsStore } from "./documents.mjs";
+
+async function fixture(t) {
+  const directory = await mkdtemp(join(tmpdir(), "zhiyu-actions-"));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const documents = new DocumentsStore(directory);
+  let snapshot = {
+    servers: [{ id: "server-1", name: "隔离主机" }],
+    secrets: [{ id: "account-1", name: "测试账号", tags: ["测试"], kind: "网站账号" }],
+    links: [],
+  };
+  let time = Date.now();
+  const actions = new WorkspaceActions({
+    documents,
+    getSnapshot: () => snapshot,
+    now: () => time,
+    mutateAssets: async (mutate) => {
+      snapshot = mutate(snapshot);
+      return { snapshot };
+    },
+  });
+  const document = await documents.save({
+    id: "doc-test",
+    title: "测试指南",
+    bindings: [],
+    content: {
+      type: "doc",
+      content: [
+        {
+          type: "paragraph",
+          content: [
+            { type: "text", text: "请先检查旧地址，再查看资源。", marks: [{ type: "bold" }] },
+          ],
+        },
+      ],
+    },
+  });
+  return {
+    actions,
+    documents,
+    document,
+    getSnapshot: () => snapshot,
+    expire: () => {
+      time += 31 * 60 * 1000;
+    },
+  };
+}
+const edit = {
+  documentId: "doc-test",
+  find: "旧地址",
+  replace: "新地址",
+  reason: "按用户提供的最新地址修订。",
+};
+
+test("模型生成文档建议不会写盘，明确应用后保留其余正文和格式", async (t) => {
+  const { actions, documents, document } = await fixture(t);
+  const proposal = await actions.propose("propose_document_edit", edit, {
+    allowDocumentContent: true,
+  });
+  assert.deepEqual(await documents.get(document.id), document);
+  assert.equal(proposal.before, "旧地址");
+  assert.equal(proposal.after, "新地址");
+  assert.equal(Object.hasOwn(proposal, "next"), false);
+  const { document: saved } = await actions.apply(proposal.id);
+  assert.equal(saved.content.content[0].content[0].text, "请先检查新地址，再查看资源。");
+  assert.deepEqual(saved.content.content[0].content[0].marks, [{ type: "bold" }]);
+  await assert.rejects(actions.apply(proposal.id), /已经应用/);
+});
+test("文档正文无授权时不能生成修改建议", async (t) => {
+  const { actions } = await fixture(t);
+  await assert.rejects(actions.propose("propose_document_edit", edit), /正文/);
+});
+
+test("建议中的美元符号按字面保存，与预览保持一致", async (t) => {
+  const { actions, documents, document } = await fixture(t);
+  const replace = "$& $` $' $$";
+  const proposal = await actions.propose(
+    "propose_document_edit",
+    { ...edit, replace },
+    { allowDocumentContent: true },
+  );
+  assert.equal(proposal.after, replace);
+  await actions.apply(proposal.id);
+  assert.equal(
+    (await documents.get(document.id)).content.content[0].content[0].text,
+    "请先检查" + replace + "，再查看资源。",
+  );
+});
+test("排队中的文档编辑会让旧提案失败，不覆盖新内容", async (t) => {
+  const { actions, documents, document } = await fixture(t);
+  const proposal = await actions.propose("propose_document_edit", edit, {
+    allowDocumentContent: true,
+  });
+  const newer = documents.save({ ...document, title: "用户刚修改的标题" });
+  const applying = actions.apply(proposal.id);
+  await newer;
+  await assert.rejects(applying, /其他位置修改/);
+  assert.equal((await documents.get(document.id)).title, "用户刚修改的标题");
+});
+test("已删除文档不会因为应用旧提案而重建", async (t) => {
+  const { actions, documents } = await fixture(t);
+  const proposal = await actions.propose("propose_document_edit", edit, {
+    allowDocumentContent: true,
+  });
+  await documents.remove(edit.documentId);
+  await assert.rejects(actions.apply(proposal.id), /已删除/);
+});
+test("账号敏感字段和额外字段被拒绝，只能修改名称与标签", async (t) => {
+  const { actions, getSnapshot } = await fixture(t);
+  for (const field of ["password", "username", "url", "note", "apiKey", "id", "_browserAsset"]) {
+    await assert.rejects(
+      actions.propose("propose_account_edit", {
+        assetId: "account-1",
+        patch: { [field]: "secret-test" },
+        reason: "测试",
+      }),
+      /只允许/,
+    );
+  }
+  const proposal = await actions.propose("propose_account_edit", {
+    assetId: "account-1",
+    patch: { name: "新账号名称", tags: ["工作", "工作"] },
+    reason: "统一用户指定分类",
+  });
+  assert.equal(getSnapshot().secrets[0].name, "测试账号");
+  await actions.apply(proposal.id);
+  assert.equal(getSnapshot().secrets[0].name, "新账号名称");
+  assert.deepEqual(getSnapshot().secrets[0].tags, ["工作"]);
+});
+test("关联建议只能引用真实存在资产，确认后去重保存", async (t) => {
+  const { actions, getSnapshot } = await fixture(t);
+  const args = {
+    from: { kind: "secret", id: "account-1" },
+    to: { kind: "server", id: "server-1" },
+    reason: "用户确认此账号管理这台主机",
+  };
+  await assert.rejects(
+    actions.propose("propose_asset_link", { ...args, to: { kind: "server", id: "missing" } }),
+    /已不存在/,
+  );
+  const a = await actions.propose("propose_asset_link", args);
+  const b = await actions.propose("propose_asset_link", { ...args, from: args.to, to: args.from });
+  assert.equal(getSnapshot().links.length, 0);
+  await actions.apply(a.id);
+  await actions.apply(b.id);
+  assert.equal(getSnapshot().links.length, 1);
+});
+test("文档绑定建议无须正文授权，保存后保持文档内容", async (t) => {
+  const { actions, documents, document } = await fixture(t);
+  const proposal = await actions.propose("propose_document_binding", {
+    documentId: document.id,
+    to: { kind: "secret", id: "account-1" },
+    reason: "用户指定这篇指南属于此账号",
+  });
+  await actions.apply(proposal.id);
+  const saved = await documents.get(document.id);
+  assert.deepEqual(saved.content, document.content);
+  assert.deepEqual(saved.bindings, [{ kind: "secret", id: "account-1" }]);
+});
+test("过期、未知和失败运行中的建议都不能应用", async (t) => {
+  const { actions, expire } = await fixture(t);
+  const proposal = await actions.propose("propose_document_edit", edit, {
+    allowDocumentContent: true,
+    requestId: "failed-run",
+  });
+  actions.discardRequest("failed-run");
+  await assert.rejects(actions.apply(proposal.id), /过期/);
+  const expiring = await actions.propose("propose_document_edit", edit, {
+    allowDocumentContent: true,
+  });
+  expire();
+  await assert.rejects(actions.apply(expiring.id), /过期/);
+  await assert.rejects(actions.apply("invented-id"), /过期/);
+});
+
+test("连续处理超过 80 个建议不会耗尽待审阅容量，已应用建议不再保留正文", async (t) => {
+  const { actions } = await fixture(t);
+  let first;
+  for (let index = 0; index < 85; index += 1) {
+    const proposal = await actions.propose(
+      "propose_document_edit",
+      {
+        ...edit,
+        find: index % 2 === 0 ? "旧地址" : "新地址",
+        replace: index % 2 === 0 ? "新地址" : "旧地址",
+      },
+      { allowDocumentContent: true },
+    );
+    first ??= proposal;
+    await actions.apply(proposal.id);
+    assert.equal(actions.pending.size, 0);
+  }
+  await assert.rejects(actions.apply(first.id), /已经应用/);
+});
+
+test("忽略建议释放容量且不修改原数据，已忽略建议不能重新应用", async (t) => {
+  const { actions, documents, document } = await fixture(t);
+  const proposals = [];
+  for (let index = 0; index < 80; index += 1)
+    proposals.push(
+      await actions.propose("propose_document_edit", edit, { allowDocumentContent: true }),
+    );
+  await assert.rejects(
+    actions.propose("propose_document_edit", edit, { allowDocumentContent: true }),
+    /待审阅建议过多/,
+  );
+  assert.equal(actions.discard(proposals[0].id), true);
+  assert.equal(actions.pending.size, 79);
+  const replacement = await actions.propose("propose_document_edit", edit, {
+    allowDocumentContent: true,
+  });
+  for (const proposal of [...proposals.slice(1), replacement]) actions.discard(proposal.id);
+  assert.equal(actions.pending.size, 0);
+  assert.deepEqual(await documents.get(document.id), document);
+  await assert.rejects(actions.apply(proposals[0].id), /已忽略/);
+  assert.equal(actions.discard(proposals[0].id), true);
+});
+
+test("忽略过期或重启前的建议可清理对话，但不会中断正在应用的修改", async (t) => {
+  const { actions } = await fixture(t);
+  assert.equal(actions.discard("before-restart"), true);
+  const proposal = await actions.propose("propose_document_edit", edit, {
+    allowDocumentContent: true,
+  });
+  const applying = actions.apply(proposal.id);
+  assert.throws(() => actions.discard(proposal.id), /正在应用/);
+  await applying;
+  assert.throws(() => actions.discard(proposal.id), /已经应用/);
+});

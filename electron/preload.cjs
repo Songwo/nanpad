@@ -109,6 +109,8 @@ contextBridge.exposeInMainWorld("sinan", {
     save: (value) => unwrap(ipcRenderer.invoke("profile:save", value)),
   },
   agent: {
+    applyProposal: (id) => unwrap(ipcRenderer.invoke("agent:apply-proposal", id)),
+    discardProposal: (id) => unwrap(ipcRenderer.invoke("agent:discard-proposal", id)),
     config: () => unwrap(ipcRenderer.invoke("agent:config")),
     saveConfig: (config) => unwrap(ipcRenderer.invoke("agent:save-config", config)),
     models: () => unwrap(ipcRenderer.invoke("agent:models")),
@@ -156,6 +158,7 @@ contextBridge.exposeInMainWorld("sinan", {
   },
 
   store: {
+    onChanged: (handler) => on("assets:changed", handler),
     addDemo: () => unwrap(ipcRenderer.invoke("store:add-demo")),
     load: () => unwrap(ipcRenderer.invoke("store:load")),
     save: (snapshot) => unwrap(ipcRenderer.invoke("store:save", snapshot)),

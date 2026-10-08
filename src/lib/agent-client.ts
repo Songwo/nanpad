@@ -37,7 +37,25 @@ export interface KnowledgeStatus {
   chunks: number;
   documents: Array<{ id: string; name: string; characters: number; addedAt: string }>;
 }
+export interface WorkspaceProposal {
+  id: string;
+  status?: "applied" | "dismissed";
+  type: "document-edit" | "account-edit" | "asset-link" | "document-binding";
+  title: string;
+  documentId?: string;
+  assetId?: string;
+  before: string;
+  after: string;
+  reason: string;
+  expiresAt: number;
+}
 export interface AgentBridge {
+  applyProposal(id: string): Promise<{
+    before?: import("./types").Snapshot;
+    snapshot?: import("./types").Snapshot;
+    document?: import("./documents").DocumentAsset;
+  }>;
+  discardProposal(id: string): Promise<boolean>;
   config(): Promise<ModelConfig>;
   saveConfig(
     config: ModelConfig & { apiKey?: string; clearApiKey?: boolean },
@@ -53,6 +71,7 @@ export interface AgentBridge {
     question: string;
     allowMailboxChecks?: boolean;
     allowDocumentContent?: boolean;
+    allowWorkspaceChanges?: boolean;
     history: Array<{ role: "user" | "assistant"; content: string; documentContent?: boolean }>;
   }): Promise<{
     model: string;
@@ -61,6 +80,7 @@ export interface AgentBridge {
     text: string;
     sourceItems: Source[];
     tools: string[];
+    proposals?: WorkspaceProposal[];
   }>;
   cancel(id: string): Promise<boolean>;
   onEvent(handler: (event: AgentEvent) => void): () => void;

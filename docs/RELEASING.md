@@ -14,7 +14,7 @@
 
 ## 版本准备
 
-更新 package.json、package-lock.json、browser-extension/manifest.json 与 src/lib/changelog.ts，执行 `node scripts/write-changelog.mjs` 同步 CHANGELOG.md。本版说明保存在 `docs/releases/v1.4.0.md`。README 的安装包名、构建目录及教程应与版本一致；描述实际支持范围，不将本机协议测试写成真实账号登录成功。
+更新 package.json、package-lock.json、browser-extension/manifest.json 与 src/lib/changelog.ts，执行 `node scripts/write-changelog.mjs` 同步 CHANGELOG.md。本版说明保存在 `docs/releases/v1.5.0.md`。README 的安装包名、构建目录及教程应与版本一致；描述实际支持范围，不将本机协议测试写成真实账号登录成功。
 
 ## 必须验证
 
@@ -46,7 +46,7 @@ npm run desktop:dist -- --win --x64 --publish never
 
 打包脚本将主进程及编译后的界面放入系统临时目录中的独立暂存区，使用仓库锁文件版本安装 `ssh2`、`imapflow`、`openai`、`minisearch`、`nodemailer`、`mailparser`、`html-to-text`、`sanitize-html` 及其运行依赖，再通过 electron-builder 内置的目录遍历器收集依赖，避免将网页构建工具装进桌面包。排除可选原生加速模块，SSH 使用库自带的 JavaScript 实现；无需 Visual Studio 编译环境。复用本机已安装的同版本 Electron，输出到 `release/v版本号/`；构建结束清理暂存区。
 
-安装包生成后检查版本和包内容，运行 `node scripts/release-smoke.mjs release/v1.3.1/win-unpacked/Nanpad.exe` 验证打包程序，计算 SHA256，补齐 Release 说明中的验证记录。该脚本使用独立临时数据目录，不修改日常资料。发布时显式选择源码、文档和必要资源，不提交临时截图、日志、用户数据或运行目录。将发布标签指向已经验证的提交，再上传 `Nanpad-1.3.1-setup.exe`、浏览器扩展包与 `SHA256SUMS.txt`。
+安装包生成后检查版本和包内容，运行 `node scripts/release-smoke.mjs release/v1.5.0/win-unpacked/Nanpad.exe` 验证打包程序，计算 SHA256，补齐 Release 说明中的验证记录。该脚本使用独立临时数据目录，不修改日常资料。发布时显式选择源码、文档和必要资源，不提交临时截图、日志、用户数据或运行目录。将发布标签指向已经验证的提交，再上传 `Nanpad-1.5.0-setup.exe`、浏览器扩展包与 `SHA256SUMS.txt`，以及下文要求的应用内更新附件。
 
 1.3.1 的 Windows 正式发布流水线额外运行 `passwords-desktop-integration.mjs` 验证实际打包程序的 CSV、加密库、后台资产同步、锁库与文档保存，并在 `extension:build` 后运行 `browser-companion-integration.mjs` 加载真实扩展，覆盖原生表单整页导航、多账号填写与文档提示。依赖中文界面标签的 Electron 测试必须显式设置 `locale: "zh-CN"`，不能依赖开发机的系统语言。测试只使用独立临时资料和合成账号，不读取真实浏览器密码库；真实浏览器原生 CSV 导入结果与第三方在线文档兼容性应单独记录。
 
@@ -61,3 +61,28 @@ npm run desktop:dist -- --win --x64 --publish never
 ## 1.4.0 应用内更新验证
 
 发布必须包含安装包、`.exe.blockmap`、`latest.yml`、配套插件 ZIP 和 SHA256SUMS。`latest.yml` 由同一次 electron-builder 构建生成，不手写摘要；安装包的 SHA512 和长度必须匹配元数据。只上传安装包会导致应用内检查或下载失败。验证默认监控及锁库采集、Markdown 导入与重启保存，并运行更新引擎真实下载和坏校验拒绝测试、更新 UI 与保存失败测试。
+
+## 1.5.0 工作区与缓存验证
+
+除上述检查外，开发预览运行时执行文档导航、关系与监控界面、AI 修改建议交互回归；密钥库回归使用 Electron 与隔离数据目录：
+
+```bash
+node scripts/document-navigation-integration.mjs
+node scripts/relations-usage-ui-integration.mjs
+node scripts/agent-actions-ui-integration.mjs
+node scripts/vault-usability-integration.mjs
+```
+
+正式包生成后，另运行工作区集成验证：
+
+```bash
+node scripts/workspace-v150-integration.mjs release/v1.5.0/win-unpacked/Nanpad.exe
+```
+
+该命令从参数指定的实际程序启动，核对版本并使用独立临时资料；通过本机合成模型服务验证文档修改、账号元信息修改与关系提案的真实主进程链路，不使用日常凭据或真实模型额度。省略程序参数会启动源码主进程，不能替代正式包验证。
+
+验证文档「＋」菜单、跨页面拖入、目录与首尾定位、切页缓存及未保存草稿保护；文档保存、删除与一次导入 50 篇应通过增量通知更新缓存，不触发全列表重新枚举，无载荷的旧式通知仍可补读。检查关系图只显示真实关联、建议经确认写入、文档绑定和解除后的持久化。用量页应先展示图表与明细，「采集与监控」详情可打开、关闭并切换历史筛选；来回切页不能反复触发远程采集。
+
+密钥库检查整行打开账号、取消／错误／正确解锁后继续操作、主动锁定及再次隐藏凭据。导航在明暗主题、不同缩放和窄窗口下检查图标与选中背景居中、阴影边界、滚动区域和固定底部入口；文档与弹窗动画须尊重减少动态效果设置。
+
+AI 回归用本机合成模型服务，验证失败重试采用当前配置与权限、建议只读预览、确认写入、重复应用与过期拒绝，以及并发编辑后的版本冲突。`npm test` 包含文档、关系、缓存和修改提案单元测试；不能以协议回归通过宣称用户的真实 API Key 或服务商鉴权已经修复。Release 验证记录须在实际命令结束后填写，并区分开发预览、打包程序及真实账号验证范围。

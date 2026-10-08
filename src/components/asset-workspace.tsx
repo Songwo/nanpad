@@ -1,4 +1,4 @@
-import { lazy, Suspense, useMemo, useState } from "react";
+import { lazy, Suspense, useEffect, useMemo, useState } from "react";
 import {
   ArrowDown,
   ArrowUp,
@@ -19,6 +19,8 @@ import {
 } from "@tanstack/react-table";
 import { useAppStore } from "@/lib/store";
 import { useSettings } from "@/lib/settings";
+import { useDocuments } from "@/lib/documents";
+import { confirmedRelations, relatedResources, resourceRows } from "@/lib/resource-relations.mjs";
 import { assetRows, filterAssetRows, type AssetRow } from "@/lib/asset-view";
 import { refKey } from "@/lib/operations";
 import { KIND_LABEL } from "@/lib/status";
@@ -33,19 +35,41 @@ const AssetGraph = lazy(() => import("./asset-graph"));
 
 export function AssetWorkspace() {
   const s = useAppStore();
-  const layout = useSettings((state) => state.assetLayout);
+  const configuredLayout = useSettings((state) => state.assetLayout);
+  const layout = s.view === "relations" ? "graph" : configuredLayout;
+  const documents = useDocuments((state) => state.list);
+  const [all, setAll] = useState(false);
+  useEffect(() => {
+    if (layout === "graph") void useDocuments.getState().load();
+  }, [layout]);
   const rows = useMemo(
     () => filterAssetRows(assetRows(s), s.view, s.query, s.filter === "attention", s.tagFilter),
     [s],
   );
+  const resources = useMemo(() => resourceRows(assetRows(s), documents, s), [s, documents]);
+  const relations = useMemo(
+    () => confirmedRelations(resources, s.links, documents),
+    [resources, s.links, documents],
+  );
+  const graphRows =
+    s.view === "relations" || all
+      ? resources.filter((row) => !s.query || row.search.includes(s.query.toLocaleLowerCase()))
+      : relatedResources(resources, relations, rows);
   return (
     <div className="asset-workspace">
-      <div className="workspace-summary">
-        <span>{t("{0} 项资产", rows.length.toLocaleString(intlLocale()))}</span>
+      <div className="workspace-summary flex flex-wrap items-center justify-between gap-2">
+        <span>
+          {layout === "graph"
+            ? t("{0} 项资源", graphRows.length.toLocaleString(intlLocale()))
+            : t("{0} 项资产", rows.length.toLocaleString(intlLocale()))}
+        </span>
+        {layout === "graph" && s.view !== "relations" && (
+          <Button size="sm" variant="ghost" onClick={() => setAll(!all)}>
+            {t(all ? "当前资产与关联资源" : "全部资源")}
+          </Button>
+        )}
       </div>
-      {rows.length === 0 ? (
-        <p className="workspace-empty">{t("没有匹配的资产")}</p>
-      ) : layout === "graph" ? (
+      {layout === "graph" ? (
         <Suspense
           fallback={
             <p className="workspace-empty" role="status">
@@ -53,8 +77,10 @@ export function AssetWorkspace() {
             </p>
           }
         >
-          <AssetGraph rows={rows} links={s.links} />
+          <AssetGraph rows={graphRows} resources={resources} relations={relations} />
         </Suspense>
+      ) : rows.length === 0 ? (
+        <p className="workspace-empty">{t("没有匹配的资产")}</p>
       ) : (
         <AssetTable rows={rows} />
       )}

@@ -26,6 +26,7 @@ export function AccountPanel({ assetId, kind }: { assetId: string; kind: AssetKi
   const [checked, setChecked] = useState(false);
   const [reveal, setReveal] = useState(false);
   const [loadError, setLoadError] = useState(false);
+  const [loadAttempt, setLoadAttempt] = useState(0);
   const composerOpen = useAppStore((s) => s.composerOpen);
   const secretKind = useAppStore((s) => s.secrets.find((item) => item.id === assetId)?.kind);
   const standalone = kind === "secret" && secretKind === "account";
@@ -65,16 +66,16 @@ export function AccountPanel({ assetId, kind }: { assetId: string; kind: AssetKi
     return () => {
       alive = false;
     };
-  }, [bridge, assetId, unlocked, composerOpen]);
+  }, [bridge, assetId, unlocked, composerOpen, loadAttempt]);
 
   if (!bridge) return null;
 
   return (
-    <section className="border-t border-line px-4 py-4">
+    <section className="border-t border-line px-4 py-4" aria-label={t(copy.title)}>
       <div className="mb-3 flex items-center gap-2">
         <UserRound className="size-4 text-muted" />
         <h3 className="text-meta font-semibold">{t(copy.title)}</h3>
-        {standalone && unlocked && (
+        {kind === "secret" && unlocked && (
           <Button
             className="ml-auto"
             variant="ghost"
@@ -87,21 +88,35 @@ export function AccountPanel({ assetId, kind }: { assetId: string; kind: AssetKi
       </div>
 
       {!unlocked ? (
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => void requireVault(t("查看已保存的账号密码需要先解锁密钥库。"))}
-        >
-          <Lock className="size-3.5" />
+        <div className="flex flex-wrap items-center gap-3 rounded-xl bg-canvas p-3">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() =>
+              void requireVault(t("查看已保存的账号密码需要先解锁密钥库。")).catch((error) =>
+                toast.error(String(error)),
+              )
+            }
+          >
+            <Lock className="size-3.5" />
 
-          {t("解锁查看")}
-        </Button>
+            {t("解锁查看")}
+          </Button>
+          <p className="text-2xs text-muted">
+            {t("解锁后在这里查看账号，当前页面和选择都会保留。")}
+          </p>
+        </div>
       ) : !checked ? (
         <p className="text-meta text-muted">{t("读取中…")}</p>
       ) : loadError ? (
-        <p role="alert" className="text-meta text-crit">
-          {t("账号信息读取失败，请重新打开后重试。")}
-        </p>
+        <div className="space-y-2">
+          <p role="alert" className="text-meta text-crit">
+            {t("账号信息读取失败，请重新打开后重试。")}
+          </p>
+          <Button variant="outline" size="sm" onClick={() => setLoadAttempt((value) => value + 1)}>
+            {t("重新读取")}
+          </Button>
+        </div>
       ) : !record ? (
         <div className="flex items-center gap-3">
           <Button variant="outline" size="sm" onClick={() => openComposer(kind, assetId)}>
@@ -139,8 +154,8 @@ export function AccountPanel({ assetId, kind }: { assetId: string; kind: AssetKi
 
           {record.password && (
             <Row label={t(copy.password)}>
-              <span className="truncate font-mono text-meta">
-                {reveal ? record.password : "•".repeat(Math.min(18, record.password.length))}
+              <span className="truncate font-mono text-meta" data-credential-password="true">
+                {reveal ? record.password : "•".repeat(12)}
               </span>
               <IconAction
                 label={reveal ? t("隐藏") : t("显示")}
@@ -195,7 +210,7 @@ function IconAction({
       type="button"
       aria-label={label}
       title={label}
-      className="grid size-7 shrink-0 place-items-center rounded-full text-subtle transition-colors duration-150 ease-out hover:bg-line hover:text-ink"
+      className="grid size-9 shrink-0 place-items-center rounded-lg text-subtle transition-colors duration-150 ease-out hover:bg-line hover:text-ink"
       onClick={(e) => {
         e.stopPropagation();
         onClick();
@@ -211,8 +226,9 @@ function CopyAction({ value, what }: { value: string; what: string }) {
     <IconAction
       label={t("复制{0}", what)}
       onClick={() => {
-        void copyText(value);
-        toast(t("已复制{0}", what));
+        void copyText(value)
+          .then(() => toast(t("已复制{0}", what)))
+          .catch(() => toast.error(t("复制失败，请重试")));
       }}
     >
       <Copy className="size-3.5" />

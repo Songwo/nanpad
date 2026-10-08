@@ -1,5 +1,6 @@
 import { canProbeServer } from "./server-observation.mjs";
 import { ProbeFlights, currentProbeAsset } from "./probe-guard";
+import { shouldRefreshProbe } from "./probe-cache.mjs";
 import { create } from "zustand";
 import { desktop, formatUptime } from "./desktop";
 import { useLive } from "./live";
@@ -213,16 +214,25 @@ export async function refreshById(kind: ProbeKind, id: string): Promise<void> {
 }
 
 /** Refresh every asset of one kind, a few at a time so 30 hosts do not stampede. */
-export async function refreshAll(kind: "server" | "domain" | "cert"): Promise<number> {
+export async function refreshAll(
+  kind: "server" | "domain" | "cert",
+  options: { force?: boolean } = {},
+): Promise<number> {
   const bridge = desktop();
   if (!bridge) return 0;
   const s = useAppStore.getState();
   const jobs: Array<() => Promise<void>> =
     kind === "server"
-      ? s.servers.filter((x) => !x.demo && canProbeServer(x)).map((x) => () => refreshServer(x))
+      ? s.servers
+          .filter((x) => !x.demo && canProbeServer(x) && shouldRefreshProbe(x, options))
+          .map((x) => () => refreshServer(x))
       : kind === "domain"
-        ? s.domains.filter((x) => !x.demo).map((x) => () => refreshDomain(x))
-        : s.certs.filter((x) => !x.demo).map((x) => () => refreshCert(x));
+        ? s.domains
+            .filter((x) => !x.demo && shouldRefreshProbe(x, options))
+            .map((x) => () => refreshDomain(x))
+        : s.certs
+            .filter((x) => !x.demo && shouldRefreshProbe(x, options))
+            .map((x) => () => refreshCert(x));
 
   const CONCURRENCY = 4;
   let cursor = 0;

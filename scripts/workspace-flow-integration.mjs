@@ -130,7 +130,7 @@ try {
   });
   await scenario("文档快捷键新建并保留文档，不打开服务器", async (page) => {
     await nav(page).getByRole("button", { name: "文档资产", exact: true }).click();
-    await page.getByRole("button", { name: "新建文档", exact: true }).waitFor();
+    await page.getByRole("button", { name: "添加文档", exact: true }).waitFor();
     await page.keyboard.press("Control+n");
     assert.equal(
       await page.getByRole("heading", { name: "添加服务器", exact: true }).count(),
@@ -266,7 +266,7 @@ try {
     await nav(page)
       .getByRole("button", { name: /^文档资产/ })
       .click();
-    await page.getByRole("button", { name: "新建文档", exact: true }).waitFor();
+    await page.getByRole("button", { name: "添加文档", exact: true }).waitFor();
     assert.equal(
       await page.evaluate(() => document.documentElement.scrollWidth > innerWidth + 1),
       false,

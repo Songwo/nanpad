@@ -1,4 +1,4 @@
-import { readFile, writeFile, mkdir, rename } from "node:fs/promises";
+import { readFile, writeFile, mkdir, rename, stat } from "node:fs/promises";
 import { dirname } from "node:path";
 import { randomUUID } from "node:crypto";
 
@@ -259,12 +259,26 @@ export async function collectUsage(config, fetchImpl = fetch, now = Date.now()) 
   throw new Error("API 用量分页超过上限");
 }
 
+export const AUTOMATIC_USAGE_TTL_MS = 300_000;
+
+export function usageNeedsRefresh(source, now = Date.now()) {
+  const attempts = [source?.checkedAt, source?.attemptedAt]
+    .map((value) => Date.parse(value ?? ""))
+    .filter((value) => Number.isFinite(value) && value <= now);
+  return !attempts.length || now - Math.max(...attempts) >= AUTOMATIC_USAGE_TTL_MS;
+}
+
+function fileVersion(info) {
+  return `${info.mtimeMs}:${info.ctimeMs}:${info.size}:${info.ino}`;
+}
+
 export class UsageStore {
   #file;
   #vault;
   #fetch;
   #queue = Promise.resolve();
   #active = new Map();
+  #cache = null;
   constructor(file, vault, fetchImpl = fetch) {
     this.#file = file;
     this.#vault = vault;
@@ -272,19 +286,28 @@ export class UsageStore {
   }
   async #read() {
     try {
-      return JSON.parse(await readFile(this.#file, "utf8"));
+      const version = fileVersion(await stat(this.#file));
+      if (this.#cache?.version === version) return this.#cache.state;
+      const state = JSON.parse(await readFile(this.#file, "utf8"));
+      const after = fileVersion(await stat(this.#file));
+      // 读文件期间若发生替换，不把新文件元信息与旧正文组合成错误缓存。
+      this.#cache = after === version ? { version, state } : null;
+      return state;
     } catch (e) {
+      this.#cache = null;
       if (e.code === "ENOENT") return { sources: [], records: [] };
       throw e;
     }
   }
   #write(fn) {
     const task = this.#queue.then(async () => {
-      const state = await this.#read();
+      // 写事务使用副本，落盘失败不得污染此前读到的有效缓存。
+      const state = structuredClone(await this.#read());
       const result = await fn(state);
       await mkdir(dirname(this.#file), { recursive: true });
       await writeFile(this.#file + ".tmp", JSON.stringify(state));
       await rename(this.#file + ".tmp", this.#file);
+      this.#cache = null;
       return result;
     });
     this.#queue = task.catch(() => {});
@@ -292,7 +315,7 @@ export class UsageStore {
   }
   async list() {
     await this.#queue;
-    return this.#read();
+    return structuredClone(await this.#read());
   }
   async add(input) {
     if (!TYPES.has(input?.type) || !String(input.name ?? "").trim())
@@ -403,10 +426,21 @@ export class UsageStore {
       { type: "oauth", name: `${account.provider} · ${account.email || account.accountId}` },
     );
   }
-  refresh(id) {
+  refresh(id, { force = true } = {}) {
     if (!/^usage-[\w-]+$/.test(id)) throw new Error("来源标识无效");
-    if (this.#active.has(id)) return this.#active.get(id);
+    const active = this.#active.get(id);
+    if (active) {
+      // 人工刷新可升级正在检查缓存的自动任务，但共用已进行的网络请求。
+      if (force) active.force = true;
+      return active.promise;
+    }
+    const job = { force, promise: null };
     const work = (async () => {
+      if (!job.force) {
+        const state = await this.list();
+        const source = state.sources.find((item) => item.id === id);
+        if (!job.force && source && !usageNeedsRefresh(source)) return state;
+      }
       const config = await this.#vault.get(id);
       if (!config) throw new Error("用量来源凭据不存在");
       try {
@@ -423,7 +457,8 @@ export class UsageStore {
       }
       return this.list();
     })().finally(() => this.#active.delete(id));
-    this.#active.set(id, work);
+    job.promise = work;
+    this.#active.set(id, job);
     return work;
   }
 }

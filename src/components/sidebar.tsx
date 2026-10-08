@@ -17,6 +17,8 @@ import {
   Unlock,
   ChevronDown,
   Ellipsis,
+  Settings2,
+  Network,
   type LucideIcon,
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type HTMLAttributes } from "react";
@@ -53,6 +55,7 @@ export const NAV_GROUPS: NavGroup[] = [
     items: [
       { id: "overview", label: "资产总览", icon: House, badgeKey: "total" },
       { id: "docs", label: "文档资产", icon: FileText },
+      { id: "relations", label: "关系图", icon: Network },
       { id: "usage", label: "用量记录", icon: ChartNoAxesCombined },
       { id: "nodes", label: "自建节点", icon: Radio, countKey: "nodes" },
     ],
@@ -293,13 +296,71 @@ export function Sidebar({
           ))}
         </nav>
 
-        {/* 底部账户空间与安全沙箱卡片 */}
-        <div className="sidebar-profile-footer mt-auto border-t border-line/60 p-2.5">
+        {/* 安全与设置始终固定在导航底部，收起后仍可直接操作。 */}
+        <div className="sidebar-profile-footer mt-auto shrink-0 space-y-1 border-t border-line/60 p-2.5">
+          <SidebarUtilities compact={collapsed} />
           <ProfileMenu compact={collapsed} />
         </div>
       </aside>
     </Tooltip.Provider>
   );
+}
+
+function SidebarUtilities({ compact }: { compact: boolean }) {
+  const unlocked = useVault((s) => s.unlocked);
+  const [busy, setBusy] = useState(false);
+  const entries = [
+    ...(isDesktop()
+      ? [
+          {
+            label: t(unlocked ? "锁定密钥库" : "解锁密钥库"),
+            icon: unlocked ? Unlock : Lock,
+            action: async () => {
+              if (unlocked) await useVault.getState().lock();
+              else await useVault.getState().require(t("解锁后继续查看和编辑账号。"));
+            },
+          },
+        ]
+      : []),
+    {
+      label: t("设置"),
+      icon: Settings2,
+      action: () => useAppStore.getState().setSettingsOpen(true),
+    },
+  ];
+  return entries.map(({ label, icon: Icon, action }) => (
+    <Tooltip.Root key={label}>
+      <Tooltip.Trigger asChild>
+        <button
+          type="button"
+          aria-label={label}
+          disabled={busy}
+          className="sidebar-nav-item flex min-h-11 w-full items-center gap-3 rounded-md px-3 text-left text-sm font-medium text-muted transition-colors duration-150 hover:bg-surface hover:text-ink disabled:opacity-50"
+          onClick={async () => {
+            setBusy(true);
+            try {
+              await action();
+            } catch (error) {
+              toast.error(error instanceof Error ? error.message : String(error));
+            } finally {
+              setBusy(false);
+            }
+          }}
+        >
+          <Icon className="sidebar-item-icon size-5 shrink-0" />
+          <span className="sidebar-item-label truncate">{label}</span>
+        </button>
+      </Tooltip.Trigger>
+      {compact && (
+        <Tooltip.Portal>
+          <Tooltip.Content side="right" sideOffset={10} className="sidebar-tooltip">
+            {label}
+            <Tooltip.Arrow className="fill-ink" />
+          </Tooltip.Content>
+        </Tooltip.Portal>
+      )}
+    </Tooltip.Root>
+  ));
 }
 
 function ProfileMenu({ compact = false }: { compact?: boolean }) {

@@ -1,0 +1,114 @@
+.local-monitor-trigger {
+  min-height: 44px;
+}
+.local-monitor-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--color-muted);
+}
+.local-monitor-dot[data-active="true"] {
+  background: var(--color-ok);
+}
+.local-monitor-dot[data-error="true"] {
+  background: var(--color-crit);
+}
+.local-monitor-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 55;
+  background: color-mix(in srgb, var(--color-ink) 28%, transparent);
+}
+.local-monitor-dialog {
+  position: fixed;
+  z-index: 56;
+  top: 16px;
+  right: 16px;
+  bottom: 16px;
+  display: flex;
+  flex-direction: column;
+  width: min(760px, calc(100vw - 32px));
+  border: 1px solid var(--color-line);
+  border-radius: 20px;
+  background: var(--color-card);
+  color: var(--color-ink);
+  box-shadow: var(--shadow-float);
+  overflow: hidden;
+}
+.local-monitor-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+  padding: 24px;
+  border-bottom: 1px solid var(--color-line);
+}
+.local-monitor-body {
+  min-height: 0;
+  overflow: auto;
+  padding: 8px;
+}
+.local-monitor-body .local-usage-panel {
+  border: 0;
+}
+.local-monitor-body .local-usage-sources {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+.local-monitor-body .local-usage-source {
+  min-width: 0;
+}
+@keyframes monitor-enter {
+  from {
+    opacity: 0;
+    transform: translateX(16px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes monitor-exit {
+  from {
+    opacity: 1;
+    transform: none;
+  }
+  to {
+    opacity: 0;
+    transform: translateX(16px);
+  }
+}
+@keyframes monitor-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+.local-monitor-dialog[data-state="open"] {
+  animation: monitor-enter 220ms ease-out;
+}
+.local-monitor-dialog[data-state="closed"] {
+  animation: monitor-exit 160ms ease-in;
+}
+.local-monitor-overlay[data-state="open"] {
+  animation: monitor-fade 180ms ease-out;
+}
+.local-monitor-overlay[data-state="closed"] {
+  animation: monitor-fade 160ms ease-in reverse;
+}
+@media (max-width: 640px) {
+  .local-monitor-heading {
+    padding: 16px;
+  }
+  .local-monitor-body .local-usage-sources {
+    grid-template-columns: 1fr;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .local-monitor-dialog,
+  .local-monitor-overlay {
+    animation: none !important;
+  }
+}

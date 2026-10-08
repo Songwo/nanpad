@@ -2091,6 +2091,13 @@ p {
   box-shadow: var(--shadow-card-hover);
 }
 
+/* 详情属于同一张浮层，内部不重复悬浮或叠加投影。 */
+.asset-card-detail {
+  padding: 18px;
+  border-bottom: 1px solid var(--color-line);
+  box-shadow: none;
+}
+
 /* -------------------------------------------------- 极光微光环境大盘 (HUD) */
 
 .hud-aurora-card {
@@ -2273,7 +2280,11 @@ p {
 }
 .sidebar-nav {
   overflow-x: hidden;
+  scrollbar-gutter: stable both-edges;
   transition: padding var(--dur-slow) var(--ease-out-soft);
+}
+.sidebar-nav::-webkit-scrollbar {
+  width: 8px;
 }
 .sidebar-section + .sidebar-section {
   border-top: 1px solid transparent;
@@ -2343,7 +2354,7 @@ p {
   width: 72px;
 }
 .app-sidebar[data-collapsed="true"] .sidebar-nav {
-  padding: 12px 10px;
+  padding: 12px 4px;
 }
 .app-sidebar[data-collapsed="true"] .sidebar-section + .sidebar-section {
   margin-top: 10px;
@@ -2364,7 +2375,15 @@ p {
   padding-block: 0;
 }
 .app-sidebar[data-collapsed="true"] .sidebar-item-label {
-  transform: translateX(-8px);
+  position: absolute;
+  width: 0;
+  pointer-events: none;
+  transform: none;
+}
+.app-sidebar[data-collapsed="true"] .sidebar-item-content {
+  width: 100%;
+  justify-content: center;
+  gap: 0;
 }
 .app-sidebar[data-collapsed="true"] .sidebar-item-counts {
   position: absolute;
@@ -2372,15 +2391,17 @@ p {
   pointer-events: none;
 }
 .app-sidebar[data-collapsed="true"] .sidebar-item-icon {
-  transform: translateX(6px);
+  transform: none;
 }
 .app-sidebar[data-collapsed="true"] .sidebar-tools-icon {
+  left: 50%;
   opacity: 1;
-  transform: scale(1);
+  transform: translateX(-50%) scale(1);
 }
 .app-sidebar[data-collapsed="true"] .sidebar-nav-item,
 .app-sidebar[data-collapsed="true"] .sidebar-tools-toggle {
   position: relative;
+  justify-content: center;
   padding: 10px;
 }
 .app-sidebar[data-collapsed="true"] .sidebar-nav-item[data-active="true"]::before {
@@ -2454,9 +2475,12 @@ p {
 .sidebar-profile-compact .sidebar-profile-trigger {
   gap: 0;
   padding: 4px;
+  justify-content: center;
 }
 .sidebar-profile-compact .sidebar-profile-details,
 .sidebar-profile-compact .sidebar-profile-ellipsis {
+  position: absolute;
+  width: 0;
   opacity: 0;
   visibility: hidden;
   transition-delay: 0s, 0s, var(--dur-fast);
