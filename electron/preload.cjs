@@ -37,6 +37,7 @@ contextBridge.exposeInMainWorld("sinan", {
   },
   nodes: { check: (node) => unwrap(ipcRenderer.invoke("nodes:check", node)) },
   usage: {
+    onChanged: (handler) => on("usage:changed", handler),
     list: () => unwrap(ipcRenderer.invoke("usage:list")),
     add: (value) => unwrap(ipcRenderer.invoke("usage:add", value)),
     remove: (id) => unwrap(ipcRenderer.invoke("usage:remove", id)),

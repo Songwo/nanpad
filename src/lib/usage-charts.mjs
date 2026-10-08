@@ -13,6 +13,26 @@ export function chartMetric(row) {
 /** @param {number|null|undefined} value */
 const valid = (value) => typeof value === "number" && Number.isFinite(value) && value >= 0;
 
+/** 小额记录以原始高度上的圆点强调，不抬高柱值，也不为零或未知值画点。
+ * @param {DailyPoint[]} daily
+ */
+export function smallUsagePoints(daily) {
+  const peak = Math.max(0, ...daily.map((point) => point.total ?? 0));
+  return daily.filter(
+    (point) => point.total != null && point.total > 0 && point.total < peak * 0.025,
+  );
+}
+
+/** 今日摘要沿用图表统计日：本机日桶按系统时区，API 日桶保留服务商日期。
+ * @param {DailyPoint[]} daily
+ * @param {number} now
+ */
+export function todayUsagePoint(daily, now = Date.now()) {
+  const date = new Date(now);
+  const day = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+  return daily.find((point) => point.day === day);
+}
+
 /** 采集型记录使用本地采集日，与页面时间筛选保持一致。
  * @param {UsageRecord} row
  */

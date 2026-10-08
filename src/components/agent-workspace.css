@@ -1,15 +1,31 @@
 /* 高度逐层传递到消息区，滚动只发生在消息、设置和上下文内部。 */
+.agent-capabilities-transition {
+  display: grid;
+  grid-template-rows: 0fr;
+  flex-shrink: 0;
+  opacity: 0;
+  transition:
+    grid-template-rows 200ms var(--ease-out),
+    opacity 180ms var(--ease-out);
+}
+.agent-capabilities-transition[data-shown="true"] {
+  grid-template-rows: 1fr;
+  opacity: 1;
+}
+.agent-capabilities-clip {
+  min-height: 0;
+  overflow: hidden;
+}
 .agent-capabilities {
   flex-shrink: 0;
   padding: 16px 24px;
   background: var(--color-card);
   color: var(--color-ink);
   border-bottom: 1px solid var(--color-line);
-  animation: agent-enter 180ms ease-out;
 }
 .agent-capability-grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 8px;
   margin-top: 12px;
 }
@@ -25,9 +41,32 @@
     background 180ms ease,
     transform 180ms ease;
 }
-.agent-capability-grid button:hover {
+.agent-capability-grid button:hover:not(:disabled) {
   background: var(--color-canvas);
   transform: translateY(-1px);
+}
+.agent-capability-grid button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.agent-access-request {
+  display: grid;
+  gap: 10px;
+  padding: 14px 16px;
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-lg);
+  background: var(--color-card);
+  animation: agent-enter 200ms var(--ease-out);
+}
+.agent-access-request > div {
+  min-width: 0;
+}
+.agent-access-request button {
+  margin-top: 6px;
+  white-space: normal;
+  height: auto;
+  min-height: 36px;
+  text-align: left;
 }
 .agent-capability-grid strong,
 .agent-capability-grid small {
@@ -129,7 +168,7 @@
   }
 }
 @media (prefers-reduced-motion: reduce) {
-  .agent-capabilities,
+  .agent-access-request,
   .agent-proposal {
     animation: none;
   }
@@ -195,20 +234,77 @@
   background: var(--color-canvas);
   color: var(--color-ink);
 }
-.agent-send {
-  position: absolute;
-  right: 6px;
-  bottom: 6px;
+.agent-composer-field {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 44px;
+  align-items: end;
+  gap: 8px;
+  padding: 6px;
+  border-radius: var(--radius-lg);
+  background: var(--color-card);
+  box-shadow: var(--shadow-card);
+  transition: box-shadow 180ms var(--ease-out);
+}
+.agent-composer-field:focus-within {
+  box-shadow:
+    var(--shadow-card),
+    inset 0 0 0 2px var(--color-ink);
+}
+/* 消除 textarea 行内基线空隙；按钮独占网格列，不压住文本或随行框偏移。 */
+.agent-composer-field .agent-input {
+  display: block;
+  min-width: 0;
+  min-height: 44px;
+  padding: 10px 4px 10px 10px;
+  background: transparent;
+  box-shadow: none;
+  border-radius: var(--radius-md);
+}
+.agent-composer-action {
+  position: relative;
   display: grid;
   place-items: center;
-  width: 40px;
-  height: 40px;
+  width: 44px;
+  height: 44px;
   border-radius: 50%;
   background: var(--color-ink);
   color: var(--color-card);
+  transition:
+    opacity 180ms var(--ease-out),
+    box-shadow 180ms var(--ease-out),
+    transform 150ms var(--ease-out);
 }
-.agent-send:disabled {
+.agent-composer-action > svg {
+  grid-area: 1 / 1;
+  transition:
+    opacity 150ms var(--ease-out),
+    transform 180ms var(--ease-out);
+}
+.agent-composer-action .agent-action-stop {
+  opacity: 0;
+  transform: scale(0.65);
+}
+.agent-composer-action[data-running="true"] .agent-action-stop {
+  opacity: 1;
+  transform: scale(1);
+}
+.agent-composer-action[data-running="true"] .agent-action-send {
+  opacity: 0;
+  transform: scale(0.65);
+}
+.agent-composer-action:hover:not(:disabled) {
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-ink) 12%, transparent);
+}
+.agent-composer-action:active:not(:disabled) {
+  transform: scale(0.95);
+}
+.agent-composer-action:focus-visible {
+  outline: 2px solid var(--color-ink);
+  outline-offset: 3px;
+}
+.agent-composer-action:disabled {
   opacity: 0.35;
+  cursor: not-allowed;
 }
 .agent-permissions {
   display: flex;
@@ -425,13 +521,15 @@
   .agent-trace-link {
     min-height: 44px;
   }
-  .agent-send {
-    width: 44px;
-    height: 44px;
-    right: 4px;
-    bottom: 4px;
-  }
   .agent-context-content {
     padding: 16px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .agent-capabilities-transition,
+  .agent-composer-field,
+  .agent-composer-action,
+  .agent-composer-action > svg {
+    transition: none;
   }
 }

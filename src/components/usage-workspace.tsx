@@ -64,12 +64,26 @@ export function UsageWorkspace() {
     }
   }, []);
   useEffect(() => {
-    void load(false).catch((e) => setError(errorText(e)));
-    const timer = setInterval(() => {
+    const update = () => {
       if (document.visibilityState === "visible")
         void load(false).catch((e) => setError(errorText(e)));
-    }, 10000);
-    return () => clearInterval(timer);
+    };
+    const unsubscribe = usageCache.subscribe((recordsChanged) => {
+      const snapshot = usageCache.peek();
+      if (!recordsChanged && snapshot) setLocalStatus(snapshot.status);
+      else update();
+    });
+    update();
+    // 新桌面端在采集结束后推送；定时器只兼容旧桥和补偿丢失事件。
+    const timer = setInterval(update, desktop()?.usage.onChanged ? 60000 : 10000);
+    document.addEventListener("visibilitychange", update);
+    window.addEventListener("focus", update);
+    return () => {
+      unsubscribe();
+      clearInterval(timer);
+      document.removeEventListener("visibilitychange", update);
+      window.removeEventListener("focus", update);
+    };
   }, [load]);
   const latest = new Map<string, UsageRecord>();
   for (const row of data.records) latest.set(row.sourceId + ":" + row.key, row);

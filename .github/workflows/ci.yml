@@ -52,7 +52,10 @@ jobs:
             curl -sf http://127.0.0.1:8080/__app-env > /dev/null && break
             sleep 1
           done
-          npm run check:auth
+          npm run check:auth &&
+          node scripts/agent-composer-integration.mjs &&
+          node scripts/agent-access-ui-integration.mjs &&
+          node scripts/usage-live-chart-integration.mjs
           STATUS=$?
           kill $DEV_PID 2>/dev/null || true
           exit $STATUS

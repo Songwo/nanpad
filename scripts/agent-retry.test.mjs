@@ -1,6 +1,11 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { modelHistory, retryRequest } from "../src/lib/agent-retry.mjs";
+import {
+  continuationRequest,
+  modelHistory,
+  retryRequest,
+  workspaceAccessOptions,
+} from "../src/lib/agent-retry.mjs";
 
 const messages = [
   { id: "q1", role: "you", blocks: [{ type: "text", text: "总结指南" }] },
@@ -48,4 +53,50 @@ test("重试更早的问题只取其之前的上下文，不携带之后的讨�
   assert.equal(retry.appendQuestion, true);
   assert.equal(JSON.stringify(retry.history).includes("后续问题"), false);
   assert.equal(retryRequest(messages, "a1"), null);
+});
+
+test("本次授权继续原问题，不重复问题也不回传缺权限的回答", () => {
+  const result = continuationRequest(messages, "a1");
+  assert.equal(result.question, "总结指南");
+  assert.deepEqual(result.history, []);
+  assert.equal(result.appendQuestion, true);
+  assert.equal(continuationRequest(messages.slice(0, 2), "a1").appendQuestion, false);
+  assert.equal(continuationRequest(messages, "q1"), null);
+  assert.equal(continuationRequest(messages, "missing"), null);
+});
+
+test("正文编辑继续按钮明确展示两类权限，而标题修改不扩大到正文", () => {
+  const answer = (permissions, flags) => ({
+    role: "agent",
+    blocks: [
+      { type: "access", request: { permissions, reason: "继续原任务" } },
+      { type: "run", status: "success", ...flags },
+    ],
+  });
+  assert.deepEqual(
+    workspaceAccessOptions(answer(["documentContent"], { workspaceChanges: true }))[0].permissions,
+    ["documentContent", "workspaceChanges"],
+  );
+  assert.deepEqual(
+    workspaceAccessOptions(answer(["workspaceChanges"], { documentContent: false }))[0].permissions,
+    ["workspaceChanges"],
+  );
+  assert.deepEqual(workspaceAccessOptions(answer(["mailboxChecks", "unknown"], {})), []);
+  assert.deepEqual(
+    workspaceAccessOptions({ role: "agent", blocks: [{ type: "run", status: "error" }] }),
+    [],
+  );
+});
+
+test("旧版仅有文档元数据的回答提供分别授权入口，新版普通回答不多余提示", () => {
+  const blocks = [
+    { type: "sources", sources: [{ documentId: "doc-demo" }] },
+    { type: "run", status: "success", documentContent: false },
+  ];
+  assert.deepEqual(
+    workspaceAccessOptions({ role: "agent", blocks }).map((request) => request.permissions),
+    [["documentContent"], ["workspaceChanges"]],
+  );
+  blocks[1].workspaceChanges = false;
+  assert.deepEqual(workspaceAccessOptions({ role: "agent", blocks }), []);
 });

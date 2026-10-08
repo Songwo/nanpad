@@ -25,7 +25,13 @@ import {
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { toast } from "sonner";
 import { EditorDialog } from "./ui/editor-dialog";
-import { modelHistory, retryRequest } from "@/lib/agent-retry.mjs";
+import {
+  continuationRequest,
+  modelHistory,
+  retryRequest,
+  workspaceAccessOptions,
+} from "@/lib/agent-retry.mjs";
+import { usePresence } from "@/lib/motion";
 import { useDocuments } from "@/lib/documents";
 import "./agent-workspace.css";
 import { LogoMark } from "./logo";
@@ -34,7 +40,7 @@ import { TimeAgo } from "./ui/time-ago";
 import { type Block, type SecretField } from "@/lib/agent";
 import { AgentSettings } from "./agent-settings";
 import { Markdown } from "./markdown";
-import type { Source, WorkspaceProposal } from "@/lib/agent-client";
+import type { Source, WorkspaceProposal, WorkspaceAccessRequest } from "@/lib/agent-client";
 import { useConversations, type Message } from "@/lib/conversations";
 import { accountId, credentialId, desktop } from "@/lib/desktop";
 import { chipClass, dotClass, KIND_LABEL } from "@/lib/status";
@@ -59,6 +65,8 @@ const toolLabel = (name: string) =>
       list_mailboxes: "查询邮箱账号",
       asset_summary: "资产统计",
       propose_document_edit: "建议修改文档",
+      propose_document_rename: "建议文档改名",
+      request_workspace_access: "请求本次权限",
       propose_account_edit: "建议修改账号",
       propose_asset_link: "建议关联资产",
       propose_document_binding: "建议关联文档",
@@ -79,6 +87,7 @@ export function AgentView() {
   const [allowDocumentContent, setAllowDocumentContent] = useState(false);
   const [allowWorkspaceChanges, setAllowWorkspaceChanges] = useState(false);
   const [capabilitiesOpen, setCapabilitiesOpen] = useState(false);
+  const capabilities = usePresence(capabilitiesOpen && !configOpen, 200);
   const [contextOpen, setContextOpen] = useState(false);
   const [preparing, setPreparing] = useState(false);
   const preparingRef = useRef(false);
@@ -150,7 +159,11 @@ export function AgentView() {
     [api],
   );
 
-  async function send(text: string, retry?: { history: Message[]; appendQuestion: boolean }) {
+  async function send(
+    text: string,
+    retry?: { history: Message[]; appendQuestion: boolean },
+    access?: WorkspaceAccessRequest,
+  ) {
     const question = text.trim();
     if (!question || runRef.current || preparingRef.current || !hydrated) return;
     if (!api) {
@@ -162,9 +175,14 @@ export function AgentView() {
       setError(t("请先配置真实模型地址、API Key 和模型名。"));
       return;
     }
-    const checkMailboxes = allowMailboxChecks;
-    const readDocuments = allowDocumentContent;
-    const proposeChanges = allowWorkspaceChanges;
+    // 回答内的授权按钮只使用它明确展示的范围，不夹带输入区未提交的勾选。
+    const checkMailboxes = access ? false : allowMailboxChecks;
+    const readDocuments = access
+      ? access.permissions.includes("documentContent")
+      : allowDocumentContent;
+    const proposeChanges = access
+      ? access.permissions.includes("workspaceChanges")
+      : allowWorkspaceChanges;
     preparingRef.current = true;
     setPreparing(true);
     try {
@@ -185,7 +203,7 @@ export function AgentView() {
     const history = modelHistory(retry?.history ?? messages);
     if (!retry || retry.appendQuestion)
       append("you", [{ type: "text", text: question }], conversationId);
-    setDraft("");
+    if (!retry) setDraft("");
     setError("");
     const id = crypto.randomUUID();
     runRef.current = id;
@@ -225,6 +243,7 @@ export function AgentView() {
           { type: "text", text: result.text },
           { type: "sources", sources: result.sourceItems },
           ...(result.proposals ?? []).map((proposal): Block => ({ type: "proposal", proposal })),
+          ...(result.accessRequests ?? []).map((request): Block => ({ type: "access", request })),
           {
             type: "run",
             model: result.model,
@@ -232,6 +251,7 @@ export function AgentView() {
             tools: result.tools,
             status: "success",
             documentContent: readDocuments,
+            workspaceChanges: proposeChanges,
           },
         ],
         conversationId,
@@ -250,6 +270,7 @@ export function AgentView() {
             tools,
             status: reason === "已停止生成。" ? "stopped" : "error",
             documentContent: readDocuments,
+            workspaceChanges: proposeChanges,
           },
         ],
         conversationId,
@@ -320,6 +341,7 @@ export function AgentView() {
             disabled={busy}
             onClick={() => setCapabilitiesOpen((open) => !open)}
             aria-expanded={capabilitiesOpen}
+            aria-controls="agent-capabilities"
           >
             <WandSparkles className="size-4" />
             {t("内置能力")}
@@ -335,46 +357,62 @@ export function AgentView() {
             {configOpen ? <ArrowLeft className="size-4" /> : <Settings2 className="size-4" />}
           </Button>
         </header>
-        {capabilitiesOpen && !configOpen && (
-          <div className="agent-capabilities">
-            <p className="text-meta font-medium">{t("先生成建议，审阅后应用")}</p>
-            <div className="agent-capability-grid">
-              {[
-                {
-                  icon: PencilLine,
-                  label: "修改文档",
-                  prompt: "请查找我指定的文档，按以下要求生成局部修改建议：",
-                  note: "需要勾选本次正文权限",
-                },
-                {
-                  icon: ShieldCheck,
-                  label: "整理账号资料",
-                  prompt: "请查找我指定的账号，建议修改名称或标签：",
-                  note: "密码等凭据在本机编辑",
-                },
-                {
-                  icon: Link2,
-                  label: "发现资源关联",
-                  prompt: "请检查账号、服务器和文档，基于具体依据给出尚未保存的关联建议。",
-                  note: "区分已有关系与建议",
-                },
-              ].map(({ icon: Icon, label, prompt, note }) => (
-                <button
-                  key={label}
-                  type="button"
-                  onClick={() => {
-                    fillDraft(t(prompt));
-                    setAllowWorkspaceChanges(true);
-                    setCapabilitiesOpen(false);
-                  }}
-                >
-                  <Icon className="size-4" />
-                  <span>
-                    <strong>{t(label)}</strong>
-                    <small>{t(note)}</small>
-                  </span>
-                </button>
-              ))}
+        {capabilities.mounted && (
+          <div
+            className="agent-capabilities-transition"
+            data-shown={capabilities.shown}
+            aria-hidden={!capabilitiesOpen || configOpen}
+            inert={!capabilitiesOpen || configOpen}
+          >
+            <div className="agent-capabilities-clip">
+              <div className="agent-capabilities" id="agent-capabilities">
+                <p className="text-meta font-medium">{t("先生成建议，审阅后应用")}</p>
+                <div className="agent-capability-grid">
+                  {[
+                    {
+                      icon: FileText,
+                      label: "文档改名",
+                      prompt: "请找到以下文档，生成标题修改方案（保留正文）：",
+                      note: "只需标题，无需正文权限",
+                    },
+                    {
+                      icon: PencilLine,
+                      label: "修改文档",
+                      prompt: "请查找我指定的文档，按以下要求生成局部修改建议：",
+                      note: "需要正文时会请求本次授权",
+                    },
+                    {
+                      icon: ShieldCheck,
+                      label: "整理账号资料",
+                      prompt: "请查找我指定的账号，建议修改名称或标签：",
+                      note: "密码等凭据在本机编辑",
+                    },
+                    {
+                      icon: Link2,
+                      label: "发现资源关联",
+                      prompt: "请检查账号、服务器和文档，基于具体依据给出尚未保存的关联建议。",
+                      note: "区分已有关系与建议",
+                    },
+                  ].map(({ icon: Icon, label, prompt, note }) => (
+                    <button
+                      key={label}
+                      type="button"
+                      disabled={busy}
+                      onClick={() => {
+                        fillDraft(t(prompt));
+                        setAllowWorkspaceChanges(true);
+                        setCapabilitiesOpen(false);
+                      }}
+                    >
+                      <Icon className="size-4" />
+                      <span>
+                        <strong>{t(label)}</strong>
+                        <small>{t(note)}</small>
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              </div>
             </div>
           </div>
         )}
@@ -427,6 +465,13 @@ export function AgentView() {
                         const retry = retryRequest(messages, message.id);
                         if (retry) void send(retry.question, retry);
                       }}
+                      accessOptions={
+                        message.id === messages.at(-1)?.id ? workspaceAccessOptions(message) : []
+                      }
+                      onAccess={(access) => {
+                        const retry = continuationRequest(messages, message.id);
+                        if (retry) void send(retry.question, retry, access);
+                      }}
                     />
                   ))}
                   {running?.conversationId === activeId && (
@@ -453,7 +498,7 @@ export function AgentView() {
                 void send(draft);
               }}
             >
-              <div className="relative">
+              <div className="agent-composer-field">
                 <textarea
                   ref={inputRef}
                   value={draft}
@@ -474,30 +519,27 @@ export function AgentView() {
                     }
                   }}
                 />
-                {running ? (
-                  <button
-                    type="button"
-                    aria-label={t("停止生成")}
-                    title={t("停止生成")}
-                    className="agent-stop"
-                    onClick={() =>
-                      void api
-                        ?.cancel(running.id)
-                        .catch((reason: Error) => setError(reason.message))
-                    }
-                  >
-                    <Square className="size-4" />
-                  </button>
-                ) : (
-                  <button
-                    type="submit"
-                    aria-label={t("发送")}
-                    disabled={!draft.trim() || busy}
-                    className="agent-send"
-                  >
-                    <ArrowUp className="size-4" />
-                  </button>
-                )}
+                <button
+                  type={running ? "button" : "submit"}
+                  aria-label={t(running ? "停止生成" : "发送")}
+                  title={t(running ? "停止生成" : "发送")}
+                  disabled={!running && (!draft.trim() || busy)}
+                  className="agent-composer-action"
+                  data-running={Boolean(running)}
+                  onClick={
+                    running
+                      ? (event) => {
+                          event.preventDefault();
+                          void api
+                            ?.cancel(running.id)
+                            .catch((reason: Error) => setError(reason.message));
+                        }
+                      : undefined
+                  }
+                >
+                  <ArrowUp className="agent-action-send size-4" aria-hidden="true" />
+                  <Square className="agent-action-stop size-4" aria-hidden="true" />
+                </button>
               </div>
               <div className="agent-permissions">
                 <label>
@@ -582,11 +624,15 @@ function MessageRow({
   busy,
   onRetry,
   onSettings,
+  accessOptions,
+  onAccess,
 }: {
   message: Message;
   busy: boolean;
   onRetry: () => void;
   onSettings: () => void;
+  accessOptions: WorkspaceAccessRequest[];
+  onAccess: (access: WorkspaceAccessRequest) => void;
 }) {
   if (message.role === "you") {
     const text = message.blocks.find((b) => b.type === "text");
@@ -606,6 +652,41 @@ function MessageRow({
         {message.blocks.map((block, i) => (
           <BlockView key={i} block={block} />
         ))}
+        {accessOptions.length > 0 && (
+          <section className="agent-access-request" aria-label={t("继续完成这项任务")}>
+            <div className="flex items-center gap-2 text-meta font-medium">
+              <ShieldCheck className="size-4 shrink-0" />
+              {t("继续完成这项任务")}
+            </div>
+            {accessOptions.map((access, index) => (
+              <div key={index}>
+                {access.reason && <p className="text-meta text-muted">{access.reason}</p>}
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={busy}
+                  onClick={() => onAccess(access)}
+                >
+                  <ArrowUpRight className="size-3.5 shrink-0" />
+                  {t(
+                    access.permissions.includes("documentContent")
+                      ? access.permissions.includes("workspaceChanges")
+                        ? "允许本次读取正文并生成建议"
+                        : "允许本次读取正文并继续"
+                      : "允许本次生成修改建议并继续",
+                  )}
+                </Button>
+              </div>
+            ))}
+            <p className="text-2xs text-muted">
+              {t(
+                accessOptions.some((access) => access.permissions.includes("documentContent"))
+                  ? "正文片段会发送至当前模型，仅本次有效；修改仍需你审阅确认。"
+                  : "仅生成可审阅的修改方案，不读取正文；确认应用后才会保存。",
+              )}
+            </p>
+          </section>
+        )}
         {message.blocks.some((block) => block.type === "run" && block.status !== "success") && (
           <div className="agent-retry-actions">
             <Button size="sm" variant="outline" onClick={onRetry} disabled={busy}>
@@ -640,6 +721,8 @@ function BlockView({ block }: { block: Block }) {
   };
 
   switch (block.type) {
+    case "access":
+      return null;
     case "proposal":
       return <ProposalCard proposal={block.proposal} />;
     case "sources":

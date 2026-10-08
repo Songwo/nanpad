@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { buildUsageChart, buildQuotaChart } from "../src/lib/usage-charts.mjs";
+import { buildUsageChart, buildQuotaChart, smallUsagePoints } from "../src/lib/usage-charts.mjs";
+import { spawnSync } from "node:child_process";
 import { filterUsage } from "../src/lib/usage-insights.mjs";
 
 const base = {
@@ -17,6 +18,39 @@ const base = {
   cacheWrite: 10,
   model: "模型 A",
 };
+
+test("小额提示保留原始数值，零值和未知记录不生成消耗标记", () => {
+  const points = [600_000_000, 3_000_000, 0, null].map((total, index) => ({
+    day: String(index),
+    total,
+  }));
+  assert.deepEqual(smallUsagePoints(points), [points[1]]);
+  assert.equal(points[1].total, 3_000_000);
+  assert.deepEqual(smallUsagePoints([{ total: 0 }, { total: null }]), []);
+});
+
+test("上海午夜前后的本机统计与今天摘要同日，API保留服务商日桶", () => {
+  const source = `
+    import assert from 'node:assert/strict';
+    import { buildUsageChart, todayUsagePoint } from './src/lib/usage-charts.mjs';
+    const base = { kind: 'tokens', sourceId: 'test', sourceName: 'test', origin: 'local', input: 11, output: 2 };
+    const chart = buildUsageChart([
+      { ...base, bucketStart: '2026-10-06T16:00:00.000Z' },
+      { ...base, bucketStart: '2026-10-07T16:00:00.000Z', input: 30 }
+    ], 'local');
+    assert.deepEqual(chart.daily.map(point => point.day), ['2026-10-07', '2026-10-08']);
+    assert.equal(todayUsagePoint(chart.daily, Date.parse('2026-10-07T15:59:59Z')).total, 13);
+    assert.equal(todayUsagePoint(chart.daily, Date.parse('2026-10-07T16:00:00Z')).total, 32);
+    const api = buildUsageChart([{ ...base, origin: undefined, bucketStart: '2026-10-07T23:00:00Z' }], 'api');
+    assert.equal(api.daily[0].day, '2026-10-07');
+  `;
+  const result = spawnSync(process.execPath, ["--input-type=module", "-e", source], {
+    cwd: new URL("..", import.meta.url),
+    encoding: "utf8",
+    env: { ...process.env, TZ: "Asia/Shanghai" },
+  });
+  assert.equal(result.status, 0, result.stderr);
+});
 
 test("图表单独统计 API 与本机，缓存不重复计入输入", () => {
   const rows = [base, { ...base, origin: "local", input: 50 }];

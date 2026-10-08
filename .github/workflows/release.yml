@@ -51,6 +51,8 @@ jobs:
           $version = (Get-Content package.json | ConvertFrom-Json).version
           node scripts/workspace-v150-integration.mjs "release/v$version/win-unpacked/Nanpad.exe"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node scripts/agent-access-desktop-integration.mjs "release/v$version/win-unpacked/Nanpad.exe"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           node scripts/vault-usability-integration.mjs
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           node scripts/sidebar-centering-integration.mjs

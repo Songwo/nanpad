@@ -133,6 +133,23 @@ test("不存在的客户端目录显示未检测到，不生成虚假的零用�
   assert.ok((await monitor.status()).sources.every((source) => !source.available && !source.error));
 });
 
+test("只有统计增量改变版本号，重复扫描或状态切换不误报记录变化", async (t) => {
+  const f = await fixture(t);
+  const path = join(f.roots.codex[0], "session.jsonl");
+  await writeFile(path, codexMeta() + context() + codex(100, 20));
+  const monitor = await enabled(f);
+  const version = monitor.recordsRevision;
+  assert.ok(version > 0);
+  await monitor.refresh();
+  assert.equal(monitor.recordsRevision, version);
+  await appendFile(path, codex(120, 25));
+  await monitor.refresh();
+  assert.equal(monitor.recordsRevision, version + 1);
+  await monitor.configure({ enabled: false });
+  await monitor.refresh();
+  assert.equal(monitor.recordsRevision, version + 1);
+});
+
 test("Codex 累计差分、重复快照、归档副本和计数重置不会重复计数", async (t) => {
   const f = await fixture(t);
   const body =

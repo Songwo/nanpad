@@ -66,13 +66,54 @@ export class WorkspaceActions {
   }
   async propose(name, args, { allowDocumentContent = false, requestId } = {}) {
     if (
-      !ownKeys(args, ["documentId", "find", "replace", "assetId", "patch", "from", "to", "reason"])
+      !ownKeys(args, [
+        "documentId",
+        "find",
+        "replace",
+        "expectedTitle",
+        "title",
+        "assetId",
+        "patch",
+        "from",
+        "to",
+        "reason",
+      ])
     )
       throw new Error("不允许的修改字段。");
     const reason = text(args.reason, 1200, "修改依据");
     const snapshot = this.getSnapshot();
     let details;
-    if (name === "propose_document_edit") {
+    if (name === "propose_document_rename") {
+      if (!ownKeys(args, ["documentId", "expectedTitle", "title", "reason"]))
+        throw new Error("不允许的文档重命名字段。");
+      if (typeof args.documentId !== "string" || !/^doc-[a-zA-Z0-9-]{1,80}$/.test(args.documentId))
+        throw new Error("文档标识无效。");
+      const expectedTitle = text(args.expectedTitle, 160, "原标题");
+      const title = text(args.title, 160, "新标题").trim();
+      let doc;
+      try {
+        doc = await this.documents.get(args.documentId);
+      } catch (error) {
+        throw new Error(
+          error.code === "ENOENT"
+            ? "文档已不存在，请重新检索后生成建议。"
+            : "无法读取本机文档，请检查文档状态后重试。",
+        );
+      }
+      if (doc.title !== expectedTitle)
+        throw new Error("文档标题已变化，请重新检索当前标题后生成建议。");
+      if (title === doc.title) throw new Error("文档标题未变化。");
+      // 正文仅在本机保留并参与并发校验，不发送给模型或提案预览。
+      details = {
+        type: "document-rename",
+        title: doc.title,
+        documentId: doc.id,
+        before: doc.title,
+        after: title,
+        revision: documentRevision(doc),
+        next: { ...doc, title },
+      };
+    } else if (name === "propose_document_edit") {
       if (!ownKeys(args, ["documentId", "find", "replace", "reason"]))
         throw new Error("不允许的文档修改字段。");
       if (!allowDocumentContent)
@@ -217,7 +258,7 @@ export class WorkspaceActions {
     proposal.state = "applying";
     try {
       let result;
-      if (proposal.type === "document-edit" || proposal.type === "document-binding") {
+      if (["document-edit", "document-rename", "document-binding"].includes(proposal.type)) {
         const assertCurrent = proposal.to
           ? () => {
               if (hash(resource(this.getSnapshot(), proposal.to)) !== proposal.assetRevision)

@@ -14,7 +14,7 @@
 
 ## 版本准备
 
-更新 package.json、package-lock.json、browser-extension/manifest.json 与 src/lib/changelog.ts，执行 `node scripts/write-changelog.mjs` 同步 CHANGELOG.md。本版说明保存在 `docs/releases/v1.5.1.md`。README 的安装包名、构建目录及教程应与版本一致；描述实际支持范围，不将本机协议测试写成真实账号登录成功。
+更新 package.json、package-lock.json、browser-extension/manifest.json 与 src/lib/changelog.ts，执行 `node scripts/write-changelog.mjs` 同步 CHANGELOG.md。本版说明保存在 `docs/releases/v1.5.2.md`。README 的安装包名、构建目录及教程应与版本一致；描述实际支持范围，不将本机协议测试写成真实账号登录成功。
 
 ## 必须验证
 
@@ -46,7 +46,7 @@ npm run desktop:dist -- --win --x64 --publish never
 
 打包脚本将主进程及编译后的界面放入系统临时目录中的独立暂存区，使用仓库锁文件版本安装 `ssh2`、`imapflow`、`openai`、`minisearch`、`nodemailer`、`mailparser`、`html-to-text`、`sanitize-html` 及其运行依赖，再通过 electron-builder 内置的目录遍历器收集依赖，避免将网页构建工具装进桌面包。排除可选原生加速模块，SSH 使用库自带的 JavaScript 实现；无需 Visual Studio 编译环境。复用本机已安装的同版本 Electron，输出到 `release/v版本号/`；构建结束清理暂存区。
 
-安装包生成后检查版本和包内容，运行 `node scripts/release-smoke.mjs release/v1.5.1/win-unpacked/Nanpad.exe` 验证打包程序，计算 SHA256，补齐 Release 说明中的验证记录。该脚本使用独立临时数据目录，不修改日常资料。发布时显式选择源码、文档和必要资源，不提交临时截图、日志、用户数据或运行目录。将发布标签指向已经验证的提交，再上传 `Nanpad-1.5.1-setup.exe`、浏览器扩展包与 `SHA256SUMS.txt`，以及下文要求的应用内更新附件。
+安装包生成后检查版本和包内容，运行 `node scripts/release-smoke.mjs release/v1.5.2/win-unpacked/Nanpad.exe` 验证打包程序，计算 SHA256，补齐 Release 说明中的验证记录。该脚本使用独立临时数据目录，不修改日常资料。发布时显式选择源码、文档和必要资源，不提交临时截图、日志、用户数据或运行目录。将发布标签指向已经验证的提交，再上传 `Nanpad-1.5.2-setup.exe`、浏览器扩展包与 `SHA256SUMS.txt`，以及下文要求的应用内更新附件。
 
 1.3.1 的 Windows 正式发布流水线额外运行 `passwords-desktop-integration.mjs` 验证实际打包程序的 CSV、加密库、后台资产同步、锁库与文档保存，并在 `extension:build` 后运行 `browser-companion-integration.mjs` 加载真实扩展，覆盖原生表单整页导航、多账号填写与文档提示。依赖中文界面标签的 Electron 测试必须显式设置 `locale: "zh-CN"`，不能依赖开发机的系统语言。测试只使用独立临时资料和合成账号，不读取真实浏览器密码库；真实浏览器原生 CSV 导入结果与第三方在线文档兼容性应单独记录。
 
@@ -76,7 +76,7 @@ node scripts/vault-usability-integration.mjs
 正式包生成后，另运行工作区集成验证：
 
 ```bash
-node scripts/workspace-v150-integration.mjs release/v1.5.1/win-unpacked/Nanpad.exe
+node scripts/workspace-v150-integration.mjs release/v1.5.2/win-unpacked/Nanpad.exe
 ```
 
 该命令从参数指定的实际程序启动，核对版本并使用独立临时资料；通过本机合成模型服务验证文档修改、账号元信息修改与关系提案的真实主进程链路，不使用日常凭据或真实模型额度。省略程序参数会启动源码主进程，不能替代正式包验证。
@@ -90,3 +90,21 @@ AI 回归用本机合成模型服务，验证失败重试采用当前配置与�
 ## 1.5.1 导航入口验证
 
 检查窗口顶部「系统设置…」可打开设置，侧栏底部保留解锁／锁定密钥库，且侧栏不再显示独立关系图入口。进入「标签 → 关系图 → 全部资源」确认资产、未绑定文档和已保存关联仍可查看；服务器等分类页的卡片／表格／关系图切换继续可用。历史版本发布说明保留其当时的入口描述，不改写为新版行为。
+
+## 1.5.2 AI 授权、用量刷新与输入区验证
+
+开发预览运行时执行下列回归：
+
+```bash
+node scripts/agent-access-ui-integration.mjs
+node scripts/agent-composer-integration.mjs
+node scripts/usage-live-chart-integration.mjs
+```
+
+检查缺正文／提案权限时出现明确授权卡，点击后复用原问题且不重复添加用户消息；新问题不继承本次权限。标题改名不应读取正文，提案须呈现前后标题并经确认才保存；并发正文或标题变化、文档删除及重复应用应被拒绝。实际打包程序还需通过主进程与本机合成模型服务验证此链路；浏览器桥接回归不能代替正式包验证，更不能据此断言真实 API Key 已通过鉴权。
+
+输入区检查单行、多行、发送／停止切换、100%／125%／150% 缩放与窄屏，固定操作区不得偏下、越界或遮挡文字。能力面板展开与收起均应有过渡，关闭时不可操作；减少动态效果设置须生效。
+
+用量检查采集完成事件更新当前页面，统计未变化的状态通知不重新读取全量记录；切页和图表渲染不得触发额外远程采集。以大额历史值和今日小额非零值同时存在的合成数据，核对今日明细、真实坐标圆点、提示框和数据表一致，零值与缺失日期不画成非零用量。保持约 10 秒本机日志扫描，发布说明不得写成所有 AI 软件均可实时读取。
+
+本版插件仅同步版本号与下载包名，没有新增插件功能。版本一致性检查应确认 `package.json`、锁文件根版本和 `packages[""].version`、扩展清单与首条更新日志均为 1.5.2；锁文件依赖版本不作整体替换。

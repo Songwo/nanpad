@@ -138,6 +138,10 @@ try {
   await page.evaluate(() => window.sinan.usage.refreshLocal());
   assert.ok((await page.evaluate(() => window.sinan.usage.list())).records.length > 0);
   await completeOnboarding(page);
+  await page.evaluate(() => {
+    window.__usageEvents = [];
+    window.sinan.usage.onChanged((event) => window.__usageEvents.push(event));
+  });
   const rejected = await page.evaluate(async () => {
     try {
       await window.sinan.usage.configureLocal({ enabled: true, roots: { codex: ["C:/"] } });
@@ -204,6 +208,11 @@ try {
   assert.equal(sourceRecord(usage, "local:grok").output, 40);
   await page.evaluate(() => window.sinan.usage.refreshLocal());
   const deduplicated = await page.evaluate(() => window.sinan.usage.list());
+  assert.equal(
+    await page.evaluate(() => window.__usageEvents.at(-1).recordsChanged),
+    false,
+    "无新增用量只广播扫描状态",
+  );
   for (const id of ["local:codex", "local:claude", "local:grok", "local:gemini"]) {
     assert.equal(sourceRecord(deduplicated, id).input, sourceRecord(usage, id).input);
     assert.equal(sourceRecord(deduplicated, id).output, sourceRecord(usage, id).output);
@@ -239,6 +248,15 @@ try {
   assert.equal((await page.evaluate(() => window.sinan.usage.localStatus())).paused, false);
   await appendFile(file, event(200, 45));
   await page.evaluate(() => window.sinan.usage.refreshLocal());
+  await page
+    .locator(".usage-chart-today")
+    .getByText("539 Token", { exact: true })
+    .waitFor({ timeout: 1500 });
+  assert.equal(
+    await page.evaluate(() => window.__usageEvents.at(-1).recordsChanged),
+    true,
+    "真实采集结束广播统计变化",
+  );
   assert.equal(
     sourceRecord(await page.evaluate(() => window.sinan.usage.list()), "local:codex").input,
     200,
@@ -246,6 +264,10 @@ try {
   // 保持锁库，等待后台定时器采集新增记录，不依赖手动刷新。
   await appendFile(file, event(210, 50));
   await waitForLocalInput(page, 210);
+  await page
+    .locator(".usage-chart-today")
+    .getByText("549 Token", { exact: true })
+    .waitFor({ timeout: 1500 });
   // 恶意辅助窗口虽加载同一预载桥，仍不能读取主窗口服务。
   const foreign = await instance.evaluate(async ({ BrowserWindow }, preload) => {
     const extra = new BrowserWindow({
@@ -277,6 +299,8 @@ try {
       ok: true,
       defaultOn: true,
       increments: true,
+      liveChartAfterScan: true,
+      statusOnlyEvents: true,
       clients: ["Codex", "Claude Code", "Grok Build", "Gemini CLI"],
       emptyGeminiReportsNoUsage: true,
       snapshotDeduplication: true,

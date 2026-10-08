@@ -41,6 +41,9 @@ export interface UsageState {
   records: UsageRecord[];
 }
 export interface UsageBridge {
+  onChanged?(
+    handler: (change: { recordsChanged: boolean; localStatus?: LocalUsageStatus }) => void,
+  ): () => void;
   list(): Promise<UsageState>;
   add(input: Record<string, string>): Promise<UsageSource>;
   remove(id: string): Promise<void>;

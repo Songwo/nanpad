@@ -8,6 +8,8 @@ import { AGENT_TOOLS, AgentService, DEFAULT_CONFIG, normalizeBaseUrl } from "./a
 import { LocalIndex, assetDocuments, hash, knowledgeChunks } from "./rag.mjs";
 import { demoSnapshot, mergeDemo } from "./demo.mjs";
 import { notificationCandidates } from "./notifications.mjs";
+import { DocumentsStore } from "./documents.mjs";
+import { WorkspaceActions } from "./workspace-actions.mjs";
 
 const secureStorage = {
   isEncryptionAvailable: () => true,
@@ -1160,6 +1162,160 @@ test("真实模型HTTP链路仅生成提案，未获授权时即使模型调用�
   assert.ok(
     !f.requests[2].body.tools.some((entry) => entry.function.name === "propose_document_edit"),
   );
+});
+
+test("真实模型 HTTP 链路检索标题并生成重命名提案，无需发送正文", async (t) => {
+  const f = await fixture(t, (_req, res, body) => {
+    const calls = body.messages.filter((message) => message.role === "tool");
+    assert.ok(body.tools.some((entry) => entry.function.name === "propose_document_rename"));
+    assert.ok(!body.tools.some((entry) => entry.function.name === "get_document"));
+    if (!calls.length) callTool(res, "search_documents", { query: "测试指南" });
+    else if (calls.length === 1) {
+      const result = JSON.parse(calls[0].content);
+      assert.equal(result.documents[0].documentId, "doc-rename");
+      callTool(res, "propose_document_rename", {
+        documentId: result.documents[0].documentId,
+        expectedTitle: result.documents[0].title,
+        title: "测试服务器信息概要",
+        reason: "用户要求修改标题。",
+      });
+    } else {
+      assert.equal(JSON.parse(calls[1].content).status, "awaiting_user_review");
+      sse(res, [{ delta: { content: "重命名建议已准备，请审阅后应用。" }, finish_reason: "stop" }]);
+    }
+  });
+  const documents = new DocumentsStore(join(f.directory, "workspace"));
+  const original = await documents.save({
+    id: "doc-rename",
+    title: "测试指南",
+    bindings: [],
+    content: {
+      type: "doc",
+      content: [
+        { type: "paragraph", content: [{ type: "text", text: "private-body-not-authorized" }] },
+      ],
+    },
+  });
+  const actions = new WorkspaceActions({
+    documents,
+    getSnapshot: () => ({}),
+    mutateAssets: () => {
+      throw new Error("不应修改资产");
+    },
+  });
+  f.service.workspaceDocuments = {
+    list: () => documents.listMetadata(),
+    get: (id) => documents.get(id),
+  };
+  f.service.workspaceActions = actions;
+  const result = await f.service.run({
+    id: "rename-document",
+    question: "把测试指南标题改成测试服务器信息概要",
+    allowWorkspaceChanges: true,
+  });
+  assert.equal(result.proposals.length, 1);
+  assert.equal(result.proposals[0].type, "document-rename");
+  assert.deepEqual(await documents.get(original.id), original);
+  assert.equal(JSON.stringify(f.requests).includes("private-body-not-authorized"), false);
+  assert.equal(JSON.stringify(result).includes("private-body-not-authorized"), false);
+  await actions.apply(result.proposals[0].id);
+  assert.equal((await documents.get(original.id)).title, "测试服务器信息概要");
+  assert.deepEqual((await documents.get(original.id)).content, original.content);
+});
+
+test("请求权限只生成续问入口，不能在当前请求中获得正文或提案权限", async (t) => {
+  let proposed = 0;
+  const f = await fixture(
+    t,
+    (_req, res, body) => {
+      assert.ok(body.tools.some((entry) => entry.function.name === "request_workspace_access"));
+      assert.ok(!body.tools.some((entry) => entry.function.name === "get_document"));
+      assert.ok(!body.tools.some((entry) => entry.function.name.startsWith("propose_")));
+      const calls = body.messages.filter((message) => message.role === "tool");
+      if (!calls.length)
+        callTool(res, "request_workspace_access", {
+          permissions: ["documentContent", "workspaceChanges"],
+          reason: "需要阅读原文并生成局部修改建议。",
+        });
+      else if (calls.length === 1) {
+        assert.equal(JSON.parse(calls[0].content).status, "awaiting_user_permission");
+        callTool(res, "get_document", { documentId: "doc-private" });
+      } else if (calls.length === 2) {
+        assert.match(JSON.parse(calls[1].content).error, /disabled/);
+        callTool(res, "propose_document_rename", {
+          documentId: "doc-private",
+          expectedTitle: "私密文档",
+          title: "新标题",
+          reason: "测试",
+        });
+      } else {
+        assert.match(JSON.parse(calls[2].content).error, /disabled/);
+        sse(res, [
+          { delta: { content: "请使用回答下方的允许本次并继续。" }, finish_reason: "stop" },
+        ]);
+      }
+    },
+    {
+      workspaceActions: {
+        propose: () => {
+          proposed++;
+        },
+        discardRequest() {},
+      },
+    },
+  );
+  const result = await f.service.run({ id: "request-permissions", question: "修改文档" });
+  assert.deepEqual(result.accessRequests, [
+    {
+      permissions: ["documentContent", "workspaceChanges"],
+      reason: "需要阅读原文并生成局部修改建议。",
+    },
+  ]);
+  assert.equal(result.proposals.length, 0);
+  assert.equal(proposed, 0);
+});
+
+test("权限请求合并去重，过滤本轮已有授权且拒绝未知权限或额外参数", async (t) => {
+  const f = await fixture(
+    t,
+    (_req, res, body) => {
+      const calls = body.messages.filter((message) => message.role === "tool");
+      const attempt = calls.length;
+      if (attempt === 0)
+        callTool(res, "request_workspace_access", {
+          permissions: ["documentContent", "workspaceChanges"],
+          reason: "生成建议",
+        });
+      else if (attempt === 1) {
+        assert.deepEqual(JSON.parse(calls[0].content).permissions, ["workspaceChanges"]);
+        callTool(res, "request_workspace_access", {
+          permissions: ["workspaceChanges"],
+          reason: "确认后应用",
+        });
+      } else if (attempt === 2)
+        callTool(res, "request_workspace_access", { permissions: ["vault"], reason: "无效权限" });
+      else if (attempt === 3) {
+        assert.match(JSON.parse(calls[2].content).error, /Invalid/);
+        callTool(res, "request_workspace_access", {
+          permissions: ["workspaceChanges"],
+          reason: "无效参数",
+          allow: true,
+        });
+      } else {
+        assert.match(JSON.parse(calls[3].content).error, /Invalid/);
+        sse(res, [{ delta: { content: "请允许本次生成建议。" }, finish_reason: "stop" }]);
+      }
+    },
+    { workspaceActions: { discardRequest() {} } },
+  );
+  const result = await f.service.run({
+    id: "merge-permissions",
+    question: "生成修改建议",
+    allowDocumentContent: true,
+  });
+  assert.equal(result.accessRequests.length, 1);
+  assert.deepEqual(result.accessRequests[0].permissions, ["workspaceChanges"]);
+  assert.equal(result.accessRequests[0].reason, "生成建议\n确认后应用");
 });
 
 test("模型失败后重试读取已修正的模型配置，不保留失败任务", async (t) => {

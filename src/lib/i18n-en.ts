@@ -9,6 +9,24 @@
  * not agree on where a possessive or a count belongs.
  */
 export const EN: Record<string, string> = {
+  今日用量: "Today's usage",
+  "圆点标记小额非零用量，柱高与提示数值保持原始比例。":
+    "Dots highlight small non-zero usage; bar heights and tooltip values retain the original scale.",
+  建议文档改名: "Propose document rename",
+  请求本次权限: "Request access for this task",
+  文档改名: "Rename a document",
+  "请找到以下文档，生成标题修改方案（保留正文）：":
+    "Find this document and propose a new title, preserving its content:",
+  "只需标题，无需正文权限": "Uses the title; no content access needed",
+  需要正文时会请求本次授权: "Requests content access only when needed",
+  继续完成这项任务: "Continue this task",
+  允许本次读取正文并生成建议: "Allow content access and change proposals for this task",
+  允许本次读取正文并继续: "Allow content access and continue",
+  允许本次生成修改建议并继续: "Allow change proposals and continue",
+  "正文片段会发送至当前模型，仅本次有效；修改仍需你审阅确认。":
+    "Content excerpts will be sent to the current model for this task only. Changes still require your review and confirmation.",
+  "仅生成可审阅的修改方案，不读取正文；确认应用后才会保存。":
+    "Only creates reviewable proposals without reading document content. Changes are saved after you confirm.",
   "{0} 项资源": "{0} resources",
   "解锁后在这里查看账号，当前页面和选择都会保留。":
     "Unlock to view the account here. Your page and selection will stay in place.",

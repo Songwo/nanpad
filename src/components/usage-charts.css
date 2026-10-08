@@ -152,6 +152,32 @@
 .usage-chart-footnote {
   margin-top: 12px;
 }
+.usage-chart-today {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  margin-top: 12px;
+  padding: 12px;
+  border-radius: 8px;
+  background: var(--color-surface);
+  color: var(--color-muted);
+  font-size: 11px;
+}
+.usage-chart-today > span {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+}
+.usage-chart-today strong {
+  color: var(--color-ink);
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+.usage-chart-today-label {
+  color: var(--usage-chart-primary);
+  font-weight: 600;
+}
 .usage-chart-tooltip {
   max-width: min(300px, 78vw);
   padding: 12px;

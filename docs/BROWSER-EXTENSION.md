@@ -1,10 +1,10 @@
 # 浏览器账号与文档助手
 
-本文对应知屿 1.3.1。Chrome / Edge 插件自动发现登录表单、提示已保存账号，选择后填写；识别刚提交的账号，确认一次即可加密保存到桌面端。腾讯文档、微信公众号文章、飞书、语雀等页面会出现文档保存提示。扩展采用 Manifest V3，尚未上架扩展商店。
+本文对应知屿 1.5.2；本版插件仅同步版本号，功能沿用已有账号与文档助手。Chrome / Edge 插件自动发现登录表单、提示已保存账号，选择后填写；识别刚提交的账号，确认一次即可加密保存到桌面端。腾讯文档、微信公众号文章、飞书、语雀等页面会出现文档保存提示。扩展采用 Manifest V3，尚未上架扩展商店。
 
 ## 安装与配对
 
-1. 从 [GitHub Releases](https://github.com/Songwo/nanpad/releases/latest) 下载同版桌面安装包和 `Nanpad-1.3.1-browser-extension.zip`。桌面「设置 → 浏览器插件」也有与本机版本对应的下载入口。
+1. 从 [GitHub Releases](https://github.com/Songwo/nanpad/releases/latest) 下载同版桌面安装包和 `Nanpad-1.5.2-browser-extension.zip`。桌面「设置 → 浏览器插件」也有与本机版本对应的下载入口。
 2. 安装并打开知屿，完成资料设置并解锁密钥库。插件 ZIP 解压到固定目录。
 3. Chrome 打开 `chrome://extensions`，Edge 打开 `edge://extensions`，启用开发者模式，选择「加载已解压的扩展程序」，指定包含 `manifest.json` 的目录。
 4. 在知屿「设置 → 浏览器插件」生成并复制配对码，再打开浏览器工具栏的知屿插件，粘贴配对码并连接。主密码只在桌面端输入。

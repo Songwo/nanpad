@@ -40,7 +40,7 @@ export interface KnowledgeStatus {
 export interface WorkspaceProposal {
   id: string;
   status?: "applied" | "dismissed";
-  type: "document-edit" | "account-edit" | "asset-link" | "document-binding";
+  type: "document-edit" | "document-rename" | "account-edit" | "asset-link" | "document-binding";
   title: string;
   documentId?: string;
   assetId?: string;
@@ -48,6 +48,10 @@ export interface WorkspaceProposal {
   after: string;
   reason: string;
   expiresAt: number;
+}
+export interface WorkspaceAccessRequest {
+  permissions: Array<"documentContent" | "workspaceChanges">;
+  reason: string;
 }
 export interface AgentBridge {
   applyProposal(id: string): Promise<{
@@ -81,6 +85,7 @@ export interface AgentBridge {
     sourceItems: Source[];
     tools: string[];
     proposals?: WorkspaceProposal[];
+    accessRequests?: WorkspaceAccessRequest[];
   }>;
   cancel(id: string): Promise<boolean>;
   onEvent(handler: (event: AgentEvent) => void): () => void;

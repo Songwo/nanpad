@@ -156,6 +156,7 @@ export class LocalUsageMonitor {
     this.checkpoints = new Map();
     this.events = new Map();
     this.records = new Map();
+    this.recordsRevision = 0;
     this.directoryKeys = new Set();
     this.scannedDirectories = new Set();
     this.directories = [];
@@ -995,6 +996,7 @@ export class LocalUsageMonitor {
     for (const field of FIELDS) row[field] += delta[field];
     if (time > row.sampleAt) row.sampleAt = time;
     this.records.set(key, row);
+    this.recordsRevision++;
     this.dirty = true;
     return key;
   }

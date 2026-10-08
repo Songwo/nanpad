@@ -14,6 +14,7 @@ import { t } from "./i18n.ts";
  * 用户问题和获得授权的文档片段仍可能包含敏感信息，并会保存在本机对话历史中。
  */
 export type Block =
+  | { type: "access"; request: import("./agent-client").WorkspaceAccessRequest }
   | { type: "proposal"; proposal: import("./agent-client").WorkspaceProposal }
   | { type: "sources"; sources: import("./agent-client").Source[] }
   | {
@@ -24,6 +25,7 @@ export type Block =
       status: "success" | "error" | "stopped";
       /** 标记这次回答是否允许使用工作区文档正文，下一次发送前重新确认范围。 */
       documentContent?: boolean;
+      workspaceChanges?: boolean;
     }
   | { type: "text"; text: string }
   | { type: "secret"; assetId: string; kind: AssetKind; field: SecretField; label: string }

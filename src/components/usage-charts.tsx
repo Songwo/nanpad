@@ -1,9 +1,24 @@
 import { useId, useMemo, useState } from "react";
 import { BarChart3, ChevronDown } from "lucide-react";
-import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import {
+  Bar,
+  BarChart,
+  CartesianGrid,
+  ReferenceDot,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from "recharts";
 import type { UsageRecord } from "@/lib/usage";
 import { usageBytes } from "@/lib/usage";
-import { buildQuotaChart, buildUsageChart, chartMetric } from "@/lib/usage-charts.mjs";
+import {
+  buildQuotaChart,
+  buildUsageChart,
+  chartMetric,
+  smallUsagePoints,
+  todayUsagePoint,
+} from "@/lib/usage-charts.mjs";
 import { intlLocale, t } from "@/lib/i18n";
 import { Select } from "./ui/select";
 import "./usage-charts.css";
@@ -95,6 +110,8 @@ export function UsageCharts({ rows, category }: { rows: UsageRecord[]; category:
   const quotas = useMemo(() => buildQuotaChart(rows), [rows]);
   const selectedQuota = quotas.find((item) => item.id === quotaId) ?? quotas[0];
   const quotaDaily = selectedQuota?.daily ?? [];
+  const smallPoints = quota ? [] : smallUsagePoints(chart.daily);
+  const today = quota ? undefined : todayUsagePoint(chart.daily);
   const firstLabel = t(traffic ? "上传" : "输入 Token");
   const secondLabel = t(traffic ? "下载" : "输出 Token");
   const format = (value: number) =>
@@ -253,11 +270,44 @@ export function UsageCharts({ rows, category }: { rows: UsageRecord[]; category:
                       isAnimationActive={false}
                     />
                   )}
+                  {smallPoints.map((point) => (
+                    <ReferenceDot
+                      key={point.day}
+                      x={point.day}
+                      y={point.total!}
+                      r={3}
+                      fill="var(--usage-chart-primary)"
+                      stroke="var(--color-card)"
+                      strokeWidth={1}
+                      isFront
+                      className="usage-chart-small-value"
+                    />
+                  ))}
                 </BarChart>
               </ResponsiveContainer>
             </div>
           ) : (
             <EmptyChart unknown={quota ? quotaDaily.length > 0 : chart.unknown > 0} />
+          )}
+          {today && today.total != null && (
+            <div
+              className="usage-chart-today"
+              aria-label={t("今日用量")}
+              aria-live="polite"
+              aria-atomic="true"
+            >
+              <span className="usage-chart-today-label">
+                {t("今天")} <time dateTime={today.day}>{today.day.slice(5).replace("-", "/")}</time>
+              </span>
+              <span>
+                {firstLabel}
+                <strong>{format(today.first ?? 0)}</strong>
+              </span>
+              <span>
+                {secondLabel}
+                <strong>{format(today.second ?? 0)}</strong>
+              </span>
+            </div>
           )}
           <p className="usage-chart-footnote">
             {t(
@@ -268,6 +318,9 @@ export function UsageCharts({ rows, category }: { rows: UsageRecord[]; category:
                   : "输入已包含缓存读取和写入，不再重复累加。",
             )}{" "}
             {t("仅显示有记录的日期，缺失日期不补零。")}
+            {smallPoints.length > 0 && (
+              <> {t("圆点标记小额非零用量，柱高与提示数值保持原始比例。")}</>
+            )}
           </p>
           {!quota && chart.unknown > 0 && (
             <p className="usage-chart-footnote">{t("另有 {0} 条未知记录未计入", chart.unknown)}</p>

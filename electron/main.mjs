@@ -625,6 +625,15 @@ function registerIpc() {
     const status = await localUsage.status();
     return { ...status, paused: false };
   };
+  const refreshLocalUsage = async () => {
+    const before = localUsage.recordsRevision;
+    const status = await localUsage.refresh();
+    emit("usage:changed", {
+      recordsChanged: before !== localUsage.recordsRevision,
+      localStatus: { ...status, paused: false },
+    });
+    return status;
+  };
   handle("usage:list", async () => {
     const [remote, local] = await Promise.all([usage.list(), localUsage.list()]);
     const recordedLocal = new Set(local.records.map((row) => row.sourceId));
@@ -647,21 +656,28 @@ function registerIpc() {
     )
       throw new Error("监控设置只接受开启或关闭，不接受日志路径。");
     await localUsage.configure({ enabled: input.enabled });
-    if (input.enabled) await localUsage.refresh();
+    if (input.enabled) await refreshLocalUsage();
+    else emit("usage:changed", { recordsChanged: false, localStatus: await localStatus() });
     return localStatus();
   });
   handle("usage:local-refresh", async () => {
-    await localUsage.refresh();
+    await refreshLocalUsage();
     return localStatus();
   });
   const localTimer = setInterval(() => {
-    void localUsage.refresh().catch(() => {});
+    void refreshLocalUsage().catch(() => {});
   }, 10_000);
   localTimer.unref();
-  void localUsage.refresh().catch(() => {});
+  void refreshLocalUsage().catch(() => {});
   app.once("before-quit", () => clearInterval(localTimer));
   for (const method of ["add", "remove", "refresh"])
-    handle("usage:" + method, (...args) => usage[method](...args));
+    handle("usage:" + method, async (...args) => {
+      try {
+        return await usage[method](...args);
+      } finally {
+        emit("usage:changed", { recordsChanged: true });
+      }
+    });
   handle("ai-accounts:refresh", async (id) => {
     try {
       const account = await aiAccounts.refresh(id);
@@ -670,6 +686,8 @@ function registerIpc() {
     } catch (error) {
       await usage.markFailure("oauth:" + id, error.message);
       throw error;
+    } finally {
+      emit("usage:changed", { recordsChanged: true });
     }
   });
   const refreshUsage = createRefreshBatch(async (force) => {
@@ -691,6 +709,7 @@ function registerIpc() {
         failures.push(account.provider + "：" + e.message);
       }
     }
+    emit("usage:changed", { recordsChanged: true });
     return { failures };
   });
   handle("usage:refresh-all", () => refreshUsage(true));

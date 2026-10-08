@@ -58,6 +58,80 @@ const edit = {
   reason: "按用户提供的最新地址修订。",
 };
 
+const rename = {
+  documentId: "doc-test",
+  expectedTitle: "测试指南",
+  title: "测试服务器信息概要",
+  reason: "按用户要求重命名这篇文档。",
+};
+
+test("文档重命名只需元信息，预览不泄露正文，确认前不写入", async (t) => {
+  const { actions, documents, document } = await fixture(t);
+  const proposal = await actions.propose("propose_document_rename", rename);
+  assert.equal(proposal.type, "document-rename");
+  assert.equal(proposal.before, document.title);
+  assert.equal(proposal.after, rename.title);
+  assert.equal(JSON.stringify(proposal).includes("旧地址"), false);
+  assert.deepEqual(await documents.get(document.id), document);
+  const { document: saved } = await actions.apply(proposal.id);
+  assert.equal(saved.title, rename.title);
+  assert.deepEqual(saved.content, document.content);
+  assert.deepEqual(saved.bindings, document.bindings);
+  assert.equal(saved.createdAt, document.createdAt);
+  assert.equal((await documents.listMetadata()).documents[0].title, rename.title);
+  await assert.rejects(actions.apply(proposal.id), /已经应用/);
+});
+
+test("文档重命名校验原标题、空标题、长度和额外字段", async (t) => {
+  const { actions, documents, document } = await fixture(t);
+  for (const patch of [
+    { expectedTitle: "错误标题" },
+    { title: " " },
+    { title: "测".repeat(161) },
+    { title: document.title },
+    { content: { type: "doc" } },
+    { find: "旧地址" },
+    { documentId: "../../vault" },
+  ])
+    await assert.rejects(actions.propose("propose_document_rename", { ...rename, ...patch }));
+  assert.deepEqual(await documents.get(document.id), document);
+  assert.equal(actions.pending.size, 0);
+});
+
+test("重命名检索不到文档或存储损坏时不暴露路径与底层错误内容", async (t) => {
+  const { actions, documents, document } = await fixture(t);
+  await documents.remove(document.id);
+  await assert.rejects(actions.propose("propose_document_rename", rename), {
+    message: "文档已不存在，请重新检索后生成建议。",
+  });
+  actions.documents = {
+    async get() {
+      throw new Error("private-file-path and private-corrupt-body");
+    },
+  };
+  await assert.rejects(actions.propose("propose_document_rename", rename), {
+    message: "无法读取本机文档，请检查文档状态后重试。",
+  });
+  assert.equal(actions.pending.size, 0);
+});
+
+test("重命名提案不能覆盖排队中的正文更改或重建已删除文档", async (t) => {
+  const { actions, documents, document } = await fixture(t);
+  const proposal = await actions.propose("propose_document_rename", rename);
+  const next = structuredClone(document);
+  next.content.content[0].content[0].text = "用户刚保存的新内容";
+  const saving = documents.save(next);
+  const applying = actions.apply(proposal.id);
+  await saving;
+  await assert.rejects(applying, /其他位置修改/);
+  assert.equal((await documents.get(document.id)).title, document.title);
+  assert.deepEqual((await documents.get(document.id)).content, next.content);
+  const fresh = await actions.propose("propose_document_rename", rename);
+  await documents.remove(document.id);
+  await assert.rejects(actions.apply(fresh.id), /已删除/);
+  assert.equal((await documents.listMetadata()).documents.length, 0);
+});
+
 test("模型生成文档建议不会写盘，明确应用后保留其余正文和格式", async (t) => {
   const { actions, documents, document } = await fixture(t);
   const proposal = await actions.propose("propose_document_edit", edit, {
