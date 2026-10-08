@@ -1,5 +1,5 @@
 import { Bot, FileText, House, Phone, Server } from "lucide-react";
-import { useEffect, useSyncExternalStore } from "react";
+import { useEffect, useLayoutEffect, useRef, useSyncExternalStore } from "react";
 import { Toaster, toast } from "sonner";
 import { CommandPalette } from "./command-palette";
 import { Composer } from "./composer";
@@ -25,7 +25,14 @@ import { useAppStore } from "@/lib/store";
 import type { ViewId } from "@/lib/types";
 import { mergeSnapshotChange } from "@/lib/snapshot-merge";
 import { cn } from "@/lib/utils";
-import { startThemeSync, startLocaleSync, startDisplaySync, useSettings } from "@/lib/settings";
+import {
+  startThemeSync,
+  startLocaleSync,
+  startDisplaySync,
+  startMonitorSync,
+  useSettings,
+} from "@/lib/settings";
+import { startServerMonitor } from "../../electron/services/server-monitor.mjs";
 import { useVault } from "@/lib/vault-state";
 import { useDocuments } from "@/lib/documents";
 import { t, subscribeLocale, getLocale } from "@/lib/i18n";
@@ -93,6 +100,11 @@ export function AppShell() {
     };
   }, []);
   const view = useAppStore((s) => s.view);
+  const workspaceScroll = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    // 页面共用此容器；只在导航时归零，保留数据刷新和文档内部的阅读位置。
+    workspaceScroll.current?.scrollTo({ top: 0, left: 0, behavior: "instant" });
+  }, [view]);
   const setView = useAppStore((s) => s.setView);
   const setHydrated = useAppStore((s) => s.setHydrated);
   const hydrated = useAppStore((s) => s.hydrated);
@@ -108,6 +120,9 @@ export function AppShell() {
     view === "relations";
   const setCommandOpen = useAppStore((s) => s.setCommandOpen);
   const vaultUnlocked = useVault((s) => s.unlocked);
+  const monitorReady = useSettings((s) => s.monitorReady);
+  const serverMonitorMinutes = useSettings((s) => s.serverMonitorMinutes);
+  useEffect(() => startMonitorSync((message) => toast.error(message)), []);
 
   useEffect(() => {
     void Promise.resolve(useAppStore.persist.rehydrate()).then(() => setHydrated(true));
@@ -151,19 +166,14 @@ export function AppShell() {
   // Real metric sweeps, but never before the vault is open: probing needs the
   // stored credentials, and a password prompt on launch would be rude.
   useEffect(() => {
-    if (!isDesktop() || !vaultUnlocked) return;
-    let cancelled = false;
-    const sweep = () => {
-      if (!cancelled && document.visibilityState === "visible")
-        void refreshAll("server", { force: false });
-    };
-    sweep();
-    const t = window.setInterval(sweep, 90_000);
-    return () => {
-      cancelled = true;
-      window.clearInterval(t);
-    };
-  }, [vaultUnlocked]);
+    if (!isDesktop() || !vaultUnlocked || !monitorReady) return;
+    return startServerMonitor({
+      minutes: serverMonitorMinutes,
+      visible: () => document.visibilityState === "visible",
+      refresh: () => refreshAll("server", { force: false, minAgeMs: serverMonitorMinutes * 60000 }),
+      onError: (error) => toast.error(error instanceof Error ? error.message : String(error)),
+    });
+  }, [vaultUnlocked, monitorReady, serverMonitorMinutes]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -204,6 +214,7 @@ export function AppShell() {
         <div className="flex min-w-0 flex-1 flex-col">
           {/* 对话使用内部滚动；资产视图保留两列共用的滚动区域。 */}
           <div
+            ref={workspaceScroll}
             className={cn(
               "min-h-0 flex-1 overflow-y-auto",
               view === "docs" && "documents-shell",

@@ -64,7 +64,7 @@ const tool = (name, description, properties = {}, required = []) => ({
 const assetReference = {
   type: "object",
   properties: {
-    kind: { type: "string", enum: ["server", "domain", "mail", "ai", "secret", "cert"] },
+    kind: { type: "string", enum: ["server", "domain", "mail", "ai", "secret", "cert", "service"] },
     id: { type: "string", maxLength: 128 },
   },
   required: ["kind", "id"],
@@ -197,7 +197,7 @@ export const AGENT_TOOLS = [
   ),
   tool(
     "list_mail_folders",
-    "List all local mailbox account groups, including empty groups and unfiled accounts, with account counts. These are Nanpad organization groups, NOT IMAP server message folders such as Inbox or Sent.",
+    "List all local mailbox account groups, including empty groups and unfiled accounts, with account counts. These are Zhiyu organization groups, NOT IMAP server message folders such as Inbox or Sent.",
   ),
   tool(
     "list_mailboxes",
@@ -211,7 +211,7 @@ export const AGENT_TOOLS = [
   ),
   tool(
     "list_secret_folders",
-    "List all local secret groups (key organization folders), including empty groups and unfiled secrets, with counts by kind. These are Nanpad organization groups for credentials.",
+    "List all local secret groups (key organization folders), including empty groups and unfiled secrets, with counts by kind. These are Zhiyu organization groups for credentials.",
   ),
   tool(
     "list_secrets",

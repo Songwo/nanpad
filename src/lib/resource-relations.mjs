@@ -35,6 +35,19 @@ export function resourceRows(rows, documents, snapshot) {
         { demo: x.demo, host: x.domain },
       ]),
       ...snapshot.aiAssets.map((x) => [resourceKey({ kind: "ai", id: x.id }), { demo: x.demo }]),
+      ...(snapshot.services ?? []).map((x) => [
+        resourceKey({ kind: "service", id: x.id }),
+        {
+          demo: x.demo,
+          host: (() => {
+            try {
+              return new URL(x.url).hostname;
+            } catch {
+              return "";
+            }
+          })(),
+        },
+      ]),
       ...snapshot.secrets.map((x) => [resourceKey({ kind: "secret", id: x.id }), { demo: x.demo }]),
     ].map(([key, value]) => /** @type {[string, {demo?:boolean,host?:string}]} */ ([key, value])),
   );
@@ -191,8 +204,8 @@ export function suggestRelations(rows, relations) {
 
 /** @param {ResourceRow[]} rows @param {Relation[]} relations @param {boolean} vertical */
 export function resourceGraph(rows, relations, vertical) {
-  const kinds = ["secret", "server", "domain", "cert", "mail", "ai", "document"].filter((kind) =>
-    rows.some((row) => row.kind === kind),
+  const kinds = ["secret", "server", "service", "domain", "cert", "mail", "ai", "document"].filter(
+    (kind) => rows.some((row) => row.kind === kind),
   );
   const slots = new Map();
   const known = new Set(rows.map(resourceKey));

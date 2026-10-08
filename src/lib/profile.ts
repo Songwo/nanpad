@@ -19,7 +19,7 @@ export const useProfile = create<{
       set({
         error: "",
         profile: (await desktop()?.profile.get()) ?? {
-          name: "Nanpad",
+          name: "知屿",
           ready: true,
           vaultExists: false,
         },

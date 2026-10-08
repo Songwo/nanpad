@@ -10,6 +10,8 @@ import { Vault } from "./vault.mjs";
 const TELEGRAM_TOKEN = "123456:abcdefghijklmnopqrstuvwxyz";
 const SERVERCHAN_TOKEN = "SCTabcdefghijklmnopqrst";
 const WECOM_TOKEN = "11111111-2222-3333-4444-555555555555";
+const WXPUSHER_TOKEN = "AT_syntheticWxpusherToken2026";
+const WXPUSHER_UID = "UID_syntheticRecipient2026";
 const RECORD = "notification:mail-push";
 
 function setup(t, options = {}) {
@@ -96,6 +98,101 @@ test("邮件推送默认关闭且公开配置不包含凭据", async (t) => {
   await rig.service.tick();
   assert.equal(rig.requests.length, 0);
   assert.equal(rig.checks.length, 0);
+});
+
+test("WxPusher 使用官方 HTTPS API、纯文本及指定 UID，公开配置不泄露 AppToken", async (t) => {
+  const rig = setup(t, {
+    fetchImpl: async () => ({
+      ok: true,
+      json: async () => ({ code: 1000, data: [{ uid: WXPUSHER_UID, code: 1000 }] }),
+    }),
+  });
+  const result = await rig.service.save({
+    ...rig.config,
+    provider: "wxpusher",
+    destination: WXPUSHER_UID,
+    token: WXPUSHER_TOKEN,
+  });
+  assert.equal(result.hasToken, true);
+  assert.doesNotMatch(JSON.stringify(result), /AT_synthetic/);
+  await rig.service.test();
+  const request = rig.requests[0];
+  assert.equal(request.url, "https://wxpusher.zjiecode.com/api/send/message");
+  assert.equal(request.init.redirect, "error");
+  assert.equal(request.body.appToken, WXPUSHER_TOKEN);
+  assert.equal(request.body.contentType, 1);
+  assert.deepEqual(request.body.uids, [WXPUSHER_UID]);
+  assert.match(request.body.content, /推送测试/);
+  assert.doesNotMatch(request.body.content, /private@example|another@example/);
+  assert.equal(rig.checks.length, 0);
+});
+
+test("WxPusher 首次采集建立基线并仅推送后续新增数量", async (t) => {
+  const rig = setup(t, {
+    fetchImpl: async () => ({
+      ok: true,
+      json: async () => ({ code: 1000, data: [{ uid: WXPUSHER_UID, code: 1000 }] }),
+    }),
+  });
+  await rig.service.save({
+    ...rig.config,
+    provider: "wxpusher",
+    destination: WXPUSHER_UID,
+    token: WXPUSHER_TOKEN,
+  });
+  rig.responses.push({ newMessages: 12 });
+  assert.equal((await rig.service.tick()).sent, false);
+  rig.advance();
+  rig.responses.push({ newMessages: 2 });
+  assert.equal((await rig.service.tick()).sent, true);
+  assert.match(rig.requests[0].body.content, /新增邮件：2 封/);
+  assert.doesNotMatch(rig.requests[0].body.content, /private@example|another@example/);
+});
+
+test("WxPusher HTTP 或顶层成功不能掩盖指定接收人失败", async (t) => {
+  let response;
+  const rig = setup(t, { fetchImpl: async () => ({ ok: true, json: async () => response }) });
+  await rig.service.save({
+    ...rig.config,
+    provider: "wxpusher",
+    destination: WXPUSHER_UID,
+    token: WXPUSHER_TOKEN,
+  });
+  for (response of [
+    { code: 1002, msg: WXPUSHER_TOKEN },
+    { code: 1000, data: [] },
+    { code: 1000, data: [{ uid: WXPUSHER_UID, code: 1006, status: WXPUSHER_TOKEN }] },
+    { code: 1000, data: [{ uid: "UID_unexpected", code: 1000 }] },
+  ]) {
+    await assert.rejects(rig.service.test(), (error) => {
+      assert.match(error.message, /推送失败/);
+      assert.equal(error.message.includes(WXPUSHER_TOKEN), false);
+      return true;
+    });
+  }
+});
+
+test("WxPusher 拒绝错误目标及令牌，切换接收人不沿用旧凭据", async (t) => {
+  const rig = setup(t);
+  const config = {
+    ...rig.config,
+    provider: "wxpusher",
+    destination: WXPUSHER_UID,
+    token: WXPUSHER_TOKEN,
+  };
+  for (const destination of ["", "https://evil.test", "UID_bad\nrecipient", "12345"])
+    await assert.rejects(rig.service.save({ ...config, destination }));
+  await assert.rejects(rig.service.save({ ...config, token: TELEGRAM_TOKEN }));
+  await rig.service.save(config);
+  const changed = await rig.service.save({
+    ...config,
+    destination: "UID_anotherRecipient",
+    token: undefined,
+    enabled: false,
+  });
+  assert.equal(changed.hasToken, false);
+  await assert.rejects(rig.service.test(), /先保存/);
+  assert.equal(rig.requests.length, 0);
 });
 
 test("首次检查仅建立基线，后续只发送数量和时间", async (t) => {

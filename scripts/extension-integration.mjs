@@ -9,7 +9,7 @@ import { chooseOption } from "./select-helper.mjs";
 import { captureUrl } from "../electron/services/browser-capture.mjs";
 
 const { version } = JSON.parse(await readFile("package.json", "utf8"));
-const extension = resolve(`release/v${version}/nanpad-browser-extension`);
+const extension = resolve(`release/v${version}/zhiyu-browser-extension`);
 const manifest = JSON.parse(await readFile(join(extension, "manifest.json"), "utf8"));
 assert.equal(manifest.version, version);
 assert.deepEqual(manifest.permissions, ["activeTab", "scripting", "storage", "tabs"]);

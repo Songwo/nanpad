@@ -33,6 +33,7 @@ import {
   PanelLeftOpen,
   Pencil,
   Check,
+  ScanText,
 } from "lucide-react";
 import { toast } from "sonner";
 import { useShallow } from "zustand/react/shallow";
@@ -46,7 +47,7 @@ import { assetEntries, refKey } from "@/lib/operations";
 import { useAppStore } from "@/lib/store";
 import { KIND_LABEL } from "@/lib/status";
 import { desktop } from "@/lib/desktop";
-import { downloadJson } from "@/lib/utils";
+import { downloadJson, downloadText } from "@/lib/utils";
 import { Button } from "./ui/button";
 import { EditorDialog } from "./ui/editor-dialog";
 import { t } from "@/lib/i18n";
@@ -54,6 +55,10 @@ import { useSettings } from "@/lib/settings";
 import { DocumentMarkdownImport } from "./document-markdown-import";
 import { MARKDOWN_IMPORTED } from "@/lib/document-import-events";
 import { DocumentNavigation } from "./document-navigation";
+import { Markdown } from "./markdown";
+import { DocumentMarkdownEditor } from "./document-markdown-editor";
+import { documentMarkdown, markdownContent } from "@/lib/document-markdown.mjs";
+import { DocumentAccountExtract } from "./document-account-extract";
 import "./document-reading.css";
 import "./document-actions.css";
 
@@ -494,6 +499,12 @@ function DocumentEditor({
   onDelete: (returnFocus: HTMLElement) => void;
 }) {
   const [editing, setEditing] = useState(initiallyEditing);
+  const [editMode, setEditMode] = useState<"rich" | "source" | "preview">(
+    typeof doc.markdown === "string" ? "source" : "rich",
+  );
+  const [convertOpen, setConvertOpen] = useState(false);
+  const [extractOpen, setExtractOpen] = useState(false);
+  const richEditing = editing && editMode === "rich" && typeof doc.markdown !== "string";
   const [finishing, setFinishing] = useState(false);
   const readerRef = useRef<HTMLDivElement>(null);
   const titleRef = useRef<HTMLInputElement>(null);
@@ -514,6 +525,7 @@ function DocumentEditor({
       aiAssets: s.aiAssets,
       secrets: s.secrets,
       certs: s.certs,
+      services: s.services,
     })),
   );
   const assets = assetEntries(snapshot);
@@ -556,14 +568,14 @@ function DocumentEditor({
       }),
     ],
     content: doc.content,
-    editable: editing && !finishing,
+    editable: richEditing && !finishing,
     immediatelyRender: false,
     editorProps: {
       attributes: {
         class: "document-prose",
-        role: editing ? "textbox" : "region",
+        role: richEditing ? "textbox" : "region",
         "aria-label": t("文档正文"),
-        ...(editing ? { "aria-multiline": "true", "aria-readonly": String(finishing) } : {}),
+        ...(richEditing ? { "aria-multiline": "true", "aria-readonly": String(finishing) } : {}),
       },
       handleClick: (view, _pos, event) => {
         const anchor = (event.target as HTMLElement).closest("a");
@@ -588,12 +600,13 @@ function DocumentEditor({
     },
     onUpdate: ({ editor }) => {
       const latest = useDocuments.getState().drafts[doc.id];
-      if (latest) change({ ...latest, content: editor.getJSON() });
+      if (latest && typeof latest.markdown !== "string")
+        change({ ...latest, content: editor.getJSON() });
     },
   });
   useEffect(() => {
-    editor?.setEditable(editing && !finishing, false);
-  }, [editor, editing, finishing]);
+    editor?.setEditable(richEditing && !finishing, false);
+  }, [editor, richEditing, finishing]);
   useEffect(() => {
     // 切换文档期间完成的图片上传也需要同步到重新打开的正文。
     if (editor && JSON.stringify(editor.getJSON()) !== JSON.stringify(doc.content))
@@ -677,7 +690,7 @@ function DocumentEditor({
     },
   ];
   const insertImages = async (files: File[]) => {
-    if (uploadingRef.current || !editing || finishing) return;
+    if (uploadingRef.current || !richEditing || finishing) return;
     if (files.length > 20) {
       fail(new Error("每次最多上传 20 张图片"));
       return;
@@ -831,12 +844,25 @@ function DocumentEditor({
             size="sm"
             disabled={!editor}
             onClick={() => {
+              if (typeof doc.markdown === "string") setEditMode("source");
               setEditing(true);
               requestAnimationFrame(() => titleRef.current?.focus({ preventScroll: true }));
             }}
           >
             <Pencil />
             {t("编辑文档")}
+          </Button>
+        )}
+        {desktop() && (
+          <Button
+            variant="ghost"
+            size="sm"
+            disabled={uploading || finishing}
+            onClick={() => setExtractOpen(true)}
+            aria-haspopup="dialog"
+          >
+            <ScanText />
+            {t("提取账号")}
           </Button>
         )}
         <Button variant="ghost" size="sm" onClick={() => setInfoOpen(true)} aria-haspopup="dialog">
@@ -848,6 +874,45 @@ function DocumentEditor({
         </Button>
       </div>
       {editing && (
+        <div className="document-mode-toolbar">
+          <div className="document-mode-tabs" role="group" aria-label={t("文档编辑方式")}>
+            {(
+              [
+                ["rich", "富文本"],
+                ["source", "Markdown 源码"],
+                ["preview", "预览"],
+              ] as const
+            ).map(([mode, label]) => (
+              <Button
+                key={mode}
+                size="sm"
+                variant={editMode === mode ? "secondary" : "ghost"}
+                aria-pressed={editMode === mode}
+                disabled={uploading || finishing}
+                onClick={() => {
+                  setLink(null);
+                  if (mode === "rich" && typeof doc.markdown === "string") setConvertOpen(true);
+                  else setEditMode(mode);
+                }}
+              >
+                {t(label)}
+              </Button>
+            ))}
+          </div>
+          {editMode !== "rich" && (
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={finishing}
+              onClick={() => void flush(doc.id).catch(fail)}
+            >
+              <Save />
+              {t(status === "saved" ? "已保存" : status === "saving" ? "保存中…" : "保存")}
+            </Button>
+          )}
+        </div>
+      )}
+      {richEditing && (
         <div className="document-toolbar" role="group" aria-label={t("文档格式")} inert={finishing}>
           <div className="flex flex-wrap items-center gap-1">
             {toolbar.map(({ label, Icon, active, run }) => (
@@ -928,7 +993,7 @@ function DocumentEditor({
             {uploading ? uploadProgress : uploadResult}
           </p>
         )}
-        {doc.id.startsWith("doc-legacy-server-") && (
+        {doc.id.startsWith("doc-legacy-server-") && typeof doc.markdown !== "string" && (
           <p className="border-b border-line px-4 py-3 text-sm text-muted">
             {t("旧 Markdown 已原样保存在代码块中；原始记录继续保留在服务器文档页。")}
           </p>
@@ -963,7 +1028,7 @@ function DocumentEditor({
             )}
           </div>
         )}
-        {editing && link !== null && (
+        {richEditing && link !== null && (
           <form
             className="document-link-form"
             onSubmit={(e) => {
@@ -1036,41 +1101,62 @@ function DocumentEditor({
               {t("更新于")} {new Date(doc.updatedAt).toLocaleString()}
             </span>
           </div>
-          <EditorContent
-            editor={editor}
-            onPasteCapture={(event) => {
-              if (!editing || finishing) return;
-              const files = Array.from(event.clipboardData.files).filter((f) =>
-                f.type.startsWith("image/"),
-              );
-              if (files.length) {
-                event.preventDefault();
-                event.stopPropagation();
-                void insertImages(files);
-              }
-            }}
-            onDragOver={(event) => {
-              if (event.dataTransfer.types.includes("Files")) event.preventDefault();
-            }}
-            onDragStartCapture={(event) => {
-              if (!editing || finishing) event.preventDefault();
-            }}
-            onDropCapture={(event) => {
-              if (!editing || finishing) {
-                event.preventDefault();
-                event.stopPropagation();
-                return;
-              }
-              const files = Array.from(event.dataTransfer.files).filter((f) =>
-                f.type.startsWith("image/"),
-              );
-              if (files.length) {
-                event.preventDefault();
-                event.stopPropagation();
-                void insertImages(files);
-              }
-            }}
-          />
+          {editing && editMode === "source" ? (
+            <>
+              {typeof doc.markdown !== "string" && (
+                <p className="document-source-notice">
+                  {t(
+                    "修改源码后将以 Markdown 保存；富文本专属格式可能变化。仅查看源码不会改变原文。",
+                  )}
+                </p>
+              )}
+              <DocumentMarkdownEditor
+                value={documentMarkdown(doc)}
+                readOnly={finishing}
+                onChange={(markdown) => update({ markdown })}
+              />
+            </>
+          ) : typeof doc.markdown === "string" || (editing && editMode === "preview") ? (
+            <div className="document-markdown" role="region" aria-label={t("文档正文")}>
+              <Markdown>{documentMarkdown(doc)}</Markdown>
+            </div>
+          ) : (
+            <EditorContent
+              editor={editor}
+              onPasteCapture={(event) => {
+                if (!richEditing || finishing) return;
+                const files = Array.from(event.clipboardData.files).filter((f) =>
+                  f.type.startsWith("image/"),
+                );
+                if (files.length) {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  void insertImages(files);
+                }
+              }}
+              onDragOver={(event) => {
+                if (event.dataTransfer.types.includes("Files")) event.preventDefault();
+              }}
+              onDragStartCapture={(event) => {
+                if (!richEditing || finishing) event.preventDefault();
+              }}
+              onDropCapture={(event) => {
+                if (!richEditing || finishing) {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  return;
+                }
+                const files = Array.from(event.dataTransfer.files).filter((f) =>
+                  f.type.startsWith("image/"),
+                );
+                if (files.length) {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  void insertImages(files);
+                }
+              }}
+            />
+          )}
         </article>
       </div>
       <DocumentNavigation editor={editor} readerRef={readerRef} />
@@ -1173,7 +1259,7 @@ function DocumentEditor({
                   {t("支持多选、粘贴截图或拖入照片。删除图片只移除文档引用。")}
                 </p>
                 <ImageBedSettings onStatusChange={handleImageStatus} />
-                {editing && (
+                {richEditing && (
                   <Button
                     type="button"
                     size="sm"
@@ -1210,6 +1296,34 @@ function DocumentEditor({
                 )}
               </div>
               <div className="mt-6 grid gap-2 border-t border-line pt-4">
+                {desktop() && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={uploading || finishing}
+                    onClick={() => {
+                      setInfoOpen(false);
+                      setExtractOpen(true);
+                    }}
+                  >
+                    <ScanText />
+                    {t("从文档提取账号")}
+                  </Button>
+                )}
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() =>
+                    downloadText(
+                      doc.title + ".md",
+                      documentMarkdown(doc),
+                      "text/markdown;charset=utf-8",
+                    )
+                  }
+                >
+                  <Download />
+                  {t("导出 Markdown")}
+                </Button>
                 <Button
                   variant="outline"
                   size="sm"
@@ -1231,6 +1345,63 @@ function DocumentEditor({
             </aside>
           </div>
         </EditorDialog>
+      )}
+      {convertOpen && (
+        <AlertDialog.Root open onOpenChange={setConvertOpen}>
+          <AlertDialog.Portal>
+            <AlertDialog.Overlay className="editor-backdrop" />
+            <AlertDialog.Content className="document-delete-dialog">
+              <AlertDialog.Title className="text-lg font-semibold">
+                {t("转换为富文本编辑？")}
+              </AlertDialog.Title>
+              <AlertDialog.Description className="text-sm text-muted">
+                {t(
+                  "转换后将以富文本保存，Markdown 表格、脚注和源码排版可能变化。你可以先导出 Markdown 留存原文。",
+                )}
+              </AlertDialog.Description>
+              <div className="document-delete-buttons">
+                <AlertDialog.Cancel asChild>
+                  <Button variant="secondary">{t("保留 Markdown")}</Button>
+                </AlertDialog.Cancel>
+                <Button
+                  variant="outline"
+                  onClick={() =>
+                    downloadText(
+                      doc.title + ".md",
+                      documentMarkdown(doc),
+                      "text/markdown;charset=utf-8",
+                    )
+                  }
+                >
+                  {t("导出 Markdown")}
+                </Button>
+                <AlertDialog.Action asChild>
+                  <Button
+                    onClick={(event) => {
+                      event.preventDefault();
+                      try {
+                        const latest = useDocuments.getState().drafts[doc.id];
+                        const content = markdownContent(documentMarkdown(latest));
+                        const { markdown: _markdown, ...rich } = latest;
+                        change({ ...rich, content });
+                        editor?.commands.setContent(content, { emitUpdate: false });
+                        setEditMode("rich");
+                        setConvertOpen(false);
+                      } catch (cause) {
+                        fail(cause);
+                      }
+                    }}
+                  >
+                    {t("确认转换")}
+                  </Button>
+                </AlertDialog.Action>
+              </div>
+            </AlertDialog.Content>
+          </AlertDialog.Portal>
+        </AlertDialog.Root>
+      )}
+      {extractOpen && (
+        <DocumentAccountExtract documentId={doc.id} close={() => setExtractOpen(false)} />
       )}
     </div>
   );

@@ -1,0 +1,167 @@
+.account-totp {
+  margin-top: 16px;
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+.account-totp-trigger {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 48px;
+  padding: 12px;
+  text-align: left;
+  background: var(--color-canvas);
+  color: var(--color-ink);
+  font-size: var(--text-meta);
+}
+.account-totp-trigger > span:first-of-type {
+  flex: 1;
+  font-weight: 550;
+}
+.account-totp-summary {
+  color: var(--color-muted);
+  font-size: var(--text-2xs);
+}
+.account-totp-trigger > svg:last-child {
+  transition: transform 180ms var(--ease-out);
+}
+.account-totp-trigger[data-state="open"] > svg:last-child {
+  transform: rotate(180deg);
+}
+.account-totp-trigger:focus-visible {
+  outline: 2px solid var(--color-ink);
+  outline-offset: -3px;
+}
+.account-totp-collapse {
+  overflow: hidden;
+}
+.account-totp-collapse[data-state="open"] {
+  animation: totp-expand 180ms var(--ease-out);
+}
+.account-totp-collapse[data-state="closed"] {
+  animation: totp-contract 180ms var(--ease-out);
+}
+.account-totp-body {
+  display: grid;
+  gap: 12px;
+  padding: 16px;
+}
+.account-totp-notice,
+.account-totp-config {
+  display: grid;
+  gap: 12px;
+}
+.account-totp-notice > p,
+.account-totp-muted {
+  font-size: var(--text-2xs);
+  line-height: 1.7;
+  color: var(--color-muted);
+}
+.account-totp-notice > button {
+  justify-self: start;
+}
+.account-totp-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+.account-totp-label {
+  font-size: var(--text-meta);
+  color: var(--color-muted);
+  overflow-wrap: anywhere;
+}
+.account-totp-value {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.account-totp-digits {
+  font-family: var(--font-mono);
+  font-size: var(--text-2xl);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.08em;
+  font-weight: 550;
+  color: var(--color-ink);
+  transition: color 150ms;
+}
+.account-totp-value[data-expiring="true"] .account-totp-digits {
+  color: var(--color-warn);
+}
+.account-totp-timer {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: var(--text-2xs);
+  color: var(--color-muted);
+}
+.account-totp-timer progress {
+  appearance: none;
+  flex: 1;
+  width: 0;
+  height: 4px;
+  border: none;
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  color: var(--color-ok);
+  background: var(--color-line);
+}
+.account-totp-timer progress::-webkit-progress-bar {
+  background: var(--color-line);
+  border-radius: var(--radius-sm);
+}
+.account-totp-timer progress::-webkit-progress-value {
+  background: var(--color-ok);
+  border-radius: var(--radius-sm);
+  transition: width 180ms linear;
+}
+.account-totp-timer progress::-moz-progress-bar {
+  background: var(--color-ok);
+  border-radius: var(--radius-sm);
+}
+.account-totp-error {
+  color: var(--color-crit);
+  font-size: var(--text-meta);
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+@keyframes totp-expand {
+  from {
+    height: 0;
+    opacity: 0;
+  }
+  to {
+    height: var(--radix-collapsible-content-height);
+    opacity: 1;
+  }
+}
+@keyframes totp-contract {
+  from {
+    height: var(--radix-collapsible-content-height);
+    opacity: 1;
+  }
+  to {
+    height: 0;
+    opacity: 0;
+  }
+}
+@media (max-width: 480px) {
+  .account-totp .ui-button {
+    min-height: 44px;
+    white-space: normal;
+  }
+  .account-totp-digits {
+    letter-spacing: 0.04em;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .account-totp *,
+  .account-totp-timer progress::-webkit-progress-value {
+    animation: none !important;
+    transition: none !important;
+  }
+}

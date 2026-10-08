@@ -8,6 +8,7 @@ export type ViewId =
   | "overview"
   | "nodes"
   | "servers"
+  | "services"
   | "domains"
   | "mail"
   | "ai"
@@ -17,7 +18,17 @@ export type ViewId =
   | "agent"
   | "terminal";
 
-export type AssetKind = "server" | "domain" | "mail" | "ai" | "secret" | "cert";
+export type AssetKind = "server" | "domain" | "mail" | "ai" | "secret" | "cert" | "service";
+
+export interface ServiceAsset extends Taggable {
+  id: string;
+  name: string;
+  category: "worker" | "blog" | "mail" | "custom";
+  url: string;
+  provider: string;
+  status: Status;
+  notes: string;
+}
 
 /** How the desktop app authenticates to a host. The secret itself is in the vault. */
 export type AuthKind = "password" | "key" | "agent";
@@ -152,6 +163,7 @@ export interface AiAsset extends Taggable {
 export interface Secret extends Taggable {
   id: string;
   name: string;
+  identityProvider?: "linuxdo";
   /** 密钥分组归属（0.10.0）；空或指向已删除分组时视为未分组。 */
   folderId?: string;
   kind: "api" | "ssh" | "password" | "token" | "account";
@@ -186,6 +198,7 @@ export interface ActivityItem {
 }
 
 export type AnyAsset =
+  | { kind: "service"; data: ServiceAsset }
   | { kind: "server"; data: Server }
   | { kind: "domain"; data: Domain }
   | { kind: "mail"; data: Mailbox }
@@ -206,6 +219,7 @@ export interface PhoneNumber {
 }
 
 export interface Snapshot {
+  services?: ServiceAsset[];
   phoneNumbers?: PhoneNumber[];
   mailFolders?: import("./mail-folders").MailFolder[];
   secretFolders?: import("./secret-folders").SecretFolder[];

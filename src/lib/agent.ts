@@ -116,6 +116,9 @@ function index(snapshot: Snapshot): Candidate[] {
     ...snapshot.secrets.map((s) =>
       make(s.id, "secret", s.name, s.hint, s.status, [s.hint, s.kind], tagsOf(s)),
     ),
+    ...(snapshot.services ?? []).map((s) =>
+      make(s.id, "service", s.name, s.provider, s.status, [s.category, s.url], tagsOf(s)),
+    ),
     ...snapshot.certs.map((s) =>
       make(s.id, "cert", s.cn, s.issuer, s.status, [s.issuer, s.host, ...s.sans], tagsOf(s)),
     ),
@@ -124,6 +127,7 @@ function index(snapshot: Snapshot): Candidate[] {
 
 /** Words in the question that say which kind of thing is being asked about. */
 const KIND_HINTS: Array<[RegExp, AssetKind]> = [
+  [/worker|博客|自建邮箱|服务资产|service/i, "service"],
   [/邮箱|邮件|信箱|mail/i, "mail"],
   [/服务器|主机|机器|vps|host|server/i, "server"],
   [/域名|domain/i, "domain"],

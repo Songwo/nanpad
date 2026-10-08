@@ -300,7 +300,7 @@ export class ExtensionBridge {
         this.#accepting = false;
         this.#error =
           error.code === "EADDRINUSE"
-            ? "浏览器连接端口被占用，请关闭其他司南实例后重试。"
+            ? "浏览器连接端口被占用，请关闭其他知屿实例后重试。"
             : "无法启动浏览器连接服务，请重试。";
         this.revoke();
       });
@@ -642,7 +642,7 @@ export class ExtensionBridge {
       }
       const capture = normalizeCredentialCapture(value);
       if (this.#pending.size >= MAX_PENDING)
-        throw new RequestError(409, "待保存账号已达上限，请先在司南中处理。");
+        throw new RequestError(409, "待保存账号已达上限，请先在知屿中处理。");
       const id = randomBytes(16).toString("hex");
       const createdAt = Date.now();
       this.#pending.set(id, {

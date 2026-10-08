@@ -158,7 +158,7 @@ function waitForCode(server, expectedState) {
         done("这次回调不属于当前的登录请求。", false);
         return;
       }
-      done("登录完成，可以回到司南了。", true);
+      done("登录完成，可以回到知屿了。", true);
       clearTimeout(timer);
       resolve(code);
     });
@@ -166,7 +166,7 @@ function waitForCode(server, expectedState) {
 }
 
 function page(message, ok) {
-  return `<!doctype html><meta charset="utf-8"><title>司南</title>
+  return `<!doctype html><meta charset="utf-8"><title>知屿</title>
 <body style="margin:0;display:grid;place-items:center;height:100vh;background:#f4f5f5;
 font:15px/1.5 -apple-system,'Segoe UI',system-ui,sans-serif;color:#0f1419">
 <div style="text-align:center">

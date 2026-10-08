@@ -133,6 +133,9 @@ try {
   assert.equal(await reader().locator("code").getAttribute("class"), "language-sh");
   await page.screenshot({ path: `${prefix}.png` });
   await page.getByRole("button", { name: "编辑文档", exact: true }).click();
+  // 只有用户确认转换，才将原样保存的 Markdown 切入富文本编辑器。
+  await page.getByRole("button", { name: "富文本", exact: true }).click();
+  await page.getByRole("button", { name: "确认转换", exact: true }).click();
   await page.getByRole("textbox", { name: "文档标题", exact: true }).fill("部署手册（已修改）");
   await page.locator('.tiptap[contenteditable="true"]').press("Control+End");
   await page.keyboard.press("ArrowDown");

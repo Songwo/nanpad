@@ -107,6 +107,7 @@ export function tagIndex(snapshot: {
   aiAssets: Array<Partial<Taggable>>;
   secrets: Array<Partial<Taggable>>;
   certs: Array<Partial<Taggable>>;
+  services?: Array<Partial<Taggable>>;
 }): TagIndexEntry[] {
   const collections: Array<[AssetKind, Array<Partial<Taggable>>]> = [
     ["server", snapshot.servers],
@@ -115,6 +116,7 @@ export function tagIndex(snapshot: {
     ["ai", snapshot.aiAssets],
     ["secret", snapshot.secrets],
     ["cert", snapshot.certs],
+    ["service", snapshot.services ?? []],
   ];
 
   const index = new Map<string, Map<AssetKind, number>>();

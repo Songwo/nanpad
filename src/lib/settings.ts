@@ -1,5 +1,9 @@
 import { desktop } from "./desktop";
 import {
+  readMonitorMinutes,
+  validateMonitorMinutes,
+} from "../../electron/services/server-monitor.mjs";
+import {
   readZoomPercent,
   validateZoomPercent,
   zoomCommandForKey,
@@ -15,6 +19,9 @@ export type ThemeChoice = "system" | "light" | "dark";
 export type ResolvedTheme = "light" | "dark";
 
 interface SettingsState {
+  serverMonitorMinutes: number;
+  monitorReady: boolean;
+  setServerMonitorMinutes: (minutes: number) => Promise<void>;
   sidebarCollapsed: boolean;
   setSidebarCollapsed: (collapsed: boolean) => void;
   documentListCollapsed: boolean;
@@ -56,6 +63,14 @@ export function resolveTheme(choice: ThemeChoice): ResolvedTheme {
 export const useSettings = create<SettingsState>()(
   persist(
     (set) => ({
+      serverMonitorMinutes: 5,
+      monitorReady: false,
+      setServerMonitorMinutes: async (value) => {
+        const minutes = validateMonitorMinutes(value);
+        const bridge = desktop();
+        if (bridge) await bridge.preferences.set({ serverMonitorMinutes: minutes });
+        set({ serverMonitorMinutes: minutes });
+      },
       sidebarCollapsed: false,
       setSidebarCollapsed: (sidebarCollapsed) => set({ sidebarCollapsed }),
       documentListCollapsed: false,
@@ -96,6 +111,7 @@ export const useSettings = create<SettingsState>()(
       partialize: (s) =>
         ({
           theme: s.theme,
+          serverMonitorMinutes: s.serverMonitorMinutes,
           language: s.language,
           assetLayout: s.assetLayout,
           zoomPercent: s.zoomPercent,
@@ -110,6 +126,8 @@ export const useSettings = create<SettingsState>()(
           ...saved,
           zoomPercent: readZoomPercent(saved?.zoomPercent),
           zoomReady: false,
+          monitorReady: false,
+          serverMonitorMinutes: readMonitorMinutes(saved?.serverMonitorMinutes),
           toolsExpanded: saved?.toolsExpanded === true,
           sidebarCollapsed: saved?.sidebarCollapsed === true,
           documentListCollapsed: saved?.documentListCollapsed === true,
@@ -121,6 +139,31 @@ export const useSettings = create<SettingsState>()(
     },
   ),
 );
+
+/** 读取桌面偏好之前不采集，避免手动模式在启动时漏发一轮请求。 */
+export function startMonitorSync(onError: (message: string) => void): () => void {
+  const bridge = desktop();
+  let disposed = false;
+  if (!bridge) {
+    useSettings.setState({ monitorReady: true });
+    return () => {};
+  }
+  void bridge.preferences
+    .get()
+    .then((preferences) => {
+      if (!disposed)
+        useSettings.setState({
+          serverMonitorMinutes: readMonitorMinutes(preferences.serverMonitorMinutes),
+          monitorReady: true,
+        });
+    })
+    .catch((error: unknown) => {
+      if (!disposed) onError(error instanceof Error ? error.message : String(error));
+    });
+  return () => {
+    disposed = true;
+  };
+}
 
 /**
  * Keep `<html data-theme>` in step with the choice and, for "system", with the

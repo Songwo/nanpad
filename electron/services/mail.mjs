@@ -126,7 +126,7 @@ export async function queryMailbox(
     auth: { user: username, pass: password },
     tls: { rejectUnauthorized: true, minVersion: "TLSv1.2" },
     logger: false,
-    clientInfo: { name: "Nanpad", vendor: "Nanpad" },
+    clientInfo: { name: "Zhiyu", vendor: "Zhiyu" },
     connectionTimeout: 12_000,
     socketTimeout: 20_000,
     greetingTimeout: 12_000,

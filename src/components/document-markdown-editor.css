@@ -1,0 +1,73 @@
+.document-markdown-input {
+  display: block;
+  width: 100%;
+  min-height: 360px;
+  resize: none;
+  overflow: hidden;
+  background: var(--color-card);
+  color: var(--color-ink);
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-md);
+  padding: 20px;
+  outline: none;
+  font-family: var(--font-mono);
+  font-size: var(--text-body);
+  line-height: 1.8;
+  tab-size: 2;
+  transition: border-color 150ms;
+}
+.document-markdown-input:focus {
+  border-color: var(--color-line-strong);
+}
+.document-mode-toolbar {
+  flex-shrink: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 20px;
+  border-bottom: 1px solid var(--color-line);
+  background: var(--color-card);
+}
+.document-mode-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.document-source-notice {
+  padding: 12px 0;
+  font-size: var(--text-2xs);
+  line-height: 1.65;
+  color: var(--color-muted);
+}
+.document-markdown .markdown-body {
+  font-size: inherit;
+}
+.document-markdown .markdown-body > :first-child {
+  margin-top: 0;
+}
+.document-markdown :is(h4, h5, h6) {
+  margin-block: 1.25em 0.5em;
+  font-size: var(--text-body);
+  font-weight: 600;
+}
+.document-markdown .markdown-table {
+  overflow-x: auto;
+}
+@media (max-width: 700px) {
+  .document-mode-toolbar {
+    padding-inline: 12px;
+  }
+  .document-mode-toolbar .ui-button {
+    min-height: 40px;
+  }
+  .document-markdown-input {
+    padding: 12px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .document-markdown-input {
+    transition: none;
+  }
+}

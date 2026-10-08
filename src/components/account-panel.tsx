@@ -10,6 +10,8 @@ import type { AssetKind } from "@/lib/types";
 import { copyText } from "@/lib/utils";
 import { useVault } from "@/lib/vault-state";
 import { t } from "@/lib/i18n";
+import { IdentityPanel } from "./identity-panel";
+import { AccountTotp } from "./account-totp";
 
 /**
  * The read side of a saved account, shown inside the detail sheet.
@@ -29,6 +31,9 @@ export function AccountPanel({ assetId, kind }: { assetId: string; kind: AssetKi
   const [loadAttempt, setLoadAttempt] = useState(0);
   const composerOpen = useAppStore((s) => s.composerOpen);
   const secretKind = useAppStore((s) => s.secrets.find((item) => item.id === assetId)?.kind);
+  const identityProvider = useAppStore(
+    (s) => s.secrets.find((item) => item.id === assetId)?.identityProvider,
+  );
   const standalone = kind === "secret" && secretKind === "account";
   const copy = standalone
     ? STANDALONE_ACCOUNT_COPY
@@ -43,7 +48,7 @@ export function AccountPanel({ assetId, kind }: { assetId: string; kind: AssetKi
     setChecked(false);
     setLoadError(false);
     void (async () => {
-      if (!bridge || !unlocked) {
+      if (!bridge || !unlocked || (kind === "secret" && identityProvider)) {
         if (alive) {
           setRecord(null);
           setChecked(false);
@@ -66,9 +71,18 @@ export function AccountPanel({ assetId, kind }: { assetId: string; kind: AssetKi
     return () => {
       alive = false;
     };
-  }, [bridge, assetId, unlocked, composerOpen, loadAttempt]);
+  }, [bridge, assetId, unlocked, composerOpen, loadAttempt, kind, identityProvider]);
 
   if (!bridge) return null;
+  if (kind === "secret" && identityProvider === "linuxdo")
+    return (
+      <>
+        <IdentityPanel key={assetId} assetId={assetId} />
+        <div className="px-4 pb-4">
+          <AccountTotp key={`totp:${assetId}`} assetId={assetId} />
+        </div>
+      </>
+    );
 
   return (
     <section className="border-t border-line px-4 py-4" aria-label={t(copy.title)}>
@@ -183,6 +197,7 @@ export function AccountPanel({ assetId, kind }: { assetId: string; kind: AssetKi
           </p>
         </dl>
       )}
+      <AccountTotp key={assetId} assetId={assetId} />
     </section>
   );
 }

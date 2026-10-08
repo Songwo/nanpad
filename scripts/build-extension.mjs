@@ -16,7 +16,7 @@ import {
 
 const root = resolve(import.meta.dirname, "..");
 const { version } = JSON.parse(await readFile(join(root, "package.json"), "utf8"));
-const out = join(root, "release", `v${version}`, "nanpad-browser-extension");
+const out = join(root, "release", `v${version}`, "zhiyu-browser-extension");
 await mkdir(out, { recursive: true });
 await cp(join(root, "browser-extension"), out, { recursive: true });
 await cp(join(root, "electron/services/browser-capture.mjs"), join(out, "browser-capture.mjs"));

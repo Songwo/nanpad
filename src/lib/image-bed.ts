@@ -33,7 +33,7 @@ async function performUpload(dataUrl: string, filename: string, kind: "document"
   const bridge = desktop();
   if (!bridge) return dataUrl;
   const api = bridge.images;
-  if (!api) throw new Error("请重启司南，加载新的图床上传接口");
+  if (!api) throw new Error("请重启知屿，加载新的图床上传接口");
   const status = await api.status();
   if (!status.enabled) return dataUrl;
   if (dataUrl.startsWith("data:image/webp;")) {

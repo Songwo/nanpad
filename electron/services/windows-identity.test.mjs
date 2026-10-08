@@ -11,7 +11,7 @@ test("Windows 开发版与正式版使用不同应用身份", () => {
   assert.equal(windowsAppId(true), "dev.songwo.zhiyu");
   assert.notEqual(windowsAppId(true), "dev.songwo.nanpad", "不再复用旧任务栏分组缓存");
 });
-test("只备份抢占司南身份的 Electron 快捷方式，重复运行无副作用", async () => {
+test("只备份抢占知屿身份的 Electron 快捷方式，重复运行无副作用", async () => {
   const directory = await mkdtemp(join(tmpdir(), "nanpad-identity-"));
   const file = join(directory, "Electron.lnk");
   const options = {

@@ -4,17 +4,17 @@
 
 ## 宣传与下载页同步
 
-[GitHub Pages 下载页](https://songwo.github.io/nanpad/)使用 `site/` 下的模板和图片，版本、日期、更新摘要、安装包、插件及校验文件地址由最新已发布的 GitHub 正式版生成，不读取尚未发布的 `package.json` 版本。
+[GitHub Pages 下载页](https://songwo.github.io/zhiyu/)使用 `site/` 下的模板和图片，版本、日期、更新摘要、安装包、插件及校验文件地址由最新已发布的 GitHub 正式版生成，不读取尚未发布的 `package.json` 版本。
 
 `产品主页` 工作流在页面源码改动、正式 Release 发布或编辑、以及 `Windows 正式版` 流水线成功后自动部署，也支持手动运行。使用 `workflow_run` 接续自动发布，因为 `GITHUB_TOKEN` 创建的 Release 不会触发另一条 `release` 工作流。草稿、预发布、缺失或尚未上传完成的附件会使页面构建失败，现有线上页面保留。
 
-本地预览先将 `gh api repos/Songwo/nanpad/releases/latest` 的 JSON 保存到 `release/pages-latest.json`，执行 `node scripts/build-site.mjs release/pages-latest.json release/site`，再使用静态服务器查看 `release/site`。页面为完整静态 HTML，访客无需请求 GitHub API；所有下载入口绑定同一个正式版本，资源使用内容摘要更新缓存。
+本地预览先将 `gh api repos/Songwo/zhiyu/releases/latest` 的 JSON 保存到 `release/pages-latest.json`，执行 `node scripts/build-site.mjs release/pages-latest.json release/site`，再使用静态服务器查看 `release/site`。页面为完整静态 HTML，访客无需请求 GitHub API；所有下载入口绑定同一个正式版本，资源使用内容摘要更新缓存。
 
 界面改动后，在开发预览已启动时运行 `node scripts/capture-site.mjs`，重新生成资产总览、文档阅读、用量图表与浏览器密码迁移四张展示图。只更新迁移界面可使用 `--passwords-only`。脚本只使用独立浏览器上下文和示例资料，不连接真实桌面数据或外部账号。检查图片后随 `site/` 一起提交；截图不会在每次发布时自动重拍。
 
 ## 版本准备
 
-更新 package.json、package-lock.json、browser-extension/manifest.json 与 src/lib/changelog.ts，执行 `node scripts/write-changelog.mjs` 同步 CHANGELOG.md。本版说明保存在 `docs/releases/v1.5.2.md`。README 的安装包名、构建目录及教程应与版本一致；描述实际支持范围，不将本机协议测试写成真实账号登录成功。
+更新 package.json、package-lock.json、browser-extension/manifest.json 与 src/lib/changelog.ts，执行 `node scripts/write-changelog.mjs` 同步 CHANGELOG.md。本版说明保存在 `docs/releases/v1.6.0.md`。README 的安装包名、构建目录及教程应与版本一致；描述实际支持范围，不将本机协议测试写成真实账号登录成功。
 
 ## 必须验证
 
@@ -44,9 +44,9 @@ npm run build
 npm run desktop:dist -- --win --x64 --publish never
 ```
 
-打包脚本将主进程及编译后的界面放入系统临时目录中的独立暂存区，使用仓库锁文件版本安装 `ssh2`、`imapflow`、`openai`、`minisearch`、`nodemailer`、`mailparser`、`html-to-text`、`sanitize-html` 及其运行依赖，再通过 electron-builder 内置的目录遍历器收集依赖，避免将网页构建工具装进桌面包。排除可选原生加速模块，SSH 使用库自带的 JavaScript 实现；无需 Visual Studio 编译环境。复用本机已安装的同版本 Electron，输出到 `release/v版本号/`；构建结束清理暂存区。
+打包脚本将主进程及编译后的界面放入系统临时目录中的独立暂存区，使用仓库锁文件版本安装 `ssh2`、`electron-updater`、`imapflow`、`openai`、`minisearch`、`nodemailer`、`mailparser`、`html-to-text`、`sanitize-html`、`unified`、`remark-parse`、`remark-gfm` 及其运行依赖，再通过 electron-builder 内置的目录遍历器收集依赖，避免将网页构建工具装进桌面包。暂存区先解析真实路径，npm 子进程只通过工作目录定位项目，避免 macOS 符号链接路径与 `--prefix` 解析不一致。排除可选原生加速模块，SSH 使用库自带的 JavaScript 实现；无需 Visual Studio 编译环境。复用本机已安装的同版本 Electron，输出到 `release/v版本号/`；构建结束清理暂存区。
 
-安装包生成后检查版本和包内容，运行 `node scripts/release-smoke.mjs release/v1.5.2/win-unpacked/Nanpad.exe` 验证打包程序，计算 SHA256，补齐 Release 说明中的验证记录。该脚本使用独立临时数据目录，不修改日常资料。发布时显式选择源码、文档和必要资源，不提交临时截图、日志、用户数据或运行目录。将发布标签指向已经验证的提交，再上传 `Nanpad-1.5.2-setup.exe`、浏览器扩展包与 `SHA256SUMS.txt`，以及下文要求的应用内更新附件。
+安装包生成后检查版本和包内容，运行 `node scripts/release-smoke.mjs release/v1.6.0/win-unpacked/Zhiyu.exe` 验证打包程序，计算 SHA256，补齐 Release 说明中的验证记录。该脚本使用独立临时数据目录，不修改日常资料。发布时显式选择源码、文档和必要资源，不提交临时截图、日志、用户数据或运行目录。将发布标签指向已经验证的提交，再上传 `Zhiyu-1.6.0-setup.exe`、浏览器扩展包与 `SHA256SUMS.txt`，以及下文要求的应用内更新附件。
 
 1.3.1 的 Windows 正式发布流水线额外运行 `passwords-desktop-integration.mjs` 验证实际打包程序的 CSV、加密库、后台资产同步、锁库与文档保存，并在 `extension:build` 后运行 `browser-companion-integration.mjs` 加载真实扩展，覆盖原生表单整页导航、多账号填写与文档提示。依赖中文界面标签的 Electron 测试必须显式设置 `locale: "zh-CN"`，不能依赖开发机的系统语言。测试只使用独立临时资料和合成账号，不读取真实浏览器密码库；真实浏览器原生 CSV 导入结果与第三方在线文档兼容性应单独记录。
 
@@ -76,7 +76,7 @@ node scripts/vault-usability-integration.mjs
 正式包生成后，另运行工作区集成验证：
 
 ```bash
-node scripts/workspace-v150-integration.mjs release/v1.5.2/win-unpacked/Nanpad.exe
+node scripts/workspace-v150-integration.mjs release/v1.6.0/win-unpacked/Zhiyu.exe
 ```
 
 该命令从参数指定的实际程序启动，核对版本并使用独立临时资料；通过本机合成模型服务验证文档修改、账号元信息修改与关系提案的真实主进程链路，不使用日常凭据或真实模型额度。省略程序参数会启动源码主进程，不能替代正式包验证。
@@ -107,4 +107,26 @@ node scripts/usage-live-chart-integration.mjs
 
 用量检查采集完成事件更新当前页面，统计未变化的状态通知不重新读取全量记录；切页和图表渲染不得触发额外远程采集。以大额历史值和今日小额非零值同时存在的合成数据，核对今日明细、真实坐标圆点、提示框和数据表一致，零值与缺失日期不画成非零用量。保持约 10 秒本机日志扫描，发布说明不得写成所有 AI 软件均可实时读取。
 
-本版插件仅同步版本号与下载包名，没有新增插件功能。版本一致性检查应确认 `package.json`、锁文件根版本和 `packages[""].version`、扩展清单与首条更新日志均为 1.5.2；锁文件依赖版本不作整体替换。
+1.5.2 插件仅同步版本号与下载包名，没有新增插件功能。版本一致性检查应确认 `package.json`、锁文件根版本和 `packages[""].version`、扩展清单与首条更新日志一致；锁文件依赖版本不作整体替换。
+
+## 1.6.0 身份、账号与社区反馈验证
+
+开发预览运行后检查 Markdown 源码、GFM 预览、转换确认、原文导出及重载；文档账号提取检查候选修改、多选、锁库失效、同站多账号与来源文档关联。界面回归命令如下：
+
+```bash
+node scripts/document-markdown-integration.mjs
+node scripts/document-account-extract-integration.mjs
+node scripts/service-assets-ui-integration.mjs
+node scripts/wxpusher-ui-integration.mjs
+node scripts/page-scroll-integration.mjs
+```
+
+运行 `node scripts/identity-totp-desktop-integration.mjs release/v1.6.0/win-unpacked/Zhiyu.exe` 验证隔离正式程序中的身份授权、本人帖子全文与账号提取、TOTP 和锁库链路。通过测试进程替换网络与系统浏览器调用，不读取真实身份或向论坛发送授权信息，并明确关闭测试资料的本机日志采集。省略程序参数会启动源码主进程，不能替代打包程序检查。
+
+`npm test` 包含身份回调与缓存、TOTP、文档账号提取、采集周期、Markdown 源码、服务资产、WxPusher 和打包暂存目录回归。检查服务器仅手动模式不自动连接，切换周期后复用相应缓存；本机 Token 监控不随之停止。WxPusher 只用合成响应验证请求格式与失败处理，不向真实接收目标发送测试消息。
+
+Linux.do 的真实 OAuth 需要账户持有人在软件里配置自己的 Connect 应用并授权。公开帖子访问还取决于论坛权限与网络策略，HTTP 403 必须原样解释为请求被拒，不能绕过或宣称取得私有帖子。发布记录应分别列出协议测试与真实账号验证范围。
+
+macOS 的 Apple Silicon / Intel 构建由「macOS 打包检查」工作流验证，成功后仅产生未签名测试 ZIP。具体命令、路径与限制见 [macOS 构建说明](MAC-BUILD.md)。没有实际工作流结果时，不填写 macOS 构建通过；Windows 测试不能替代 macOS 构建、运行、签名或公证验证。
+
+1.6.0 发布附件使用 `Zhiyu-1.6.0-setup.exe` 和 `Zhiyu-1.6.0-browser-extension.zip`，插件目录为 `zhiyu-browser-extension`。仓库、Pages 下载页、更新源和新附件统一使用知屿 Zhiyu。内部安装身份、原用户目录和已有协议用于升级兼容，不随外部品牌更名而随意修改；历史附件名与历史验证结果保持事实原状。

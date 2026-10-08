@@ -42,6 +42,7 @@ export const ACCOUNT_COPY: Record<AssetKind, { title: string; password: string; 
     password: "完整值",
     hint: "完整值只存在加密库中，资产文件里只留提示片段。",
   },
+  service: { title: "服务商账号", password: "密码", hint: "签发或托管平台的登录信息。" },
   cert: { title: "签发平台账号", password: "密码", hint: "签发或托管平台的登录信息。" },
 };
 

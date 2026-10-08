@@ -22,8 +22,17 @@ export const VIEW_ASSET_KIND: Partial<Record<ViewId, AssetKind>> = {
   mail: "mail",
   ai: "ai",
   vault: "secret",
+  services: "service",
 };
-export const GRAPH_KINDS: AssetKind[] = ["domain", "cert", "server", "mail", "ai", "secret"];
+export const GRAPH_KINDS: AssetKind[] = [
+  "domain",
+  "cert",
+  "server",
+  "service",
+  "mail",
+  "ai",
+  "secret",
+];
 
 export function assetRows(s: Snapshot): AssetRow[] {
   const row = (
@@ -69,6 +78,9 @@ export function assetRows(s: Snapshot): AssetRow[] {
       }),
     ),
     ...s.secrets.map((x) => row("secret", x, x.name, x.kind)),
+    ...(s.services ?? []).map((x) =>
+      row("service", x, x.name, `${x.provider} · ${x.url || x.category}`),
+    ),
   ];
 }
 

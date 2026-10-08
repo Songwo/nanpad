@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { AiCard, CertCard, DomainCard, MailCard, SecretCard, ServerCard } from "./asset-card";
+import { ServiceCard } from "./service-card";
 import { AccountPanel } from "./account-panel";
 import { MailStatus } from "./mail-status";
 import { AiAccountsPanel } from "./ai-accounts";
@@ -398,6 +399,7 @@ export function ExpandLayer() {
               <AssetRelations key={`links:${visible.kind}:${visible.id}`} asset={visible} />
               <AssetDocuments asset={visible} />
               {!currentAccount &&
+                visible.kind !== "service" &&
                 (visible.kind !== "ai" ||
                   !aiAssets.find((item) => item.id === visible.id)?.oauthAccountId) && (
                   <div ref={accountSection} tabIndex={-1} aria-label={t("凭据位置")}>
@@ -423,6 +425,7 @@ function ExpandedBody({ kind, id }: { kind: AssetKind; id: string }) {
   const aiAssets = useAppStore((s) => s.aiAssets);
   const secrets = useAppStore((s) => s.secrets);
   const certs = useAppStore((s) => s.certs);
+  const services = useAppStore((s) => s.services);
 
   switch (kind) {
     case "server": {
@@ -470,6 +473,10 @@ function ExpandedBody({ kind, id }: { kind: AssetKind; id: string }) {
     case "secret": {
       const d = secrets.find((x) => x.id === id);
       return d ? <SecretCard data={d} compact={false} /> : <Missing />;
+    }
+    case "service": {
+      const d = services.find((x) => x.id === id);
+      return d ? <ServiceCard data={d} compact={false} /> : <Missing />;
     }
     case "cert": {
       const d = certs.find((x) => x.id === id);

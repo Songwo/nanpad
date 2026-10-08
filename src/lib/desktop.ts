@@ -159,6 +159,9 @@ export interface PersistedFile extends Snapshot {
 }
 
 export interface DesktopBridge {
+  documentAccounts: import("./document-accounts").DocumentAccountsBridge;
+  identities: import("./identities").IdentityBridge;
+  totp: import("./totp").TotpBridge;
   passwords: {
     previewImport(): Promise<null | {
       ticket: string;
@@ -355,6 +358,7 @@ export interface DesktopBridge {
 }
 
 export interface DesktopPreferences {
+  serverMonitorMinutes: number;
   closeToTray: boolean;
   notifications: boolean;
   locale: "zh" | "en";

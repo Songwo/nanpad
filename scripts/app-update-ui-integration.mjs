@@ -20,7 +20,7 @@ try {
       state: "outdated",
       current: "1.3.1",
       latest: "1.4.0",
-      page: "https://github.com/Songwo/nanpad/releases/latest",
+      page: "https://github.com/Songwo/zhiyu/releases/latest",
     };
     window.__installs = 0;
     window.__saveFails = true;

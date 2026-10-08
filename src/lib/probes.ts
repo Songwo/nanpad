@@ -216,7 +216,7 @@ export async function refreshById(kind: ProbeKind, id: string): Promise<void> {
 /** Refresh every asset of one kind, a few at a time so 30 hosts do not stampede. */
 export async function refreshAll(
   kind: "server" | "domain" | "cert",
-  options: { force?: boolean } = {},
+  options: { force?: boolean; minAgeMs?: number } = {},
 ): Promise<number> {
   const bridge = desktop();
   if (!bridge) return 0;

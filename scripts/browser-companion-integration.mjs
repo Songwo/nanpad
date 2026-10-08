@@ -100,7 +100,7 @@ try {
   const fixtureBase = `http://127.0.0.1:${fixture.address().port}`;
   const state = await bridge.start();
   assert.equal(state.running, true, state.error);
-  await cp(resolve(`release/v${version}/nanpad-browser-extension`), extension, { recursive: true });
+  await cp(resolve(`release/v${version}/zhiyu-browser-extension`), extension, { recursive: true });
   await writeFile(
     join(extension, "bridge-config.mjs"),
     `export const BRIDGE = "http://127.0.0.1:${state.port}";\n`,

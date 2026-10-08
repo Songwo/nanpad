@@ -29,6 +29,7 @@ const KIND_ICON: Record<AssetKind, LucideIcon> = {
   ai: Bot,
   secret: KeyRound,
   cert: Shield,
+  service: Globe,
 };
 
 interface Entry {
@@ -85,6 +86,7 @@ function Palette({ shown, onClose }: { shown: boolean; onClose: () => void }) {
   const aiAssets = useAppStore((s) => s.aiAssets);
   const secrets = useAppStore((s) => s.secrets);
   const certs = useAppStore((s) => s.certs);
+  const services = useAppStore((s) => s.services);
   const phoneNumbers = useAppStore((s) => s.phoneNumbers);
 
   /**
@@ -173,11 +175,12 @@ function Palette({ shown, onClose }: { shown: boolean; onClose: () => void }) {
       ...mailboxes.map((s) => asset("mail", s.id, s.address, s.domain, tagsOf(s), "mail")),
       ...aiAssets.map((s) => asset("ai", s.id, s.name, s.provider, tagsOf(s), "ai")),
       ...secrets.map((s) => asset("secret", s.id, s.name, s.hint, tagsOf(s), "vault")),
+      ...services.map((s) => asset("service", s.id, s.name, s.url, tagsOf(s), "services")),
       ...certs.map((s) => asset("cert", s.id, s.cn, s.issuer, tagsOf(s), "certs")),
     ];
     if (assets.length) out.push({ heading: t("资产"), entries: assets });
 
-    const tags = tagIndex({ servers, domains, mailboxes, aiAssets, secrets, certs });
+    const tags = tagIndex({ servers, domains, mailboxes, aiAssets, secrets, certs, services });
     if (tags.length) {
       out.push({
         heading: t("分组"),
@@ -219,6 +222,7 @@ function Palette({ shown, onClose }: { shown: boolean; onClose: () => void }) {
     aiAssets,
     secrets,
     certs,
+    services,
     setView,
     setExpanded,
     openSsh,

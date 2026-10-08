@@ -21,6 +21,7 @@ function useViewCollection(): Array<Partial<Taggable>> {
   const aiAssets = useAppStore((s) => s.aiAssets);
   const secrets = useAppStore((s) => s.secrets);
   const certs = useAppStore((s) => s.certs);
+  const services = useAppStore((s) => s.services);
   const layout = useSettings((s) => s.assetLayout);
   const hydrated = useAppStore((s) => s.hydrated);
 
@@ -36,6 +37,8 @@ function useViewCollection(): Array<Partial<Taggable>> {
       return aiAssets;
     case "vault":
       return secrets;
+    case "services":
+      return services;
     case "certs":
       return certs;
     // The overview is a dashboard and the tags view sources its own list;
@@ -43,7 +46,7 @@ function useViewCollection(): Array<Partial<Taggable>> {
     case "overview":
     case "tags":
       return hydrated && layout !== "cards"
-        ? [...servers, ...domains, ...mailboxes, ...aiAssets, ...secrets, ...certs]
+        ? [...servers, ...domains, ...mailboxes, ...aiAssets, ...secrets, ...certs, ...services]
         : [];
     case "agent":
     case "nodes":

@@ -1,5 +1,6 @@
 const RECORD = "notification:mail-push";
-const PROVIDERS = new Set(["telegram", "serverchan", "wecom"]);
+const PROVIDERS = new Set(["telegram", "serverchan", "wecom", "wxpusher"]);
+const requiresDestination = (provider) => provider === "telegram" || provider === "wxpusher";
 const DEFAULTS = Object.freeze({
   enabled: false,
   provider: "telegram",
@@ -26,7 +27,9 @@ function validateToken(provider, token) {
       ? /^\d{5,20}:[A-Za-z0-9_-]{20,200}$/.test(token)
       : provider === "serverchan"
         ? /^SCT[A-Za-z0-9_-]{10,250}$/.test(token)
-        : /^[A-Za-z0-9-]{10,200}$/.test(token);
+        : provider === "wxpusher"
+          ? /^AT_[A-Za-z0-9_-]{10,250}$/.test(token)
+          : /^[A-Za-z0-9-]{10,200}$/.test(token);
   if (!valid) throw new Error("推送凭据格式不正确，请填写对应渠道的 Token 或密钥。");
 }
 
@@ -84,7 +87,9 @@ export class MailPushService {
     ) {
       throw new Error("Telegram 目标需为 Chat ID 或公开频道用户名。");
     }
-    if (provider !== "telegram" && destination)
+    if (provider === "wxpusher" && destination && !/^UID_[A-Za-z0-9_-]{5,96}$/.test(destination))
+      throw new Error("WxPusher 接收用户需填写以 UID_ 开头的用户 UID。");
+    if (!requiresDestination(provider) && destination)
       throw new Error("此渠道使用密钥指定目标，无需填写目标地址。");
     if (
       !Array.isArray(input.mailboxIds) ||
@@ -131,7 +136,10 @@ export class MailPushService {
         ? ""
         : enteredToken || (targetChanged ? "" : (previous?.token ?? ""));
       if (token) validateToken(provider, token);
-      if (enabled && (!token || !mailboxIds.length || (provider === "telegram" && !destination))) {
+      if (
+        enabled &&
+        (!token || !mailboxIds.length || (requiresDestination(provider) && !destination))
+      ) {
         throw new Error("启用前请填写推送凭据、目标并选择邮箱。");
       }
       const reset =
@@ -169,12 +177,12 @@ export class MailPushService {
     this.#controller = controller;
     try {
       const record = await this.#vault.get(RECORD);
-      if (!record?.token || (record.provider === "telegram" && !record.destination)) {
+      if (!record?.token || (requiresDestination(record.provider) && !record.destination)) {
         throw new Error("请先保存推送凭据和目标。");
       }
       await this.#send(
         record,
-        "司南 Nanpad 邮件推送测试：连接正常。此消息不包含邮箱或邮件内容。",
+        "知屿 Zhiyu 邮件推送测试：连接正常。此消息不包含邮箱或邮件内容。",
         controller.signal,
       );
       return { ok: true };
@@ -263,7 +271,7 @@ export class MailPushService {
         .map((entry) => entry.checkedAt)
         .sort()
         .at(-1);
-      const text = `司南 Nanpad 邮件提醒\n新增邮件：${newMessages} 封\n相关邮箱未读：${unseen} 封\n检查时间：${checkedAt}`;
+      const text = `知屿 Zhiyu 邮件提醒\n新增邮件：${newMessages} 封\n相关邮箱未读：${unseen} 封\n检查时间：${checkedAt}`;
       await this.#send(record, text, signal);
       signal.throwIfAborted();
       this.#requireUnlocked();
@@ -291,10 +299,21 @@ export class MailPushService {
       body = { chat_id: record.destination, text, disable_web_page_preview: true };
     } else if (record.provider === "serverchan") {
       url = `https://sctapi.ftqq.com/${record.token}.send`;
-      body = { title: "司南 Nanpad 邮件提醒", desp: text };
+      body = { title: "知屿 Zhiyu 邮件提醒", desp: text };
     } else if (record.provider === "wecom") {
       url = `https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=${encodeURIComponent(record.token)}`;
       body = { msgtype: "text", text: { content: text } };
+    } else if (record.provider === "wxpusher") {
+      if (!/^UID_[A-Za-z0-9_-]{5,96}$/.test(record.destination))
+        throw new Error("WxPusher 接收用户需填写以 UID_ 开头的用户 UID。");
+      url = "https://wxpusher.zjiecode.com/api/send/message";
+      body = {
+        appToken: record.token,
+        content: text,
+        summary: "知屿 Zhiyu 邮件提醒",
+        contentType: 1,
+        uids: [record.destination],
+      };
     } else {
       throw new Error("请选择支持的推送渠道。");
     }
@@ -313,8 +332,15 @@ export class MailPushService {
           ? result?.ok === true
           : record.provider === "wecom"
             ? result?.errcode === 0
-            : result?.code === 0 &&
-              (!result.data || result.data.errno === undefined || result.data.errno === 0);
+            : record.provider === "wxpusher"
+              ? result?.code === 1000 &&
+                Array.isArray(result.data) &&
+                result.data.some(
+                  (entry) => entry?.uid === record.destination && entry.code === 1000,
+                ) &&
+                result.data.every((entry) => entry?.code === 1000)
+              : result?.code === 0 &&
+                (!result.data || result.data.errno === undefined || result.data.errno === 0);
       if (!accepted) throw new Error("provider_rejected");
     } catch {
       throw new Error(

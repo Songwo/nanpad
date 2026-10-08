@@ -34,11 +34,13 @@ jobs:
       - run: npm test
       - run: node scripts/updater-engine-integration.mjs
       - run: npm run desktop:dist
+      - name: 验证改名后的安装目录兼容
+        run: node scripts/installer-directory-integration.mjs
       - name: 验证正式版彩色图标与任务栏分组
         shell: pwsh
         run: |
           $version = (Get-Content package.json | ConvertFrom-Json).version
-          node scripts/brand-icons-integration.mjs "release/v$version/win-unpacked/Nanpad.exe"
+          node scripts/brand-icons-integration.mjs "release/v$version/win-unpacked/Zhiyu.exe"
       - name: 验证本机默认监控与 Markdown 导入
         run: |
           node scripts/local-usage-integration.mjs
@@ -49,9 +51,9 @@ jobs:
         shell: pwsh
         run: |
           $version = (Get-Content package.json | ConvertFrom-Json).version
-          node scripts/workspace-v150-integration.mjs "release/v$version/win-unpacked/Nanpad.exe"
+          node scripts/workspace-v150-integration.mjs "release/v$version/win-unpacked/Zhiyu.exe"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          node scripts/agent-access-desktop-integration.mjs "release/v$version/win-unpacked/Nanpad.exe"
+          node scripts/agent-access-desktop-integration.mjs "release/v$version/win-unpacked/Zhiyu.exe"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           node scripts/vault-usability-integration.mjs
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
@@ -62,7 +64,10 @@ jobs:
         shell: pwsh
         run: |
           $version = (Get-Content package.json | ConvertFrom-Json).version
-          node scripts/passwords-desktop-integration.mjs "release/v$version/win-unpacked/Nanpad.exe"
+          node scripts/passwords-desktop-integration.mjs "release/v$version/win-unpacked/Zhiyu.exe"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node scripts/identity-totp-desktop-integration.mjs "release/v$version/win-unpacked/Zhiyu.exe"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: 验证浏览器插件真实交互
         run: node scripts/browser-companion-integration.mjs
       - name: 校验文件与发布
@@ -72,12 +77,12 @@ jobs:
         run: |
           $version = (Get-Content package.json | ConvertFrom-Json).version
           $directory = "release/v$version"
-          $installer = "$directory/Nanpad-$version-setup.exe"
-          $extension = "$directory/Nanpad-$version-browser-extension.zip"
-          Compress-Archive -Path "$directory/nanpad-browser-extension/*" -DestinationPath $extension
+          $installer = "$directory/Zhiyu-$version-setup.exe"
+          $extension = "$directory/Zhiyu-$version-browser-extension.zip"
+          Compress-Archive -Path "$directory/zhiyu-browser-extension/*" -DestinationPath $extension
           $hash = (Get-FileHash $installer -Algorithm SHA256).Hash.ToLower()
           $extensionHash = (Get-FileHash $extension -Algorithm SHA256).Hash.ToLower()
-          @("$hash  Nanpad-$version-setup.exe", "$extensionHash  Nanpad-$version-browser-extension.zip") | Set-Content "$directory/SHA256SUMS.txt" -Encoding utf8
+          @("$hash  Zhiyu-$version-setup.exe", "$extensionHash  Zhiyu-$version-browser-extension.zip") | Set-Content "$directory/SHA256SUMS.txt" -Encoding utf8
           $metadata = "$directory/latest.yml"
           $blockmap = "$installer.blockmap"
           if (!(Test-Path $metadata) -or !(Test-Path $blockmap)) { throw 'Update metadata missing' }

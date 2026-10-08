@@ -25,6 +25,8 @@ import type {
   Server,
   Snapshot,
 } from "@/lib/types";
+import { normalizeService } from "../../electron/services/service-assets.mjs";
+import { SERVICE_LABELS } from "@/lib/services";
 import { uid } from "@/lib/utils";
 import { t } from "@/lib/i18n";
 import { accountMetadataFromForm, clearAccountDraft } from "@/lib/account-record.mjs";
@@ -96,6 +98,7 @@ function ComposerBody({
   const aiAssets = useAppStore((s) => s.aiAssets);
   const secrets = useAppStore((s) => s.secrets);
   const certs = useAppStore((s) => s.certs);
+  const services = useAppStore((s) => s.services);
   // Reading the collections directly keeps `existing` referentially stable
   // between renders, which is what the reset effect below keys on.
   const existing = findAsset(kind, editingId, {
@@ -105,6 +108,7 @@ function ComposerBody({
     aiAssets,
     secrets,
     certs,
+    services,
   });
   const preset = useAppStore((s) => s.composerPreset);
   const [form, setForm] = useState<Record<string, string>>(() => ({
@@ -683,7 +687,7 @@ function fields(
           />,
         ]),
     ...kindFields(kind, form, set),
-    ...(kind === "ai" && form.oauthAccountId
+    ...(kind === "service" || (kind === "ai" && form.oauthAccountId)
       ? []
       : [<AccountFields key="_account" assetId={editingId} kind={kind} form={form} set={set} />]),
   ];
@@ -725,6 +729,40 @@ function kindFields(
   switch (kind) {
     case "server":
       return [];
+    case "service":
+      return [
+        F("name", t("服务名称"), { required: true }),
+        <Field key="category" label={t("服务类型")}>
+          <Select
+            aria-label={t("服务类型")}
+            value={form.category || "custom"}
+            onValueChange={(value) => set("category", value)}
+            options={Object.entries(SERVICE_LABELS).map(([value, label]) => ({
+              value,
+              label: t(label),
+            }))}
+          />
+        </Field>,
+        F("url", t("服务网址"), { span: true, placeholder: "https://example.com" }),
+        F("provider", t("提供方")),
+        <Field key="status" label={t("手动记录状态")}>
+          <Select
+            aria-label={t("手动记录状态")}
+            value={form.status || "online"}
+            onValueChange={(value) => set("status", value)}
+            options={[
+              { value: "online", label: t("正常") },
+              { value: "warning", label: t("注意") },
+              { value: "offline", label: t("告警") },
+            ]}
+          />
+        </Field>,
+        F("tags", t("标签（逗号分隔）"), { span: true }),
+        F("notes", t("说明"), { span: true, area: true }),
+        <p key="privacy" className="text-meta text-muted sm:col-span-2">
+          {t("登录凭据请保存在密钥库，再通过关联资产连接到此服务。服务不会自动发起探测。")}
+        </p>,
+      ];
     case "domain":
       return [
         F("name", t("域名"), { span: true }),
@@ -816,6 +854,8 @@ function findAsset(kind: AssetKind, id: string | null, s: Snapshot): unknown {
       return s.aiAssets.find((x) => x.id === id) ?? null;
     case "secret":
       return s.secrets.find((x) => x.id === id) ?? null;
+    case "service":
+      return (s.services ?? []).find((x) => x.id === id) ?? null;
     case "cert":
       return s.certs.find((x) => x.id === id) ?? null;
   }
@@ -872,6 +912,16 @@ function defaults(kind: AssetKind, existing: unknown): Record<string, string> {
       };
     case "secret":
       return { name: "", kind: "api", hint: "", tags: "", notes: "" };
+    case "service":
+      return {
+        name: "",
+        category: "custom",
+        url: "",
+        provider: "",
+        status: "online",
+        tags: "",
+        notes: "",
+      };
     case "cert":
       return { cn: "", issuer: "Let's Encrypt", expiresAt: today, sans: "", tags: "", notes: "" };
   }
@@ -1008,6 +1058,9 @@ function persist(
         name: form.name,
         folderId: form.folderId ?? previous?.folderId,
         kind: (form.kind as Secret["kind"]) || "api",
+        ...(previous?.identityProvider && form.kind === previous.kind
+          ? { identityProvider: previous.identityProvider }
+          : {}),
         hint: form.hint,
         // Kept empty on purpose: the real value is in the vault.
         value: "",
@@ -1018,6 +1071,22 @@ function persist(
         ...(form.kind === "account" ? accountMetadataFromForm(form) : {}),
       };
       s.upsertSecret(item);
+      break;
+    }
+    case "service": {
+      s.upsertService(
+        normalizeService({
+          id,
+          name: form.name,
+          category: form.category,
+          url: form.url,
+          provider: form.provider,
+          status: form.status,
+          notes: form.notes,
+          tags: parseTags(form.tags ?? ""),
+          imageDataUrl: form.imageDataUrl || "",
+        }),
+      );
       break;
     }
     case "cert": {

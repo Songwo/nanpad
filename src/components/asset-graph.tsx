@@ -58,6 +58,7 @@ const ICONS = {
   mail: Mail,
   ai: Sparkles,
   secret: KeyRound,
+  service: Globe,
   document: FileText,
 };
 function GraphNode({ id, data, isConnectable }: NodeProps<AssetNode>) {

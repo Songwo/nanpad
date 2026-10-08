@@ -17,6 +17,7 @@ const PLACEHOLDER: Record<AssetKind, string> = {
   ai: "sk-…（OpenAI / Anthropic / xAI 的密钥）\n或控制台网址",
   secret: "sk-… / ghp_… / AKIA…\n或一段私钥",
   cert: "-----BEGIN CERTIFICATE-----\n…",
+  service: "https://example.workers.dev",
 };
 
 /**
@@ -112,7 +113,6 @@ export function SmartPaste({
                 setText("");
               }}
             >
-
               {t("收起")}
             </button>
           </div>
@@ -127,7 +127,9 @@ export function SmartPaste({
           />
 
           {text.trim() && ranked.length === 0 && (
-            <p className="mt-2 text-2xs text-muted">{t("没认出来。可以直接在下面的字段里手工填写。")}</p>
+            <p className="mt-2 text-2xs text-muted">
+              {t("没认出来。可以直接在下面的字段里手工填写。")}
+            </p>
           )}
 
           {ranked.length > 0 && (
@@ -143,12 +145,7 @@ export function SmartPaste({
                     <span className="min-w-0 flex-1 text-left">
                       <span className="flex items-center gap-2">
                         <span className="font-medium">{match.label}</span>
-                        <span
-                          className={cn(
-                            "chip",
-                            match.kind === kind ? "chip-ok" : "chip-mute",
-                          )}
-                        >
+                        <span className={cn("chip", match.kind === kind ? "chip-ok" : "chip-mute")}>
                           {t(KIND_LABEL[match.kind])}
                         </span>
                       </span>
@@ -162,8 +159,6 @@ export function SmartPaste({
               ))}
             </ul>
           )}
-
-
         </div>
       )}
     </div>

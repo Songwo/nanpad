@@ -32,6 +32,7 @@ const KIND_ICON: Record<AssetKind | "system" | "phone", LucideIcon> = {
   ai: Bot,
   secret: KeyRound,
   cert: Shield,
+  service: Globe,
   system: AlertTriangle,
   phone: Phone,
 };
@@ -44,6 +45,7 @@ const KIND_VIEW: Record<AssetKind | "phone", ViewId> = {
   ai: "ai",
   secret: "vault",
   cert: "certs",
+  service: "services",
 };
 
 interface Alert {
@@ -70,6 +72,7 @@ export function useAlerts(): Alert[] {
   const aiAssets = useAppStore((s) => s.aiAssets);
   const secrets = useAppStore((s) => s.secrets);
   const certs = useAppStore((s) => s.certs);
+  const services = useAppStore((s) => s.services);
 
   return useMemo(() => {
     const out: Alert[] = [
@@ -134,6 +137,15 @@ export function useAlerts(): Alert[] {
           title: x.address,
           detail: t("投递异常"),
         })),
+      ...services
+        .filter((x) => x.status !== "online")
+        .map((x) => ({
+          id: x.id,
+          kind: "service" as const,
+          status: x.status,
+          title: x.name,
+          detail: t("手动记录状态"),
+        })),
       ...secrets
         .filter((x) => x.status !== "online")
         .map((x) => ({
@@ -145,7 +157,7 @@ export function useAlerts(): Alert[] {
         })),
     ];
     return out.sort((a, b) => rank(b.status) - rank(a.status));
-  }, [servers, domains, mailboxes, aiAssets, secrets, certs, phoneNumbers, locale]);
+  }, [servers, domains, mailboxes, aiAssets, secrets, certs, services, phoneNumbers, locale]);
 }
 
 function rank(s: Status) {
@@ -301,12 +313,13 @@ function TagPanel() {
   const aiAssets = useAppStore((s) => s.aiAssets);
   const secrets = useAppStore((s) => s.secrets);
   const certs = useAppStore((s) => s.certs);
+  const services = useAppStore((s) => s.services);
   const focusTag = useAppStore((s) => s.focusTag);
   const setView = useAppStore((s) => s.setView);
 
   const index = useMemo(
-    () => tagIndex({ servers, domains, mailboxes, aiAssets, secrets, certs }),
-    [servers, domains, mailboxes, aiAssets, secrets, certs],
+    () => tagIndex({ servers, domains, mailboxes, aiAssets, secrets, certs, services }),
+    [servers, domains, mailboxes, aiAssets, secrets, certs, services],
   );
   if (index.length === 0) return null;
 

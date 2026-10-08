@@ -3,6 +3,7 @@ import { createHash } from "node:crypto";
 
 const COLLECTIONS = {
   server: "servers",
+  service: "services",
   domain: "domains",
   cert: "certs",
   mail: "mailboxes",
@@ -34,6 +35,7 @@ const FIELDS = [
   "usedMb",
   "quotaMb",
   "provider",
+  "category",
   "plan",
   "monthlyUsd",
   "usagePct",
@@ -47,6 +49,7 @@ const FIELDS = [
 ];
 const LABELS = {
   server: "服务器 主机",
+  service: "服务资产 Workers 博客 自建邮箱",
   domain: "域名 续费",
   cert: "证书 到期",
   mail: "邮箱 容量",
@@ -252,12 +255,7 @@ export class LocalIndex {
       title: `${folder.name} / 密钥分组`,
       text: `本地密钥分组 收纳组；条目为密钥元信息目录，不含密钥值。\n${JSON.stringify(folder)}`,
     }));
-    this.docs = [
-      ...assets,
-      ...folderDocs,
-      ...secretFolderDocs,
-      ...knowledgeChunks(documents),
-    ];
+    this.docs = [...assets, ...folderDocs, ...secretFolderDocs, ...knowledgeChunks(documents)];
     if (this.docs.length > 6000) throw new Error("本地索引超过 6000 个片段，请减少导入文档。");
     this.byId = new Map(this.docs.map((doc) => [doc.id, doc]));
     this.signature = docsSignature(this.docs);

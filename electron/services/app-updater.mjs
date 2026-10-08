@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { createReadStream } from "node:fs";
 import { lstat } from "node:fs/promises";
 
-const PAGE = "https://github.com/Songwo/nanpad/releases/latest";
+const PAGE = "https://github.com/Songwo/zhiyu/releases/latest";
 
 /** 安装前再次核对已下载文件，拒绝被替换或截断的安装包。 */
 export async function verifyInstaller(file, expected) {

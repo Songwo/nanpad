@@ -39,7 +39,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh api repos/Songwo/nanpad/releases/latest > "$RUNNER_TEMP/zhiyu-release.json"
+          gh api repos/Songwo/zhiyu/releases/latest > "$RUNNER_TEMP/zhiyu-release.json"
           node scripts/build-site.mjs "$RUNNER_TEMP/zhiyu-release.json" "$RUNNER_TEMP/zhiyu-site"
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3

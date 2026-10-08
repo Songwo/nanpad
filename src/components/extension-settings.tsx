@@ -6,7 +6,7 @@ import { t } from "@/lib/i18n";
 import { useVault } from "@/lib/vault-state";
 import { Button } from "./ui/button";
 
-const RELEASES_URL = "https://github.com/Songwo/nanpad/releases/latest";
+const RELEASES_URL = "https://github.com/Songwo/zhiyu/releases/latest";
 
 export function ExtensionSettings() {
   const bridge = desktop()?.extension;
@@ -28,7 +28,7 @@ export function ExtensionSettings() {
   // 与本机同版本的直链；拿不到版本或链接失败时回退到发布页。
   async function downloadExtension() {
     const url = version
-      ? `https://github.com/Songwo/nanpad/releases/download/v${version}/Nanpad-${version}-browser-extension.zip`
+      ? `https://github.com/Songwo/zhiyu/releases/download/v${version}/Zhiyu-${version}-browser-extension.zip`
       : RELEASES_URL;
     try {
       await desktop()?.openExternal(url);

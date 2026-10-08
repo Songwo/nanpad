@@ -34,8 +34,7 @@ export function ImageBedSettings({
         <div className="my-3 rounded-lg border border-line bg-card p-4">
           <h3 className="font-semibold">上传台图库</h3>
           <p className="mt-2 break-all text-xs text-muted">
-            zensimagebed.pages.dev · 文档上传到 nanpad/documents，资产图片上传到
-            nanpad/assets。图片访问地址会随文档保存；已有本地图片不会自动上传。
+            zensimagebed.pages.dev · 上传文档与资产图片。图片访问地址会随文档保存；已有本地图片不会自动上传。
           </p>
           <label className="mt-3 block text-xs">
             {status?.configured ? "替换 API Key（留空保留现有 Key）" : "API Key"}

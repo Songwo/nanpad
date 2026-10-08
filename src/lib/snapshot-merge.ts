@@ -12,6 +12,7 @@ const collections = [
   "aiAssets",
   "secrets",
   "certs",
+  "services",
   "phoneNumbers",
   "mailFolders",
   "secretFolders",

@@ -1,0 +1,121 @@
+.document-extract {
+  display: grid;
+  gap: 16px;
+}
+.document-extract-intro {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  font-size: var(--text-meta);
+  color: var(--color-muted);
+  line-height: 1.7;
+}
+.document-extract-intro > svg {
+  flex-shrink: 0;
+  color: var(--color-ok);
+  margin-top: 4px;
+}
+.document-extract-source {
+  font-weight: 600;
+  font-size: var(--text-body);
+  overflow-wrap: anywhere;
+}
+.document-extract-note,
+.document-extract-warnings {
+  font-size: var(--text-2xs);
+  line-height: 1.7;
+  color: var(--color-muted);
+}
+.document-extract-warnings {
+  padding: 12px 12px 12px 28px;
+  list-style: disc;
+  border-radius: var(--radius-md);
+  background: var(--color-canvas);
+}
+.document-extract-list {
+  display: grid;
+  gap: 16px;
+}
+.document-extract-card {
+  display: grid;
+  gap: 14px;
+  padding: 16px;
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-md);
+}
+.document-extract-card-heading,
+.document-extract-all {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: var(--text-meta);
+  min-height: 32px;
+}
+.document-extract input[type="checkbox"] {
+  accent-color: var(--color-ink);
+  width: 16px;
+  height: 16px;
+}
+.document-extract-password {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 44px;
+  gap: 8px;
+  align-items: center;
+}
+.document-extract-card input,
+.document-extract-card textarea {
+  min-width: 0;
+}
+.document-extract-notice {
+  display: grid;
+  gap: 12px;
+  font-size: var(--text-meta);
+}
+.document-extract-notice > button {
+  justify-self: start;
+}
+.document-extract-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: var(--text-meta);
+  color: var(--color-muted);
+}
+.document-extract-error {
+  color: var(--color-crit);
+  font-size: var(--text-meta);
+  overflow-wrap: anywhere;
+  line-height: 1.7;
+}
+.document-extract-result {
+  display: grid;
+  justify-items: start;
+  gap: 12px;
+  font-size: var(--text-meta);
+}
+.document-extract-result > svg {
+  color: var(--color-ok);
+}
+.document-extract-result > h3 {
+  font-size: var(--text-lg);
+  font-weight: 600;
+}
+.document-extract-footer {
+  flex-wrap: wrap;
+}
+@media (max-width: 480px) {
+  .document-extract .ui-button,
+  .document-extract-card-heading,
+  .document-extract-all {
+    min-height: 44px;
+  }
+  .document-extract-footer > button {
+    white-space: normal;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .document-extract * {
+    animation: none !important;
+    transition: none !important;
+  }
+}

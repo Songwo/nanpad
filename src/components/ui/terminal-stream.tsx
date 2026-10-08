@@ -119,7 +119,7 @@ export function TerminalStream({ className }: { className?: string }) {
           </div>
           <div className="ml-2 flex items-center gap-1.5 font-mono text-xs text-neutral-300">
             <Terminal className="size-3.5 text-sky-400" />
-            <span className="font-semibold tracking-wide">nanpad-telemetry</span>
+            <span className="font-semibold tracking-wide">zhiyu-telemetry</span>
             <span className="text-neutral-500">--live-stream</span>
           </div>
         </div>

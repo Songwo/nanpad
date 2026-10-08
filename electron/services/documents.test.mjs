@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { mkdtemp, rm, readFile, writeFile, rename, unlink, stat, utimes } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { DocumentsStore, normalizeDocument, documentLink } from "./documents.mjs";
+import { DocumentsStore, normalizeDocument, documentLink, documentRevision } from "./documents.mjs";
 const doc = () => ({
   id: "doc-test",
   title: "部署说明",
@@ -23,6 +23,36 @@ const doc = () => ({
     ],
   },
   bindings: [],
+});
+test("Markdown 原文跨重启和元数据编辑保留，列表不携带正文", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "nanpad-docs-markdown-"));
+  const markdown =
+    "# 源码\r\n\r\n| 名称 | 值 |\r\n| --- | --- |\r\n| 应用 | 知屿 |\r\n\r\n- [x] 保留格式\r\n";
+  try {
+    const store = new DocumentsStore(dir);
+    const saved = await store.save({ ...doc(), markdown });
+    assert.equal(saved.markdown, markdown);
+    assert.equal(saved.content.content[0].type, "heading");
+    assert.notEqual(
+      documentRevision(saved),
+      documentRevision({ ...saved, markdown: markdown + "\r\n" }),
+    );
+    await store.save({ ...saved, title: "修改标题", bindings: [{ kind: "secret", id: "s1" }] });
+    const reopened = new DocumentsStore(dir);
+    assert.equal((await reopened.get(saved.id)).markdown, markdown);
+    assert.equal("markdown" in (await reopened.list())[0], false);
+    assert.equal("markdown" in (await reopened.listMetadata()).documents[0], false);
+    const { markdown: _markdown, ...rich } = await reopened.get(saved.id);
+    await reopened.save(rich);
+    assert.equal("markdown" in (await reopened.get(saved.id)), false);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+test("Markdown 保存允许清空但拒绝错误类型与超限原文", () => {
+  assert.equal(normalizeDocument({ ...doc(), markdown: "" }).markdown, "");
+  assert.throws(() => normalizeDocument({ ...doc(), markdown: {} }), /源码必须是文本/);
+  assert.throws(() => normalizeDocument({ ...doc(), markdown: "中".repeat(400000) }), /1 MiB/);
 });
 test("文档独立保存、跨重启读取、多资产绑定和解除", async () => {
   const dir = await mkdtemp(join(tmpdir(), "nanpad-docs-"));

@@ -14,6 +14,7 @@ import {
   LockKeyhole,
   ShieldCheck,
   ChevronRight,
+  Fingerprint,
 } from "lucide-react";
 import { toast } from "sonner";
 import { useAppStore } from "@/lib/store";
@@ -35,6 +36,7 @@ import { CollectionCard } from "./ui/collection-card";
 import { BrowserPasswordTransfer } from "./browser-password-transfer";
 import { isDesktop } from "@/lib/desktop";
 import { useVault } from "@/lib/vault-state";
+import { IdentityImport } from "./identity-import";
 
 const KIND_LABEL: Record<Secret["kind"], string> = {
   account: "账号密码",
@@ -59,6 +61,7 @@ export function VaultWorkspace() {
   const [editor, setEditor] = useState<SecretFolder | "new" | null>(null);
   const [busy, setBusy] = useState(false);
   const [transferOpen, setTransferOpen] = useState(false);
+  const [identityOpen, setIdentityOpen] = useState(false);
   const query = state.query.trim().toLocaleLowerCase();
   const matching = state.secrets.filter(
     (secret) =>
@@ -157,6 +160,22 @@ export function VaultWorkspace() {
           </span>
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          {isDesktop() && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={async () => {
+                try {
+                  if (await requireVault(t("导入身份需要先解锁密钥库。"))) setIdentityOpen(true);
+                } catch (error) {
+                  toast.error(String(error));
+                }
+              }}
+            >
+              <Fingerprint className="size-4" />
+              {t("导入身份")}
+            </Button>
+          )}
           <Button variant="outline" size="sm" onClick={() => setTransferOpen(true)}>
             <ArrowDownUp className="size-4" />
             {t("浏览器密码")}
@@ -364,6 +383,9 @@ export function VaultWorkspace() {
         </>
       )}
       {transferOpen && <BrowserPasswordTransfer close={() => setTransferOpen(false)} />}
+      {identityOpen && (
+        <IdentityImport folderId={active ?? ""} close={() => setIdentityOpen(false)} />
+      )}
       {editor && (
         <FolderEditor
           key={editor === "new" ? "new" : editor.id}

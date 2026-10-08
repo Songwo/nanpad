@@ -5,16 +5,18 @@ import { create } from "zustand";
 import type { JSONContent } from "@tiptap/react";
 import type { AssetRef } from "./operations";
 import { desktop } from "./desktop";
+import { markdownContent } from "./document-markdown.mjs";
 
 export interface DocumentAsset {
   id: string;
   title: string;
   content: JSONContent;
+  markdown?: string;
   bindings: AssetRef[];
   createdAt: string;
   updatedAt: string;
 }
-export interface DocumentSummary extends Omit<DocumentAsset, "content"> {
+export interface DocumentSummary extends Omit<DocumentAsset, "content" | "markdown"> {
   excerpt: string;
   imageCount: number;
 }
@@ -45,7 +47,13 @@ const local: DocumentsBridge = {
     const existing = localStorage.getItem("nanpad-doc:" + doc.id);
     if (doc.createOnly && existing) return JSON.parse(existing);
     const { createOnly: _createOnly, ...content } = doc;
-    const next = { ...content, updatedAt: new Date().toISOString() };
+    const next = {
+      ...content,
+      ...(typeof content.markdown === "string"
+        ? { content: markdownContent(content.markdown) }
+        : {}),
+      updatedAt: new Date().toISOString(),
+    };
     localStorage.setItem("nanpad-doc:" + doc.id, JSON.stringify(next));
     return next;
   },
@@ -85,7 +93,10 @@ interface State {
   loaded: boolean;
   load(force?: boolean): Promise<void>;
   open(id: string): Promise<void>;
-  create(bindings?: AssetRef[], initial?: Pick<DocumentAsset, "title" | "content">): Promise<void>;
+  create(
+    bindings?: AssetRef[],
+    initial?: Pick<DocumentAsset, "title" | "content" | "markdown">,
+  ): Promise<void>;
   importServer(server: { id: string; name: string; docs?: string }): Promise<void>;
   change(doc: DocumentAsset): void;
   flush(id: string): Promise<void>;
@@ -205,6 +216,7 @@ export const useDocuments = create<State>((set, get) => ({
       id: "doc-" + crypto.randomUUID(),
       title: initial?.title ?? "未命名文档",
       content: initial?.content ?? { type: "doc", content: [{ type: "paragraph" }] },
+      ...(initial?.markdown !== undefined ? { markdown: initial.markdown } : {}),
       bindings,
       createdAt: now,
       updatedAt: now,

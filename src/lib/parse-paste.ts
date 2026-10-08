@@ -72,6 +72,7 @@ export const PASTE_HINTS: Record<AssetKind, { detectors: string[]; hint: string 
     detectors: ["api-key", "private-key", "url"],
     hint: "网站登录网址 · API Key · Token · 私钥",
   },
+  service: { detectors: ["url"], hint: "服务网址" },
   cert: {
     detectors: ["certificate", "url", "host-port"],
     hint: "证书 PEM · 网址",
@@ -338,6 +339,20 @@ function matchUrl(text: string, kind?: AssetKind): PasteMatch | null {
   // Strip one level of subdomain noise for the registrable name.
   const parts = host.split(".");
   const registrable = parts.length > 2 ? parts.slice(-2).join(".") : host;
+  if (kind === "service")
+    return {
+      id: "url",
+      kind: "service",
+      label: t("服务网址"),
+      detail: host,
+      fields: {
+        name: host,
+        url: url.toString(),
+        category: host.endsWith(".workers.dev") ? "worker" : "custom",
+        provider: host.endsWith(".workers.dev") ? "Cloudflare" : "",
+      },
+      score: 60,
+    };
   const website = kind === "secret";
 
   return {

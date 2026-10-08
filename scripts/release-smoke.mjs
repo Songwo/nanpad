@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, mkdir, rm, readFile } from "node:fs/promises";
+import { mkdtemp, mkdir, rm, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { resolve, join } from "node:path";
 import { _electron as electron } from "playwright";
@@ -9,17 +9,22 @@ import { chooseOption, verifyOptions } from "./select-helper.mjs";
 const directory = await mkdtemp(join(tmpdir(), "nanpad-packaged-"));
 let instance;
 try {
+  await writeFile(
+    join(directory, "local-usage.json"),
+    JSON.stringify({ version: 1, enabled: false, checkpoints: [], events: [], records: [] }),
+  );
   const env = { ...process.env };
   delete env.ELECTRON_RUN_AS_NODE;
   delete env.SINAN_DEV_URL;
   delete env.NANPAD_TEST_DATA_DIR;
   instance = await electron.launch({
-    executablePath: resolve(process.argv[2] ?? "release/win-unpacked/Nanpad.exe"),
+    executablePath: resolve(process.argv[2] ?? "release/win-unpacked/Zhiyu.exe"),
     args: [
       `--user-data-dir=${directory}`,
       "nanpad://capture?url=https%3A%2F%2Frelease.example.test%2Flogin%3Ftoken%3Dprivate&title=Release",
     ],
     env,
+    locale: "zh-CN",
     timeout: 45000,
   });
   const actual = await instance.evaluate(({ app }) => ({
@@ -133,6 +138,9 @@ try {
   }
   await page.evaluate(() => window.sinan.display.set(100));
   await page.screenshot({ path: "release/screenshots/v110-packaged-phone.png" });
+  const localUsage = JSON.parse(await readFile(join(directory, "local-usage.json"), "utf8"));
+  assert.equal(localUsage.enabled, false, "发布回归不得读取真实本机 AI 日志");
+  assert.deepEqual(localUsage.records, []);
   assert.deepEqual(errors, []);
   console.log(
     JSON.stringify({
@@ -140,6 +148,7 @@ try {
       version: actual.version,
       packaged: true,
       isolated: true,
+      realLocalLogMonitoringDisabled: true,
       providers: 4,
       onboarding: true,
       restart: true,

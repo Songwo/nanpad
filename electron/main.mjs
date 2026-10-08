@@ -56,6 +56,12 @@ import { AgentService } from "./services/agent-service.mjs";
 import { ProfileService } from "./services/profile.mjs";
 import { createImageNormalizer, normalizeSnapshotImages } from "./services/image-data.mjs";
 import { AiAccounts } from "./services/ai-accounts.mjs";
+import { IdentityAccounts } from "./services/identity-accounts.mjs";
+import { identityPostsDocument } from "./services/identity-documents.mjs";
+import { AccountTotp } from "./services/account-totp.mjs";
+import { DocumentAccountImports } from "./services/document-account-imports.mjs";
+import { parseDocumentAccounts } from "./services/document-accounts.mjs";
+import { readMonitorMinutes, validateMonitorMinutes } from "./services/server-monitor.mjs";
 import { mergeDemo, DEMO_KNOWLEDGE } from "./services/demo.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -93,6 +99,9 @@ let ssh = null;
 let metrics;
 let agent;
 let aiAccounts;
+let identities;
+let accountTotp;
+let documentAccounts;
 let mailboxes;
 let mailClient;
 let mailPush;
@@ -105,7 +114,13 @@ let quitting = false;
 let notificationTimer;
 let mailPushTimer;
 let currentSnapshot = {};
-let preferences = { closeToTray: true, notifications: true, locale: "zh", zoomPercent: 100 };
+let preferences = {
+  closeToTray: true,
+  notifications: true,
+  locale: "zh",
+  zoomPercent: 100,
+  serverMonitorMinutes: 5,
+};
 const tracker = new NotificationTracker();
 const writes = new Map();
 const captures = new CaptureQueue();
@@ -167,6 +182,8 @@ function lockVault() {
 
 function assertPublicVaultRecord(id) {
   if (typeof id !== "string" || !id) throw new Error("凭据标识不正确。");
+  if (["identity-config:", "identity-auth:", "totp:"].some((prefix) => id.startsWith(prefix)))
+    throw new Error("请通过身份或动态验证码面板管理此凭据。");
   if (id === "notification:mail-push") {
     throw new Error("请通过邮件推送设置管理此凭据。");
   }
@@ -471,6 +488,83 @@ function registerIpc() {
     captures.discard(id);
   });
   vault = new Vault(vaultPath(app.getPath("userData")));
+  documentAccounts = new DocumentAccountImports({
+    vault,
+    documents,
+    getAssets: () => currentSnapshot,
+    publishAssets: publishBrowserAssets,
+    parse: parseDocumentAccounts,
+  });
+  handle("document-accounts:preview", (id) => documentAccounts.preview(id));
+  handle("document-accounts:cancel", (ticket) => documentAccounts.cancel(ticket));
+  handle("document-accounts:commit", async (input) => {
+    const { document, ...result } = await documentAccounts.commit(input);
+    if (document) emit("documents:changed", { document });
+    return result;
+  });
+  accountTotp = new AccountTotp({ vault, getAssets: () => currentSnapshot });
+  for (const method of ["status", "configure", "code", "remove"])
+    handle("totp:" + method, (...args) => accountTotp[method](...args));
+  identities = new IdentityAccounts({
+    vault,
+    fetchImpl: (...args) => net.fetch(...args),
+    openExternal: (url) => shell.openExternal(url),
+    getAssets: () => currentSnapshot,
+  });
+  for (const method of [
+    "config",
+    "configure",
+    "start",
+    "status",
+    "cancel",
+    "get",
+    "refresh",
+    "loadPosts",
+    "disconnect",
+  ])
+    handle("identities:" + method, (...args) => identities[method](...args));
+  handle("identities:commit", (input) =>
+    enqueueAssets(async () => {
+      const assertCurrent = unlockedSession();
+      if (
+        input?.folderId &&
+        !currentSnapshot.secretFolders?.some((folder) => folder.id === input.folderId)
+      )
+        throw new Error("所选分组已不存在，请重新选择。");
+      const result = await identities.commit(input);
+      assertCurrent();
+      recoveredAccounts.set(result.asset.id, result.asset);
+      const before = currentSnapshot;
+      const existing = before.secrets?.find((item) => item.id === result.asset.id);
+      const asset = existing ? { ...existing, identityProvider: "linuxdo" } : result.asset;
+      const next = {
+        ...before,
+        secrets: existing
+          ? before.secrets.map((item) => (item.id === asset.id ? asset : item))
+          : [...(before.secrets ?? []), asset],
+      };
+      await writeJson(dataFile(), { state: next, version: 0 });
+      currentSnapshot = next;
+      emit("assets:changed", { before, snapshot: next });
+      assertCurrent();
+      return { ...result, asset };
+    }),
+  );
+  handle("identities:save-posts", async (input) => {
+    const assertCurrent = unlockedSession();
+    const account = await identities.get(input?.assetId);
+    assertCurrent();
+    const result = await identities.readPosts(input?.assetId, input?.postIds, {
+      force: input?.force === true,
+    });
+    assertCurrent();
+    if (!result.items.length) return { documentId: null, imported: 0, errors: result.errors };
+    const doc = identityPostsDocument(account, result.items);
+    const saved = await documents.save(doc, { assertCurrent });
+    emit("documents:changed", { document: saved });
+    assertCurrent();
+    return { documentId: saved.id, imported: result.items.length, errors: result.errors };
+  });
   browserPasswords = new BrowserPasswords({
     vault,
     getAssets: () => currentSnapshot.secrets ?? [],
@@ -954,6 +1048,8 @@ function registerIpc() {
   }));
   handle("preferences:set", (patch) => {
     const safe = {};
+    if (patch && Object.hasOwn(patch, "serverMonitorMinutes"))
+      safe.serverMonitorMinutes = validateMonitorMinutes(patch.serverMonitorMinutes);
     if (typeof patch?.closeToTray === "boolean") safe.closeToTray = patch.closeToTray;
     if (typeof patch?.notifications === "boolean") safe.notifications = patch.notifications;
     if (patch?.locale === "zh" || patch?.locale === "en") safe.locale = patch.locale;
@@ -986,7 +1082,7 @@ function registerIpc() {
   updateEngine.setFeedURL({
     provider: "github",
     owner: "Songwo",
-    repo: "nanpad",
+    repo: "zhiyu",
     private: false,
     releaseType: "release",
   });
@@ -1055,6 +1151,7 @@ function registerIpc() {
   handle("vault:unlock", async (master) => {
     const result = await vault.unlock(master);
     await publishBrowserAssets(await browserPasswords.managedAssets());
+    await publishBrowserAssets(await identities.managedAssets());
     return result;
   });
   handle("vault:lock", lockVault);
@@ -1076,8 +1173,19 @@ function registerIpc() {
     assertPublicVaultRecord(id);
     return vault.get(id);
   });
-  handle("vault:remove", (id) => {
+  handle("vault:remove", async (id) => {
     assertPublicVaultRecord(id);
+    if (id.startsWith("account:secret-linuxdo-")) {
+      await identities.remove(id.slice("account:".length));
+      recoveredAccounts.delete(id.slice("account:".length));
+      return;
+    }
+    if (id.startsWith("account:")) {
+      const assetId = id.slice("account:".length);
+      const result = await vault.removeMany([id, `totp:${assetId}`]);
+      recoveredAccounts.delete(assetId);
+      return result;
+    }
     return vault.remove(id);
   });
   handle("vault:list", () => vault.list());
@@ -1242,6 +1350,7 @@ if (!app.requestSingleInstanceLock()) {
         if (typeof saved[key] === "boolean") preferences[key] = saved[key];
       if (["zh", "en"].includes(saved.locale)) preferences.locale = saved.locale;
       preferences.zoomPercent = readZoomPercent(saved.zoomPercent);
+      preferences.serverMonitorMinutes = readMonitorMinutes(saved.serverMonitorMinutes);
     } catch (err) {
       if (err.code !== "ENOENT") console.error("preferences:load", err.message);
     }
@@ -1286,6 +1395,8 @@ if (!app.requestSingleInstanceLock()) {
 
   app.on("before-quit", () => {
     stopPrivateTasks();
+    identities?.stop();
+    documentAccounts?.stop();
     void extensionBridge?.stop();
     quitting = true;
     clearInterval(notificationTimer);
@@ -1300,7 +1411,30 @@ function buildMenu() {
   const isMac = process.platform === "darwin";
   const label = (zh, en) => (preferences.locale === "en" ? en : zh);
   return Menu.buildFromTemplate([
-    ...(isMac ? [{ role: "appMenu" }] : []),
+    ...(isMac
+      ? [
+          {
+            label: "知屿 Zhiyu",
+            submenu: [
+              {
+                label: label("关于知屿 Zhiyu", "About Zhiyu"),
+                click: () => {
+                  app.setAboutPanelOptions({ applicationName: "知屿 Zhiyu" });
+                  app.showAboutPanel();
+                },
+              },
+              { type: "separator" },
+              { role: "services", label: label("服务", "Services") },
+              { type: "separator" },
+              { role: "hide", label: label("隐藏知屿 Zhiyu", "Hide Zhiyu") },
+              { role: "hideOthers", label: label("隐藏其他应用", "Hide Others") },
+              { role: "unhide", label: label("显示全部", "Show All") },
+              { type: "separator" },
+              { role: "quit", label: label("退出知屿 Zhiyu", "Quit Zhiyu") },
+            ],
+          },
+        ]
+      : []),
     {
       label: label("文件", "File"),
       submenu: [
@@ -1350,7 +1484,7 @@ function buildMenu() {
       submenu: [
         {
           label: label("项目主页", "Project homepage"),
-          click: () => shell.openExternal("https://github.com/Songwo/nanpad"),
+          click: () => shell.openExternal("https://github.com/Songwo/zhiyu"),
         },
       ],
     },

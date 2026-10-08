@@ -23,6 +23,30 @@ function on(channel, handler) {
 }
 
 contextBridge.exposeInMainWorld("sinan", {
+  documentAccounts: {
+    preview: (documentId) => unwrap(ipcRenderer.invoke("document-accounts:preview", documentId)),
+    commit: (input) => unwrap(ipcRenderer.invoke("document-accounts:commit", input)),
+    cancel: (ticket) => unwrap(ipcRenderer.invoke("document-accounts:cancel", ticket)),
+  },
+  identities: {
+    config: () => unwrap(ipcRenderer.invoke("identities:config")),
+    configure: (input) => unwrap(ipcRenderer.invoke("identities:configure", input)),
+    start: () => unwrap(ipcRenderer.invoke("identities:start")),
+    status: (id) => unwrap(ipcRenderer.invoke("identities:status", id)),
+    cancel: (id) => unwrap(ipcRenderer.invoke("identities:cancel", id)),
+    commit: (input) => unwrap(ipcRenderer.invoke("identities:commit", input)),
+    get: (id) => unwrap(ipcRenderer.invoke("identities:get", id)),
+    refresh: (id) => unwrap(ipcRenderer.invoke("identities:refresh", id)),
+    loadPosts: (id, options) => unwrap(ipcRenderer.invoke("identities:loadPosts", id, options)),
+    disconnect: (id) => unwrap(ipcRenderer.invoke("identities:disconnect", id)),
+    savePosts: (input) => unwrap(ipcRenderer.invoke("identities:save-posts", input)),
+  },
+  totp: {
+    status: (id) => unwrap(ipcRenderer.invoke("totp:status", id)),
+    configure: (input) => unwrap(ipcRenderer.invoke("totp:configure", input)),
+    code: (id) => unwrap(ipcRenderer.invoke("totp:code", id)),
+    remove: (id) => unwrap(ipcRenderer.invoke("totp:remove", id)),
+  },
   passwords: {
     previewImport: () => unwrap(ipcRenderer.invoke("passwords:preview-import")),
     commitImport: (ticket) => unwrap(ipcRenderer.invoke("passwords:commit-import", ticket)),

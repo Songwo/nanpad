@@ -21,4 +21,4 @@ OAuth 用于账号信息和额度查询；模型问答继续使用独立的 Open
 
 ## 验证与已知问题
 
-类型检查、298 项测试、桌面与网页构建、桌面集成和打包程序验收通过。网页 smoke 因 Grok 平台外部脚本的跨源加载错误未通过；桌面页面无该错误。远端私密 API Key 与四家真实账号登录未由自动化代用户验收。完整记录见 https://github.com/Songwo/nanpad/blob/v0.2.0/docs/VERIFICATION-0.2.0.md 。
+类型检查、298 项测试、桌面与网页构建、桌面集成和打包程序验收通过。网页 smoke 因 Grok 平台外部脚本的跨源加载错误未通过；桌面页面无该错误。远端私密 API Key 与四家真实账号登录未由自动化代用户验收。完整记录见 https://github.com/Songwo/zhiyu/blob/v0.2.0/docs/VERIFICATION-0.2.0.md 。

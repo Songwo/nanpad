@@ -92,6 +92,7 @@ export class Vault {
       await writeFile(tmp, JSON.stringify(doc), { encoding: "utf8", mode: 0o600, flag: "wx" });
       this.#assertGeneration(generation);
       beforeCommit?.();
+      this.#assertGeneration(generation);
       // 提交段不让出事件循环，保证锁库不能插在落盘与切换解密密钥之间。
       renameSync(tmp, this.#file);
       this.#doc = doc;
@@ -278,6 +279,7 @@ export class Vault {
         this.#assertGeneration(generation);
         const key = this.#require();
         beforeCommit?.();
+        this.#assertGeneration(generation);
         const records = { ...(doc?.records ?? {}) };
         const ids = new Set();
         for (const entry of entries) {
@@ -289,12 +291,21 @@ export class Vault {
             ids.has(entry.id) ||
             !entry.secret ||
             typeof entry.secret !== "object" ||
-            Array.isArray(entry.secret)
+            Array.isArray(entry.secret) ||
+            (entry.merge !== undefined && typeof entry.merge !== "boolean")
           )
             throw new Error("批量凭据格式无效");
           ids.add(entry.id);
+          let secret = entry.secret;
+          if (entry.merge && Object.hasOwn(records, entry.id)) {
+            // 在持久化队列中读取最新版本，避免身份同步覆盖同时保存的密码和备注。
+            const current = JSON.parse(open(key, records[entry.id]).toString("utf8"));
+            if (!current || typeof current !== "object" || Array.isArray(current))
+              throw new Error("现有凭据不是可合并的对象");
+            secret = { ...current, ...secret };
+          }
           Object.defineProperty(records, entry.id, {
-            value: seal(key, Buffer.from(JSON.stringify(entry.secret), "utf8")),
+            value: seal(key, Buffer.from(JSON.stringify(secret), "utf8")),
             enumerable: true,
             configurable: true,
             writable: true,
@@ -344,6 +355,35 @@ export class Vault {
           await this.#write({ ...doc, records }, generation);
         }
         return { ok: true };
+      },
+      { requireUnlocked: true },
+    );
+  }
+
+  /** 一次提交整组删除，失败或锁库时保留全部原记录。 */
+  removeMany(ids, { beforeCommit } = {}) {
+    return this.#enqueue(
+      async (generation) => {
+        if (
+          !Array.isArray(ids) ||
+          ids.length > 10000 ||
+          ids.some((id) => typeof id !== "string" || !id || id.length > 512)
+        )
+          throw new Error("批量删除凭据标识无效");
+        const doc = await this.#read();
+        this.#assertGeneration(generation);
+        this.#require();
+        beforeCommit?.();
+        this.#assertGeneration(generation);
+        const records = { ...(doc?.records ?? {}) };
+        let count = 0;
+        for (const id of new Set(ids)) {
+          if (!Object.hasOwn(records, id)) continue;
+          delete records[id];
+          count += 1;
+        }
+        if (count) await this.#write({ ...doc, records }, generation, undefined, beforeCommit);
+        return { ok: true, count };
       },
       { requireUnlocked: true },
     );

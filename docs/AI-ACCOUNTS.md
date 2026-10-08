@@ -1,5 +1,7 @@
 # AI 服务账号与网页登录授权
 
+本页说明 AI 订阅账号与额度授权。Linux.do 属于身份资料导入，其配置和本人帖子保存步骤见[使用教程](USER-GUIDE.md#linuxdo-身份与本人帖子)，不使用本页的 AI 额度接口或手动回调流程。
+
 ## 支持范围
 
 | 服务商             | 登录方式                                             | 账号信息                      | 用量来源                                                             | 限制                                                                                                                        |
@@ -57,7 +59,7 @@ Access Token 和 Refresh Token 均存入主密码加密库。普通 IPC 账号�
 
 本版的问答链路仍使用单独配置的 OpenAI 兼容 API Key。网页登录授权用于查询订阅账号，不自动将这些 Token 作为第三方网关 API Key。ChatGPT、Claude、Grok、Google One 或 Code Assist 的订阅权限不能直接等同于同厂商的开发者 API 余额。
 
-DeepSeek、通义千问、火山方舟等提供 API 地址预设；目前没有在 Nanpad 中实现它们的订阅网页登录授权。Claude 原生 Messages API 不属于当前问答的 Chat Completions 协议，使用兼容网关时填写网关地址。
+DeepSeek、通义千问、火山方舟等提供 API 地址预设；目前没有在知屿中实现它们的订阅网页登录授权。Claude 原生 Messages API 不属于当前问答的 Chat Completions 协议，使用兼容网关时填写网关地址。
 
 ## Gemini 客户端说明
 

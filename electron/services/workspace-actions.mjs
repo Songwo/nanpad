@@ -1,8 +1,10 @@
 import { createHash, randomUUID } from "node:crypto";
 import { documentRevision } from "./documents.mjs";
+import { markdownContent } from "./document-markdown.mjs";
 
 const COLLECTIONS = {
   server: "servers",
+  service: "services",
   domain: "domains",
   mail: "mailboxes",
   ai: "aiAssets",
@@ -135,7 +137,13 @@ export class WorkspaceActions {
         }
         node.content?.forEach(visit);
       };
-      visit(next.content);
+      if (typeof doc.markdown === "string") {
+        matches = doc.markdown.split(args.find).length - 1;
+        if (matches === 1) {
+          next.markdown = doc.markdown.replace(args.find, () => args.replace);
+          next.content = markdownContent(next.markdown);
+        }
+      } else visit(next.content);
       if (matches !== 1)
         throw new Error("原文必须在同一文本段落中唯一匹配，请缩小修改片段后重试。");
       details = {

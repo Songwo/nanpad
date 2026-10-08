@@ -10,6 +10,7 @@ const targets = [
   { target: "ai", Icon: Bot, detail: "管理订阅与月度开支" },
   { target: "mail", Icon: Mail, detail: "管理邮箱与账号归属" },
   { target: "server", Icon: Server, detail: "记录主机，按需配置连接" },
+  { target: "service", Icon: Globe, detail: "管理 Workers、博客与自建服务" },
   { target: "domain", Icon: Globe, detail: "跟踪域名与续费日期" },
   { target: "cert", Icon: Shield, detail: "记录证书与到期时间" },
   { target: "secret", Icon: KeyRound, detail: "保存账号与加密凭据" },

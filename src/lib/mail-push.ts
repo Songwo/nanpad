@@ -1,4 +1,4 @@
-export type MailPushProvider = "telegram" | "serverchan" | "wecom";
+export type MailPushProvider = "telegram" | "serverchan" | "wecom" | "wxpusher";
 
 export interface MailPushConfig {
   enabled: boolean;

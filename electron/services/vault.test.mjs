@@ -287,3 +287,137 @@ test("原子替换前最后一次提交校验失败时保留旧库并清理临�
   assert.equal(await vault.get("account:a"), null);
   assert.deepEqual(await readdir(directory), ["vault.enc"]);
 });
+
+const linkedCredentialIds = ["account:linked", "identity-auth:linked", "totp:linked"];
+const linkedCredentials = () =>
+  linkedCredentialIds.map((id, index) => ({ id, secret: { value: `linked-private-${index}` } }));
+
+test("关联账号批量删除一次落盘，重复或缺失标识不影响其他记录", async (t) => {
+  const { file, vault } = await setup(t);
+  await vault.batch([...linkedCredentials(), { id: "unrelated", secret: { value: "keep" } }]);
+  let checks = 0;
+  assert.deepEqual(
+    await vault.removeMany([...linkedCredentialIds, linkedCredentialIds[0], "missing"], {
+      beforeCommit() {
+        checks++;
+      },
+    }),
+    { ok: true, count: 3 },
+  );
+  assert.equal(checks, 2);
+  assert.deepEqual(await vault.readAll(), { unrelated: { value: "keep" } });
+  const reopened = new Vault(file);
+  await reopened.unlock(OLD_MASTER);
+  assert.deepEqual(await reopened.readAll(), { unrelated: { value: "keep" } });
+  assert.deepEqual(await vault.removeMany([]), { ok: true, count: 0 });
+  await assert.rejects(vault.removeMany(["unrelated", null]), /标识无效/);
+  assert.deepEqual(await vault.get("unrelated"), { value: "keep" });
+});
+
+test("批量删除落盘失败时账号、授权和验证码在内存及磁盘中全部保留", async (t) => {
+  const { directory, file, vault } = await setup(t);
+  await vault.batch(linkedCredentials());
+  const original = await readFile(file, "utf8");
+  const backup = join(directory, "linked-backup.enc");
+  await rename(file, backup);
+  await mkdir(file);
+  await assert.rejects(vault.removeMany(linkedCredentialIds), /保存失败/);
+  for (const { id, secret } of linkedCredentials()) assert.deepEqual(await vault.get(id), secret);
+  assert.equal(await readFile(backup, "utf8"), original);
+  assert.deepEqual((await readdir(directory)).sort(), ["linked-backup.enc", "vault.enc"]);
+  await rm(file, { recursive: true });
+  await rename(backup, file);
+  const reopened = new Vault(file);
+  await reopened.unlock(OLD_MASTER);
+  for (const { id, secret } of linkedCredentials())
+    assert.deepEqual(await reopened.get(id), secret);
+  await vault.removeMany(linkedCredentialIds);
+  assert.deepEqual(await vault.list(), []);
+});
+
+test("批量删除提交前取消时不落盘，也不残留临时密文", async (t) => {
+  const { directory, file, vault } = await setup(t);
+  await vault.batch(linkedCredentials());
+  const original = await readFile(file, "utf8");
+  let checks = 0;
+  await assert.rejects(
+    vault.removeMany(linkedCredentialIds, {
+      beforeCommit() {
+        if (++checks >= 2) throw new Error("删除已取消");
+      },
+    }),
+    /取消/,
+  );
+  assert.equal(await readFile(file, "utf8"), original);
+  for (const { id, secret } of linkedCredentials()) assert.deepEqual(await vault.get(id), secret);
+  assert.deepEqual(await readdir(directory), ["vault.enc"]);
+});
+
+test("排队及最终提交校验期间锁库均取消整组删除", async (t) => {
+  const { directory, file, vault } = await setup(t);
+  await vault.batch(linkedCredentials());
+  const original = await readFile(file, "utf8");
+  const queued = vault.removeMany(linkedCredentialIds);
+  vault.lock();
+  await assert.rejects(queued, /操作已取消/);
+  await vault.unlock(OLD_MASTER);
+  let checks = 0;
+  await assert.rejects(
+    vault.removeMany(linkedCredentialIds, {
+      beforeCommit() {
+        if (++checks === 2) vault.lock();
+      },
+    }),
+    /操作已取消/,
+  );
+  assert.equal(vault.unlocked, false);
+  assert.equal(await readFile(file, "utf8"), original);
+  assert.deepEqual(await readdir(directory), ["vault.enc"]);
+  await vault.unlock(OLD_MASTER);
+  for (const { id, secret } of linkedCredentials()) assert.deepEqual(await vault.get(id), secret);
+});
+
+test("批量字段合并读取队列中的最新账号，不覆盖新密码、备注与恢复标记", async (t) => {
+  const { file, vault } = await setup(t);
+  await vault.set("account:shared", { username: "old", password: "password-A", note: "note-A" });
+  const latest = {
+    username: "user-edited",
+    password: "password-B",
+    note: "note-B",
+    custom: "keep-custom",
+    _browserAsset: { id: "shared", name: "保留恢复入口" },
+  };
+  const editing = vault.set("account:shared", latest);
+  const merging = vault.batch([
+    { id: "identity-auth:shared", secret: { profile: { username: "official" } } },
+    {
+      id: "account:shared",
+      merge: true,
+      secret: {
+        username: "official",
+        url: "https://linux.do/u/official",
+        updatedAt: "2026-10-08T00:00:00Z",
+      },
+    },
+  ]);
+  await Promise.all([editing, merging]);
+  const expected = {
+    ...latest,
+    username: "official",
+    url: "https://linux.do/u/official",
+    updatedAt: "2026-10-08T00:00:00Z",
+  };
+  assert.deepEqual(await vault.get("account:shared"), expected);
+  const reopened = new Vault(file);
+  await reopened.unlock(OLD_MASTER);
+  assert.deepEqual(await reopened.get("account:shared"), expected);
+  await vault.set("invalid", "not-object");
+  await assert.rejects(
+    vault.batch([
+      { id: "never-written", secret: { value: 1 } },
+      { id: "invalid", merge: true, secret: { value: 2 } },
+    ]),
+    /可合并/,
+  );
+  assert.equal(await vault.get("never-written"), null);
+});

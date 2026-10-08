@@ -1,11 +1,15 @@
-import { cp, mkdtemp, readFile, writeFile, rm } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { cp, readFile, writeFile, rm, realpath } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { spawnSync } from "node:child_process";
+import {
+  createPackageStage,
+  installPackageDependencies,
+  packageEnvironment,
+  runPackageCommand,
+} from "./package-stage.mjs";
 
-const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const stage = await mkdtemp(join(tmpdir(), "nanpad-package-"));
+const root = await realpath(resolve(dirname(fileURLToPath(import.meta.url)), ".."));
+const stage = await createPackageStage();
 const manifest = JSON.parse(await readFile(join(root, "package.json"), "utf8"));
 const lock = JSON.parse(await readFile(join(root, "package-lock.json"), "utf8"));
 // React 界面已经被 Vite 打包，暂存区只安装主进程运行依赖及其传递依赖。
@@ -20,6 +24,9 @@ const dependencies = Object.fromEntries(
     "mailparser",
     "html-to-text",
     "sanitize-html",
+    "unified",
+    "remark-parse",
+    "remark-gfm",
   ].map((name) => [name, lock.packages[`node_modules/${name}`].version]),
 );
 const appManifest = {
@@ -44,20 +51,8 @@ await writeFile(join(stage, "package-lock.json"), JSON.stringify(lock));
 const npmCli = process.env.npm_execpath;
 if (!npmCli) throw new Error("请通过 npm run desktop:dist 或 npm run desktop:pack 执行。");
 // npm run 注入的项目路径会让依赖收集器误读父项目，独立暂存区只保留运行依赖。
-const env = { ...process.env };
-for (const key of Object.keys(env)) {
-  if (/^npm_/i.test(key) || key === "INIT_CWD") delete env[key];
-}
-function run(script, args) {
-  const result = spawnSync(process.execPath, [script, ...args], {
-    cwd: stage,
-    env,
-    stdio: "inherit",
-    windowsHide: true,
-  });
-  if (result.error) throw result.error;
-  if (result.status !== 0) throw new Error(`构建子进程退出：${result.status ?? 1}`);
-}
+const env = packageEnvironment();
+const run = (script, args) => runPackageCommand(stage, script, args, env);
 const config = {
   ...manifest.build,
   directories: {
@@ -80,25 +75,7 @@ const config = {
 const configPath = join(stage, "builder.json");
 await writeFile(configPath, JSON.stringify(config, null, 2));
 try {
-  run(npmCli, [
-    "install",
-    "--package-lock-only",
-    "--prefix",
-    stage,
-    "--ignore-scripts",
-    "--no-audit",
-    "--no-fund",
-  ]);
-  run(npmCli, [
-    "ci",
-    "--prefix",
-    stage,
-    "--omit=dev",
-    "--omit=optional",
-    "--ignore-scripts",
-    "--no-audit",
-    "--no-fund",
-  ]);
+  await installPackageDependencies(stage, npmCli, dependencies, env);
   // 使用 electron-builder 内置的目录遍历器，避开 npm 依赖图收集时的内存溢出。
   await writeFile(
     join(stage, "package.json"),

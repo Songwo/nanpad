@@ -111,15 +111,16 @@ export function MailPushSettings() {
               { value: "telegram", label: "Telegram" },
               { value: "serverchan", label: t("Server酱 / 微信") },
               { value: "wecom", label: t("企业微信群机器人") },
+              { value: "wxpusher", label: "WxPusher" },
             ]}
           />
         </Field>
-        {config.provider === "telegram" && (
-          <Field label="Chat ID">
+        {(config.provider === "telegram" || config.provider === "wxpusher") && (
+          <Field label={config.provider === "wxpusher" ? t("接收用户 UID") : "Chat ID"}>
             <Input
-              aria-label="Chat ID"
+              aria-label={config.provider === "wxpusher" ? t("接收用户 UID") : "Chat ID"}
               value={config.destination}
-              placeholder="-1001234567890"
+              placeholder={config.provider === "wxpusher" ? "UID_…" : "-1001234567890"}
               onChange={(event) => {
                 patch({ destination: event.target.value, hasToken: false });
                 setClearToken(!token);
@@ -127,13 +128,22 @@ export function MailPushSettings() {
             />
           </Field>
         )}
+        {config.provider === "wxpusher" && (
+          <p className="text-meta leading-relaxed text-muted">
+            {t(
+              "在 WxPusher 创建应用并关注后，填写 AppToken 和自己的用户 UID。仅推送邮件数量，不包含邮件内容。",
+            )}
+          </p>
+        )}
         <Field
           label={
             config.provider === "telegram"
               ? "Bot Token"
               : config.provider === "serverchan"
                 ? "SendKey"
-                : t("机器人 Key")
+                : config.provider === "wxpusher"
+                  ? "AppToken"
+                  : t("机器人 Key")
           }
         >
           <Input

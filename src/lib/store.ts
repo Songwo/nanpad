@@ -13,6 +13,7 @@ import type {
   PhoneNumber,
   Secret,
   Server,
+  ServiceAsset,
   Snapshot,
   ViewId,
 } from "./types";
@@ -51,6 +52,8 @@ export interface ExpandState {
 }
 
 export interface AppState extends Snapshot {
+  services: ServiceAsset[];
+  upsertService: (s: ServiceAsset) => void;
   phoneNumbers: PhoneNumber[];
   phoneFilter: "all" | "attention" | "expired" | "active" | "unknown";
   phoneFocusId: string | null;
@@ -194,6 +197,7 @@ export const useAppStore = create<AppState>()(
   persist(
     (set, get) => ({
       ...initialSnapshot(),
+      services: [],
       phoneNumbers: [],
       mailFolders: normalizeMailFolders(undefined),
       secretFolders: normalizeSecretFolders(undefined),
@@ -276,6 +280,7 @@ export const useAppStore = create<AppState>()(
           ai: "AI 订阅",
           secret: "密钥库",
           cert: "安全证书",
+          service: "服务资产",
         };
         get().log(t("查看了{0}详情", t(labels[expanded.kind])), expanded.kind);
       },
@@ -340,6 +345,7 @@ export const useAppStore = create<AppState>()(
         }),
       upsertSecret: (s) => set({ secrets: upsert(get().secrets, s) }),
       upsertCert: (s) => set({ certs: upsert(get().certs, s) }),
+      upsertService: (s) => set({ services: upsert(get().services, s) }),
 
       remove: (kind, id) => {
         const key = collectionKey(kind);
@@ -389,6 +395,7 @@ export const useAppStore = create<AppState>()(
       resetDemo: () =>
         set({
           ...initialSnapshot(),
+          services: [],
           phoneNumbers: [],
           links: [],
           activity: initialActivity(),
@@ -408,6 +415,7 @@ export const useAppStore = create<AppState>()(
           aiAssets: snap.aiAssets ?? [],
           secrets: snap.secrets ?? [],
           certs: snap.certs ?? [],
+          services: snap.services ?? [],
         });
       },
     }),
@@ -436,6 +444,7 @@ export const useAppStore = create<AppState>()(
           aiAssets: withTags(saved.aiAssets),
           secrets: withTags(saved.secrets),
           certs: withTags(saved.certs),
+          services: withTags(saved.services),
           links: normalizeLinks(saved.links, {
             servers: saved.servers ?? [],
             domains: saved.domains ?? [],
@@ -443,6 +452,7 @@ export const useAppStore = create<AppState>()(
             aiAssets: saved.aiAssets ?? [],
             secrets: saved.secrets ?? [],
             certs: saved.certs ?? [],
+            services: saved.services ?? [],
           }),
         };
       },
@@ -457,6 +467,7 @@ export const useAppStore = create<AppState>()(
         aiAssets: s.aiAssets,
         secrets: s.secrets,
         certs: s.certs,
+        services: s.services,
         activity: retainActivity(s.activity),
       }),
     },
@@ -491,6 +502,8 @@ function collectionKey(
       return "secrets";
     case "cert":
       return "certs";
+    case "service":
+      return "services";
   }
 }
 
@@ -506,5 +519,6 @@ export function snapshotOf(s: Snapshot): Snapshot {
     aiAssets: s.aiAssets,
     secrets: s.secrets,
     certs: s.certs,
+    services: s.services ?? [],
   };
 }

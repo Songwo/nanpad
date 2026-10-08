@@ -3,7 +3,7 @@ import { cp, mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
-const repository = "https://github.com/Songwo/nanpad";
+const repository = "https://github.com/Songwo/zhiyu";
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
 export function releaseDetails(release) {
@@ -27,8 +27,11 @@ export function releaseDetails(release) {
       throw new Error(`Unexpected asset URL: ${name}`);
     return entry;
   };
-  const installer = asset(`Nanpad-${version}-setup.exe`);
-  const extension = asset(`Nanpad-${version}-browser-extension.zip`);
+  const brand = release.assets?.some((item) => item.name === `Zhiyu-${version}-setup.exe`)
+    ? "Zhiyu"
+    : "Nanpad";
+  const installer = asset(`${brand}-${version}-setup.exe`);
+  const extension = asset(`${brand}-${version}-browser-extension.zip`);
   const checksum = asset("SHA256SUMS.txt");
   // 只取发布说明首段，作为普通文本转义；不执行 Markdown/HTML。
   const paragraph = (release.body ?? "")

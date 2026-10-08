@@ -101,6 +101,7 @@ export function Overview() {
             {(
               [
                 ["servers", "服务器", counts.servers],
+                ["services", "服务资产", counts.services],
                 ["phones", "号码台账", counts.phones],
                 ["domains", "域名", counts.domains],
                 ["mail", "邮箱", counts.mail],

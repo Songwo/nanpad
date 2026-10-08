@@ -20,7 +20,7 @@ export function DocumentNavigation({
   const [open, setOpen] = useState(false);
   useEffect(() => {
     const reader = readerRef.current;
-    if (!editor || !reader) return;
+    if (!reader) return;
     let list: Heading[] = [];
     let frame = 0;
     const track = () => {
@@ -40,26 +40,31 @@ export function DocumentNavigation({
     };
     const collect = () => {
       // 使用实际标题元素定位，同名标题和编辑过程中改名都不会跳错章节。
-      list = Array.from(editor.view.dom.querySelectorAll<HTMLElement>("h1,h2,h3,h4,h5,h6")).map(
-        (element) => ({
+      list = Array.from(
+        reader.querySelectorAll<HTMLElement>(
+          ".document-prose :is(h1,h2,h3,h4,h5,h6), .document-markdown :is(h1,h2,h3,h4,h5,h6)",
+        ),
+      )
+        .filter((element) => !element.hidden && !element.classList.contains("sr-only"))
+        .map((element) => ({
           element,
           title: element.textContent?.trim() || t("未命名章节"),
           level: Number(element.tagName.slice(1)),
-        }),
-      );
+        }));
       setHeadings(list);
       schedule();
     };
     collect();
-    editor.on("update", collect);
+    editor?.on("update", collect);
     const observer = new MutationObserver(collect);
-    observer.observe(editor.view.dom, { childList: true, subtree: true, characterData: true });
+    observer.observe(reader, { childList: true, subtree: true, characterData: true });
     const resize = new ResizeObserver(schedule);
     resize.observe(reader);
-    resize.observe(editor.view.dom);
+    const paper = reader.querySelector(".document-paper");
+    if (paper) resize.observe(paper);
     reader.addEventListener("scroll", schedule, { passive: true });
     return () => {
-      editor.off("update", collect);
+      editor?.off("update", collect);
       observer.disconnect();
       resize.disconnect();
       reader.removeEventListener("scroll", schedule);

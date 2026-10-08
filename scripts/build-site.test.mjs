@@ -3,7 +3,7 @@ import test from "node:test";
 import { releaseDetails, renderSite } from "./build-site.mjs";
 
 function publishedRelease(version = "1.2.3") {
-  const base = `https://github.com/Songwo/nanpad/releases`;
+  const base = `https://github.com/Songwo/zhiyu/releases`;
   return {
     tag_name: `v${version}`,
     name: `知屿 Zhiyu ${version}`,
@@ -24,6 +24,15 @@ function publishedRelease(version = "1.2.3") {
     })),
   };
 }
+
+test("统一品牌后的下载页支持新安装包名，同时兼容历史附件", () => {
+  const release = publishedRelease("1.6.0");
+  for (const asset of release.assets) {
+    asset.name = asset.name.replace("Nanpad-", "Zhiyu-");
+    asset.browser_download_url = asset.browser_download_url.replace("Nanpad-", "Zhiyu-");
+  }
+  assert.match(releaseDetails(release).INSTALLER_URL, /Zhiyu-1\.6\.0-setup\.exe$/);
+});
 
 test("宣传页以已发布版本为准，同步全部下载入口与更新摘要", () => {
   const details = releaseDetails(publishedRelease("1.2.4"));
@@ -58,7 +67,7 @@ test("下载链接只接受当前仓库、当前版本及对应附件", () => {
   for (const url of [
     "javascript:alert(1)",
     "https://github.com.evil.test/setup.exe",
-    "https://github.com/Songwo/nanpad/releases/download/v0.1.0/Nanpad-0.1.0-setup.exe",
+    "https://github.com/Songwo/zhiyu/releases/download/v0.1.0/Nanpad-0.1.0-setup.exe",
   ]) {
     const release = publishedRelease();
     release.assets[0].browser_download_url = url;

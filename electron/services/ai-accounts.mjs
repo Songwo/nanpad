@@ -357,7 +357,7 @@ export class AiAccounts {
           if (incoming.searchParams.has("error")) {
             this.close(session, "error");
             session.error = "授权已拒绝。";
-            res.end("授权已取消，可以返回司南。");
+            res.end("授权已取消，可以返回知屿。");
             return;
           }
           const code = incoming.searchParams.get("code");
@@ -366,7 +366,7 @@ export class AiAccounts {
             res.end("授权码无效或已使用。");
             return;
           }
-          res.end("已收到授权结果，请返回司南查看连接状态。");
+          res.end("已收到授权结果，请返回知屿查看连接状态。");
           void this.finish(session.id, incoming.toString()).catch(() => {});
         });
         try {

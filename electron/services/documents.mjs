@@ -4,14 +4,16 @@ import { renameSync } from "node:fs";
 import { mkdir, readFile, readdir, writeFile, rename, unlink, lstat } from "node:fs/promises";
 import { join } from "node:path";
 import { inspectRaster } from "./image-data.mjs";
+import { markdownContent } from "./document-markdown.mjs";
 
-const KINDS = new Set(["server", "domain", "mail", "ai", "secret", "cert"]);
+const KINDS = new Set(["server", "domain", "mail", "ai", "secret", "cert", "service"]);
 export function documentRevision(doc) {
   return createHash("sha256")
     .update(
       JSON.stringify({
         title: doc.title,
         content: doc.content,
+        markdown: doc.markdown,
         bindings: doc.bindings,
         updatedAt: doc.updatedAt,
       }),
@@ -46,6 +48,10 @@ export function normalizeDocument(input) {
   if (!input || typeof input !== "object" || !/^doc-[a-zA-Z0-9-]{1,80}$/.test(input.id))
     throw new Error("文档标识无效");
   if (JSON.stringify(input).length > 16 * 1024 * 1024) throw new Error("单篇文档不能超过 16 MiB");
+  if (input.markdown !== undefined && typeof input.markdown !== "string")
+    throw new Error("Markdown 源码必须是文本。");
+  const content =
+    typeof input.markdown === "string" ? markdownContent(input.markdown) : input.content;
   let count = 0;
   const walk = (node, depth = 0) => {
     if (++count > 20000 || depth > 24 || !node || !TYPES.has(node.type))
@@ -100,7 +106,7 @@ export function normalizeDocument(input) {
       out.content = node.content.map((child) => walk(child, depth + 1));
     return out;
   };
-  if (input.content?.type !== "doc") throw new Error("缺少文档正文");
+  if (content?.type !== "doc") throw new Error("缺少文档正文");
   const seen = new Set();
   const bindings = (Array.isArray(input.bindings) ? input.bindings : [])
     .map((ref) => {
@@ -121,7 +127,8 @@ export function normalizeDocument(input) {
       String(input.title ?? "")
         .trim()
         .slice(0, 160) || "未命名文档",
-    content: walk(input.content),
+    content: walk(content),
+    ...(typeof input.markdown === "string" ? { markdown: input.markdown } : {}),
     bindings,
   };
 }

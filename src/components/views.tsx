@@ -15,6 +15,7 @@ import { Search, SquareTerminal, X, LayoutGrid, Table2, Network } from "lucide-r
 const AssetWorkspace = lazy(() =>
   import("./asset-workspace").then((module) => ({ default: module.AssetWorkspace })),
 );
+import { ServiceCard } from "./service-card";
 import { Overview } from "./overview";
 import { NAV } from "./sidebar";
 import { AssetOrganizer } from "./asset-organizer";
@@ -78,7 +79,7 @@ function ViewBody() {
   if (view === "mail") return <MailWorkspace />;
   if (
     hydrated &&
-    ["servers", "domains", "ai", "certs", "tags"].includes(view) &&
+    ["servers", "services", "domains", "ai", "certs", "tags"].includes(view) &&
     layout !== "cards"
   )
     return <AssetWorkspace />;
@@ -97,6 +98,8 @@ function ViewBody() {
       return <NodesView />;
     case "servers":
       return <ServersView />;
+    case "services":
+      return <ServicesView />;
     case "domains":
       return <DomainsView />;
     case "ai":
@@ -137,9 +140,9 @@ export function TopTabs() {
           </Button>
         )}
       </div>
-      {["servers", "domains", "ai", "certs", "tags", "vault", "mail"].includes(view) && (
-        <ListHeader />
-      )}
+      {["servers", "services", "domains", "ai", "certs", "tags", "vault", "mail"].includes(
+        view,
+      ) && <ListHeader />}
     </div>
   );
 }
@@ -263,6 +266,7 @@ const PROBE_KIND: Record<ViewId, ProbeKind | null> = {
   overview: "server",
   nodes: "server",
   servers: "server",
+  services: null,
   domains: "domain",
   mail: null,
   ai: null,
@@ -281,6 +285,7 @@ const BADGE_KEY: Record<ViewId, keyof ReturnType<typeof attentionOf>> = {
   overview: "total",
   nodes: "total",
   servers: "servers",
+  services: "services",
   domains: "domains",
   mail: "mail",
   ai: "ai",
@@ -294,6 +299,7 @@ const BADGE_KEY: Record<ViewId, keyof ReturnType<typeof attentionOf>> = {
 const TITLE: Record<string, { all: string; attention: string }> = {
   overview: { all: "为你准备", attention: "需处理" },
   nodes: { all: "全部自建节点", attention: "需处理" },
+  services: { all: "全部服务", attention: "需处理" },
   servers: { all: "全部主机", attention: "异常" },
   domains: { all: "全部域名", attention: "即将到期" },
   mail: { all: "全部邮箱", attention: "需处理" },
@@ -405,6 +411,24 @@ function ServersView() {
   );
 }
 
+function ServicesView() {
+  const list = useAppStore((s) => s.services);
+  const items = useListFilter(list, (s) => [
+    s.name,
+    s.category,
+    s.url,
+    s.provider,
+    tagsOf(s).join(" "),
+  ]);
+  return (
+    <AssetList
+      items={items}
+      empty={t("没有匹配的服务。点击「添加服务」记录 Workers、博客或自建服务。")}
+      render={(s) => <ServiceCard key={s.id} data={s} />}
+    />
+  );
+}
+
 function DomainsView() {
   const list = useAppStore((s) => s.domains);
   const items = useListFilter(list, (s) => [s.name, s.registrar, s.dns, tagsOf(s).join(" ")]);
@@ -474,6 +498,7 @@ function TagsView() {
   const aiAssets = useAppStore((s) => s.aiAssets);
   const secrets = useAppStore((s) => s.secrets);
   const certs = useAppStore((s) => s.certs);
+  const services = useAppStore((s) => s.services);
   const selected = useAppStore((s) => s.tagFilter);
   const query = useAppStore((s) => s.query);
   const filter = useAppStore((s) => s.filter);
@@ -496,8 +521,9 @@ function TagsView() {
       aiAssets: only(aiAssets),
       secrets: only(secrets),
       certs: only(certs),
+      services: only(services),
     };
-  }, [filter, servers, domains, mailboxes, aiAssets, secrets, certs]);
+  }, [filter, servers, domains, mailboxes, aiAssets, secrets, certs, services]);
 
   // Derived in a memo, not in a selector: a selector runs on every store read
   // and a fresh array never compares equal.
@@ -560,6 +586,10 @@ function TagsView() {
       { kind: "ai", items: keep(scope.aiAssets).map((s) => <AiCard key={s.id} data={s} />) },
       { kind: "secret", items: keep(scope.secrets).map((s) => <SecretCard key={s.id} data={s} />) },
       { kind: "cert", items: keep(scope.certs).map((s) => <CertCard key={s.id} data={s} />) },
+      {
+        kind: "service",
+        items: keep(scope.services).map((s) => <ServiceCard key={s.id} data={s} />),
+      },
     ] as Array<{ kind: AssetKind; items: ReactNode[] }>
   ).filter((section) => section.items.length > 0);
 

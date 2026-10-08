@@ -34,6 +34,7 @@ import { t, type LocaleChoice } from "@/lib/i18n";
 type Tab =
   | "profile"
   | "appearance"
+  | "monitoring"
   | "vault"
   | "data"
   | "agent"
@@ -46,6 +47,7 @@ type Tab =
 const TABS: Array<{ id: Tab; label: string }> = [
   { id: "profile", label: "个人资料" },
   { id: "appearance", label: "外观" },
+  { id: "monitoring", label: "监控采集" },
   { id: "vault", label: "密钥库" },
   { id: "data", label: "数据" },
   { id: "agent", label: "模型与知识库" },
@@ -117,6 +119,7 @@ export function Settings() {
           <div className="px-6 pb-8">
             {tab === "profile" && (desktop() ? <ProfileForm /> : <p>{t("仅桌面版可用")}</p>)}
             {tab === "appearance" && <Appearance />}
+            {tab === "monitoring" && <Monitoring />}
             {tab === "vault" && <VaultSection />}
             {tab === "data" && <DataSection />}
             {tab === "agent" && <AgentSettings />}
@@ -264,6 +267,51 @@ function Appearance() {
         </p>
       )}
       <DesktopSettings />
+    </Section>
+  );
+}
+
+function Monitoring() {
+  const minutes = useSettings((s) => s.serverMonitorMinutes);
+  const ready = useSettings((s) => s.monitorReady);
+  const setMinutes = useSettings((s) => s.setServerMonitorMinutes);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const save = async (value: string) => {
+    setBusy(true);
+    setError("");
+    try {
+      await setMinutes(Number(value));
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : String(cause));
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <Section title={t("监控采集")} hint={t("按需要选择采集频率，最近的结果会在所选周期内复用。")}>
+      <Field label={t("服务器自动采集")}>
+        <Select
+          aria-label={t("服务器自动采集")}
+          value={String(minutes)}
+          disabled={!ready || busy}
+          onValueChange={(value) => void save(value)}
+          options={[
+            { value: "0", label: t("仅手动刷新") },
+            ...[1, 5, 15, 30, 60].map((n) => ({ value: String(n), label: t("每 {0} 分钟", n) })),
+          ]}
+        />
+      </Field>
+      <p className="mt-3 text-meta leading-relaxed text-muted">
+        {t(
+          "自动采集仅在窗口可见且密钥库已解锁时进行。手动刷新按钮始终可用；本机 AI 用量监控独立运行，不受此设置影响。",
+        )}
+      </p>
+      {error && (
+        <p role="alert" className="mt-3 text-meta text-crit">
+          {error}
+        </p>
+      )}
     </Section>
   );
 }
@@ -429,7 +477,7 @@ function DataSection() {
           size="sm"
           onClick={() => {
             const s = useAppStore.getState();
-            downloadJson("sinan-assets.json", snapshotOf(s));
+            downloadJson("zhiyu-assets.json", snapshotOf(s));
             log(t("已导出资产快照"));
           }}
         >
@@ -493,7 +541,7 @@ function About() {
         <Button
           variant="outline"
           size="sm"
-          onClick={() => void bridge?.openExternal("https://github.com/Songwo/nanpad")}
+          onClick={() => void bridge?.openExternal("https://github.com/Songwo/zhiyu")}
         >
           <ExternalLink className="size-3.5" />
           GitHub

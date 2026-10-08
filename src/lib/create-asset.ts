@@ -7,6 +7,7 @@ export type CreateTarget = AssetKind | "document" | "phone";
 
 export const CREATE_LABELS: Record<CreateTarget, string> = {
   server: "添加服务器",
+  service: "添加服务",
   domain: "添加域名",
   cert: "添加证书",
   mail: "添加邮箱",
@@ -18,6 +19,7 @@ export const CREATE_LABELS: Record<CreateTarget, string> = {
 
 const VIEW_TARGETS: Partial<Record<ViewId, CreateTarget>> = {
   servers: "server",
+  services: "service",
   domains: "domain",
   certs: "cert",
   mail: "mail",

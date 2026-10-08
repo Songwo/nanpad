@@ -44,6 +44,7 @@ export function updateAssetTags(
     aiAssets: update("ai", snapshot.aiAssets),
     secrets: update("secret", snapshot.secrets),
     certs: update("cert", snapshot.certs),
+    services: update("service", snapshot.services ?? []),
   };
 }
 
@@ -55,6 +56,7 @@ export function assetEntries(s: Snapshot): AssetEntry[] {
     ...s.aiAssets.map((x) => ({ kind: "ai" as const, id: x.id, label: x.name })),
     ...s.secrets.map((x) => ({ kind: "secret" as const, id: x.id, label: x.name })),
     ...s.certs.map((x) => ({ kind: "cert" as const, id: x.id, label: x.cn })),
+    ...(s.services ?? []).map((x) => ({ kind: "service" as const, id: x.id, label: x.name })),
   ];
 }
 
@@ -110,6 +112,8 @@ export function calendarItems(s: Snapshot, now = new Date()): CalendarItem[] {
   }
   for (const x of s.servers)
     if (serverNeedsAttention(x)) add("server", x.id, x.name, today, t("主机异常"));
+  for (const x of s.services ?? [])
+    if (x.status !== "online") add("service", x.id, x.name, today, t("手动记录状态"));
   for (const x of s.mailboxes)
     if (x.status !== "online") add("mail", x.id, x.address, today, t("投递异常"));
   for (const x of s.secrets)
@@ -170,7 +174,7 @@ export function createCalendar(items: CalendarItem[], now = new Date()): string 
   const lines = [
     "BEGIN:VCALENDAR",
     "VERSION:2.0",
-    "PRODID:-//Nanpad//Asset reminders//EN",
+    "PRODID:-//Zhiyu//Asset reminders//EN",
     "CALSCALE:GREGORIAN",
     "METHOD:PUBLISH",
   ];

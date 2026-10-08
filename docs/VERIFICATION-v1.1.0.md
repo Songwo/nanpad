@@ -41,9 +41,9 @@
 - [x] GitHub Release 安装器与 `SHA256SUMS.txt` 下载和校验。
 - [x] 宣传页部署与公开访问核验。
 
-发布代码提交为 `427d369a1d18c36d4d819cb5738aafc9f26e7e21`，标签为 `v1.1.0`。[CI](https://github.com/Songwo/nanpad/actions/runs/36691159569)、[Windows 正式版](https://github.com/Songwo/nanpad/actions/runs/36691159081)、[产品主页](https://github.com/Songwo/nanpad/actions/runs/36691159717)均成功。[公开 Release](https://github.com/Songwo/nanpad/releases/tag/v1.1.0) 的安装器与校验文件已经实际下载并核对，SHA256 为 `31b4177c6c6f28244eb5e984d9eeb1c1f97339b06698b7a5501b2079597b490e`。
+发布代码提交为 `427d369a1d18c36d4d819cb5738aafc9f26e7e21`，标签为 `v1.1.0`。[CI](https://github.com/Songwo/zhiyu/actions/runs/36691159569)、[Windows 正式版](https://github.com/Songwo/zhiyu/actions/runs/36691159081)、[产品主页](https://github.com/Songwo/zhiyu/actions/runs/36691159717)均成功。[公开 Release](https://github.com/Songwo/zhiyu/releases/tag/v1.1.0) 的安装器与校验文件已经实际下载并核对，SHA256 为 `31b4177c6c6f28244eb5e984d9eeb1c1f97339b06698b7a5501b2079597b490e`。
 
-[宣传页](https://songwo.github.io/nanpad/)已通过公开网络的桌面和手机浏览器检查：响应 200，版本为 1.1.0，图片正常加载，无横向溢出和控制台／页面错误。报告与截图保存在本地 `release/screenshots/v110-public-site.json` 及同目录图片；远端安装包校验记录为 `release/github-v1.1.0/verification.json`。
+[宣传页](https://songwo.github.io/zhiyu/)已通过公开网络的桌面和手机浏览器检查：响应 200，版本为 1.1.0，图片正常加载，无横向溢出和控制台／页面错误。报告与截图保存在本地 `release/screenshots/v110-public-site.json` 及同目录图片；远端安装包校验记录为 `release/github-v1.1.0/verification.json`。
 
 ## 验证边界
 

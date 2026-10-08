@@ -46,7 +46,7 @@ export function CalendarExport() {
           toast(t("没有待处理的事项，全部正常。"));
           return;
         }
-        downloadText("nanpad-reminders.ics", createCalendar(items), "text/calendar;charset=utf-8");
+        downloadText("zhiyu-reminders.ics", createCalendar(items), "text/calendar;charset=utf-8");
         toast(t("已导出 {0} 项提醒", items.length));
       }}
     >

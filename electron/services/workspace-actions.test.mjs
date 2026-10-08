@@ -65,6 +65,29 @@ const rename = {
   reason: "按用户要求重命名这篇文档。",
 };
 
+test("Agent局部修改Markdown保留六级标题、表格、任务列表及原文排版", async (t) => {
+  const { actions, documents, document } = await fixture(t);
+  const markdown =
+    "###### 六级标题\n\n| 名称 | 地址 |\n| --- | --- |\n| 测试 | 旧地址 |\n\n- [x] 已完成\n";
+  await documents.save({ ...document, markdown });
+  const proposal = await actions.propose("propose_document_edit", edit, {
+    allowDocumentContent: true,
+  });
+  await actions.apply(proposal.id);
+  assert.equal((await documents.get(document.id)).markdown, markdown.replace("旧地址", "新地址"));
+});
+
+test("Markdown唯一匹配失败时拒绝修改而不转换富文本", async (t) => {
+  const { actions, documents, document } = await fixture(t);
+  const markdown = "旧地址\n\n旧地址";
+  await documents.save({ ...document, markdown });
+  await assert.rejects(
+    actions.propose("propose_document_edit", edit, { allowDocumentContent: true }),
+    /唯一/,
+  );
+  assert.equal((await documents.get(document.id)).markdown, markdown);
+});
+
 test("文档重命名只需元信息，预览不泄露正文，确认前不写入", async (t) => {
   const { actions, documents, document } = await fixture(t);
   const proposal = await actions.propose("propose_document_rename", rename);

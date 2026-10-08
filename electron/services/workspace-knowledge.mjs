@@ -10,7 +10,7 @@ export const WORKSPACE_LIMITS = {
   toolCharacters: 40000,
   nodes: 20000,
 };
-const KINDS = new Set(["server", "domain", "mail", "ai", "secret", "cert"]);
+const KINDS = new Set(["server", "domain", "mail", "ai", "secret", "cert", "service"]);
 const DOCUMENT_ID = /^doc-[a-zA-Z0-9-]{1,80}$/;
 const PREFIX = "workspace-document:";
 const safeString = (value, max) => (typeof value === "string" ? value.slice(0, max) : "");

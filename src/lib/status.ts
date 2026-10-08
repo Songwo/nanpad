@@ -17,6 +17,7 @@ export const KIND_LABEL: Record<AssetKind, string> = {
   ai: "AI",
   secret: "密钥",
   cert: "证书",
+  service: "服务资产",
 };
 
 export const VIEW_KIND: Partial<Record<ViewId, AssetKind>> = {
@@ -26,6 +27,7 @@ export const VIEW_KIND: Partial<Record<ViewId, AssetKind>> = {
   ai: "ai",
   vault: "secret",
   certs: "cert",
+  services: "service",
 };
 
 export function chipClass(status: Status): string {
@@ -64,6 +66,7 @@ export function attentionOf(
   ai: number;
   vault: number;
   certs: number;
+  services: number;
   total: number;
 } {
   const phones = (s.phoneNumbers ?? []).filter((record) => {
@@ -76,6 +79,7 @@ export function attentionOf(
   const ai = s.aiAssets.filter((x) => x.status !== "online").length;
   const vault = s.secrets.filter((x) => x.status !== "online").length;
   const certs = s.certs.filter((x) => x.status !== "online").length;
+  const services = (s.services ?? []).filter((x) => x.status !== "online").length;
   return {
     phones,
     servers,
@@ -84,7 +88,8 @@ export function attentionOf(
     ai,
     vault,
     certs,
-    total: servers + domains + mail + ai + vault + certs + phones,
+    services,
+    total: servers + domains + mail + ai + vault + certs + phones + services,
   };
 }
 
@@ -96,12 +101,14 @@ export function healthScore(s: AppState): number {
     s.mailboxes.length +
     s.aiAssets.length +
     s.secrets.length +
-    s.certs.length;
+    s.certs.length +
+    (s.services ?? []).length;
   if (n === 0) return 100;
   const crit =
     s.servers.filter((x) => hasServerObservation(x) && x.status === "offline").length +
     s.domains.filter((x) => x.status === "offline").length +
-    s.certs.filter((x) => x.status === "offline").length;
+    s.certs.filter((x) => x.status === "offline").length +
+    (s.services ?? []).filter((x) => x.status === "offline").length;
   const warn = a.total - a.phones - crit;
   const healthyWeight = n - crit - warn * 0.45;
   return Math.round(Math.max(8, Math.min(100, (healthyWeight / n) * 100)));

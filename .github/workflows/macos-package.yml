@@ -1,0 +1,62 @@
+name: macOS 打包检查
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: macos-package-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  package:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-15
+            arch: arm64
+          - runner: macos-15-intel
+            arch: x64
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 25
+    env:
+      CSC_IDENTITY_AUTO_DISCOVERY: "false"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: 安装匹配本机架构的 Electron
+        run: node node_modules/electron/install.js
+      - run: node --test scripts/package-stage.test.mjs
+      - run: npm run typecheck
+      - name: 构建未签名测试程序
+        run: npm run desktop:pack -- --mac --${{ matrix.arch }}
+      - name: 校验并归档程序
+        env:
+          BUILD_ARCH: ${{ matrix.arch }}
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          APP=$(find "release/v$VERSION" -maxdepth 2 -type d -name Zhiyu.app -print -quit)
+          test -n "$APP"
+          test -f "$APP/Contents/Resources/app.asar"
+          test -x "$APP/Contents/MacOS/Zhiyu"
+          file "$APP/Contents/MacOS/Zhiyu"
+          MACH_ARCH="$BUILD_ARCH"
+          if [ "$BUILD_ARCH" = "x64" ]; then MACH_ARCH=x86_64; fi
+          lipo -archs "$APP/Contents/MacOS/Zhiyu" | grep -q "$MACH_ARCH"
+          ditto -c -k --sequesterRsrc --keepParent "$APP" "release/Zhiyu-mac-$BUILD_ARCH-unsigned.zip"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Zhiyu-mac-${{ matrix.arch }}-unsigned
+          path: release/Zhiyu-mac-${{ matrix.arch }}-unsigned.zip
+          if-no-files-found: error
+          retention-days: 14

@@ -43,7 +43,8 @@ export interface NavGroup {
     icon: LucideIcon;
     badgeKey?: keyof ReturnType<typeof attentionOf>;
     kind?: AssetKind;
-    countKey?: "servers" | "domains" | "mailboxes" | "aiAssets" | "secrets" | "certs" | "nodes";
+    countKey?:
+      "servers" | "domains" | "mailboxes" | "aiAssets" | "secrets" | "certs" | "services" | "nodes";
   }[];
 }
 
@@ -60,6 +61,14 @@ export const NAV_GROUPS: NavGroup[] = [
   {
     title: "基础设施",
     items: [
+      {
+        id: "services",
+        label: "服务资产",
+        icon: Globe,
+        badgeKey: "services",
+        kind: "service",
+        countKey: "services",
+      },
       {
         id: "servers",
         label: "服务器",
@@ -154,6 +163,7 @@ export function Sidebar({
   const aiAssets = useAppStore((s) => s.aiAssets);
   const secrets = useAppStore((s) => s.secrets);
   const certs = useAppStore((s) => s.certs);
+  const services = useAppStore((s) => s.services);
   const counts = useAppStore(useShallow(attentionOf));
   const toolsExpanded = useSettings((s) => s.toolsExpanded);
   const setToolsExpanded = useSettings((s) => s.setToolsExpanded);
@@ -173,6 +183,7 @@ export function Sidebar({
       aiAssets: aiAssets.length,
       secrets: secrets.length,
       certs: certs.length,
+      services: services.length,
       nodes: totalNodesCount,
     }),
     [
@@ -182,6 +193,7 @@ export function Sidebar({
       aiAssets.length,
       secrets.length,
       certs.length,
+      services.length,
       totalNodesCount,
     ],
   );
@@ -361,7 +373,7 @@ function ProfileMenu({ compact = false }: { compact?: boolean }) {
   const importSnapshot = useAppStore((s) => s.importSnapshot);
   const vaultUnlocked = useVault((s) => s.unlocked);
   const lockVault = useVault((s) => s.lock);
-  const name = useProfile((s) => s.profile?.name) || "Nanpad Owner";
+  const name = useProfile((s) => s.profile?.name) || "知屿用户";
   const avatarDataUrl = useProfile((s) => s.profile?.avatarDataUrl);
   const avatar = useMemo(() => safeImageDataUrl(avatarDataUrl), [avatarDataUrl]);
   const [open, setOpen] = useState(false);
@@ -467,7 +479,7 @@ function ProfileMenu({ compact = false }: { compact?: boolean }) {
           </div>
           {item(t("导出 JSON 快照"), () => {
             const s = useAppStore.getState();
-            downloadJson("nanpad-assets.json", snapshotOf(s));
+            downloadJson("zhiyu-assets.json", snapshotOf(s));
             log(t("已导出资产快照"));
           })}
           {item(t("导入 JSON 快照"), () => {

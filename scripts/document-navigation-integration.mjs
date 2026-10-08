@@ -73,7 +73,7 @@ try {
   await outline().getByRole("button", { name: "3 同名章节", exact: true }).click();
   await page.waitForFunction(() => {
     const scroll = document.querySelector(".document-reader-scroll");
-    const heading = document.querySelectorAll(".document-prose h2")[1];
+    const heading = document.querySelectorAll(".document-markdown h2")[1];
     return (
       scroll &&
       heading &&
@@ -119,6 +119,9 @@ try {
   checks.push("重复标题精确定位、当前章节、高亮目录键盘导航、列表收起后顶部/底部跳转");
 
   await page.getByRole("button", { name: "编辑文档", exact: true }).click();
+  // 新导入的 Markdown 默认保留源码；这段回归明确转换后继续覆盖富文本目录更新。
+  await page.getByRole("button", { name: "富文本", exact: true }).click();
+  await page.getByRole("button", { name: "确认转换", exact: true }).click();
   const editor = page.locator('.tiptap[contenteditable="true"]');
   await editor.press("Control+Home");
   await page.keyboard.press("Home");

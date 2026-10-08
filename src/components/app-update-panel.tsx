@@ -106,7 +106,7 @@ export function AppUpdatePanel() {
           size="sm"
           variant="ghost"
           disabled={!api}
-          onClick={() => void api?.openExternal("https://github.com/Songwo/nanpad/releases/latest")}
+          onClick={() => void api?.openExternal("https://github.com/Songwo/zhiyu/releases/latest")}
         >
           <ExternalLink />
           {t("发布页")}
