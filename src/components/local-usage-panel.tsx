@@ -3,7 +3,6 @@ import { History, Monitor, RefreshCw, ShieldCheck } from "lucide-react";
 import { desktop } from "@/lib/desktop";
 import { intlLocale, t } from "@/lib/i18n";
 import type { LocalUsageStatus } from "@/lib/usage";
-import { useVault } from "@/lib/vault-state";
 import { Button } from "./ui/button";
 import "./usage-insights.css";
 
@@ -32,8 +31,6 @@ export function LocalUsagePanel({
     setBusy(true);
     setError("");
     try {
-      if (enabled !== false && !(await useVault.getState().require(t("本机采集需要解锁密钥库。"))))
-        return;
       if (enabled === undefined) await api.refreshLocal();
       else await api.configureLocal({ enabled });
       await onChange();
@@ -52,7 +49,7 @@ export function LocalUsagePanel({
             <Monitor className="size-4" />
             {t("本机 AI 监控")}
             <span className="rounded-md bg-canvas px-2 py-1 text-xs font-normal text-muted">
-              {t(status?.paused ? "锁库暂停" : status?.enabled ? "监控已开启" : "未开启")}
+              {t(status?.enabled ? "监控已开启" : "未开启")}
             </span>
           </h3>
           <p className="mt-2 text-xs leading-relaxed text-muted">
@@ -67,7 +64,7 @@ export function LocalUsagePanel({
             onClick={() => void run()}
           >
             <RefreshCw className={busy ? "animate-spin" : ""} />
-            {t(status?.paused ? "解锁继续采集" : "立即采集")}
+            {t("立即采集")}
           </Button>
           <Button
             size="sm"
@@ -99,22 +96,14 @@ export function LocalUsagePanel({
                   <strong>{source.name}</strong>
                   <span
                     className="local-usage-state-dot"
-                    data-active={
-                      status.enabled && !status.paused && (state === "ready" || importing)
-                    }
+                    data-active={status.enabled && (state === "ready" || importing)}
                   />
                 </div>
                 <p className="mt-2 flex items-center gap-2 text-xs text-muted">
-                  {importing && status.enabled && !status.paused && (
+                  {importing && status.enabled && (
                     <RefreshCw className="size-3 motion-safe:animate-spin" />
                   )}
-                  {t(
-                    status.paused
-                      ? "等待解锁"
-                      : !status.enabled
-                        ? "监控已关闭"
-                        : statusLabels[state],
-                  )}
+                  {t(!status.enabled ? "监控已关闭" : statusLabels[state])}
                 </p>
                 <p className="mt-4 text-sm font-medium tabular-nums">
                   {t("{0} 条统计记录", source.records.toLocaleString(intlLocale()))}
@@ -180,7 +169,7 @@ export function LocalUsagePanel({
         </summary>
         <p>
           {t(
-            "仅在本机保存用量数字、模型与匿名会话标识，不保存对话、密钥或完整日志路径。应用运行且密钥库解锁时约每 10 秒检查。",
+            "默认开启，无需解锁密钥库。应用运行时约每 10 秒检查，仅在本机保存用量数字、模型与匿名会话标识，不保存对话、密钥或完整日志路径。",
           )}
         </p>
         <p>

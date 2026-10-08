@@ -44,6 +44,12 @@ export function normalizeDocument(input) {
     }
     if (node.type === "heading")
       out.attrs = { level: [1, 2, 3].includes(node.attrs?.level) ? node.attrs.level : 2 };
+    if (
+      node.type === "codeBlock" &&
+      typeof node.attrs?.language === "string" &&
+      /^[\w+-]{1,40}$/.test(node.attrs.language)
+    )
+      out.attrs = { language: node.attrs.language };
     if (node.type === "orderedList")
       out.attrs = {
         start:

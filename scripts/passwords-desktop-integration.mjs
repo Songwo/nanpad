@@ -20,6 +20,11 @@ const packaged = process.argv[2];
 if (packaged) delete env.NANPAD_TEST_DATA_DIR;
 delete env.ELECTRON_RUN_AS_NODE;
 delete env.SINAN_DEV_URL;
+// 明确关闭隔离样本的真实日志扫描；监控功能另用合成日志测试。
+await writeFile(
+  join(directory, "local-usage.json"),
+  JSON.stringify({ version: 1, enabled: false, checkpoints: [], events: [], records: [] }),
+);
 let instance;
 let page;
 function post(port, route, body, token) {

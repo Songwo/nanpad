@@ -135,7 +135,19 @@ export interface AppInfo {
 }
 
 export interface UpdateCheck {
-  state: "current" | "outdated" | "unavailable";
+  state:
+    | "idle"
+    | "checking"
+    | "current"
+    | "outdated"
+    | "downloading"
+    | "downloaded"
+    | "installing"
+    | "unavailable"
+    | "error";
+  progress?: number;
+  transferred?: number;
+  total?: number;
   current: string;
   latest?: string;
   page: string;
@@ -264,6 +276,12 @@ export interface DesktopBridge {
   isDesktop: true;
   info(): Promise<AppInfo>;
   checkUpdate(): Promise<UpdateCheck>;
+  updates: {
+    status(): Promise<UpdateCheck>;
+    download(): Promise<UpdateCheck>;
+    install(): Promise<UpdateCheck>;
+    onStatus(handler: (state: UpdateCheck) => void): () => void;
+  };
   openDataDir(): Promise<boolean>;
   openExternal(url: string): Promise<boolean>;
   pickJson(): Promise<unknown | null>;

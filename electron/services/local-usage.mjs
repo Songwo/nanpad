@@ -149,7 +149,7 @@ export class LocalUsageMonitor {
     this.file = file;
     this.now = now;
     this.shouldCollect = shouldCollect;
-    this.enabled = false;
+    this.enabled = true;
     this.lastScannedAt = null;
     this.error = null;
     this.files = new Map();

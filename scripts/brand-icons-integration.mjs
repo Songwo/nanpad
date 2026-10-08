@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, mkdir, rm } from "node:fs/promises";
+import { mkdtemp, mkdir, writeFile, rm } from "node:fs/promises";
 import { execFileSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { resolve, join } from "node:path";
@@ -8,6 +8,11 @@ import { completeOnboarding } from "./onboarding-helper.mjs";
 
 // 使用真正的打包程序，防止仅检查 PNG 文件却遗漏界面灰度和 Electron 默认图标。
 const directory = await mkdtemp(join(tmpdir(), "zhiyu-brand-"));
+// 明确关闭隔离样本的真实日志扫描；监控功能另用合成日志测试。
+await writeFile(
+  join(directory, "local-usage.json"),
+  JSON.stringify({ version: 1, enabled: false, checkpoints: [], events: [], records: [] }),
+);
 let instance;
 try {
   const env = { ...process.env };

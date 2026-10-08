@@ -6,7 +6,6 @@ import {
   Lock,
   Monitor,
   Moon,
-  RefreshCw,
   ScrollText,
   Sun,
   X,
@@ -20,6 +19,7 @@ import { AgentSettings } from "./agent-settings";
 import { StorageSettings } from "./storage-settings";
 import { MailPushSettings } from "./mail-push-settings";
 import { ExtensionSettings } from "./extension-settings";
+import { AppUpdatePanel } from "./app-update-panel";
 import { ProfileForm } from "./onboarding";
 import { Field, Input, Select } from "./ui/input";
 import { RELEASES } from "@/lib/changelog";
@@ -470,77 +470,20 @@ function DataSection() {
   );
 }
 
-type UpdateState =
-  | { kind: "idle" }
-  | { kind: "checking" }
-  | { kind: "current"; latest: string }
-  | { kind: "outdated"; latest: string; page: string }
-  | { kind: "unavailable"; reason: string; page: string };
-
 function About() {
   const bridge = desktop();
   const [info, setInfo] = useState<AppInfo | null>(null);
-  const [update, setUpdate] = useState<UpdateState>({ kind: "idle" });
 
   useEffect(() => {
     if (bridge) void bridge.info().then(setInfo);
   }, [bridge]);
-
-  async function check() {
-    if (!bridge) return;
-    setUpdate({ kind: "checking" });
-    try {
-      const res = await bridge.checkUpdate();
-      if (res.state === "outdated")
-        setUpdate({ kind: "outdated", latest: res.latest!, page: res.page });
-      else if (res.state === "current")
-        setUpdate({ kind: "current", latest: res.latest ?? res.current });
-      else setUpdate({ kind: "unavailable", reason: res.reason ?? t("无法检查"), page: res.page });
-    } catch (err) {
-      setUpdate({
-        kind: "unavailable",
-        reason: err instanceof Error ? err.message : t("无法检查"),
-        page: "https://github.com/Songwo/nanpad/releases",
-      });
-    }
-  }
 
   return (
     <Section title={t("关于")} hint={t("知屿 —— 个人数字资产指挥台。")}>
       <Row label={t("当前版本")}>
         <span className="font-mono text-meta tabular-nums">{info?.version ?? "—"}</span>
       </Row>
-      <Row
-        label={t("检查更新")}
-        hint={
-          update.kind === "current"
-            ? t("已是最新版本（{0}）", update.latest)
-            : update.kind === "outdated"
-              ? t("有新版本 {0} 可用", update.latest)
-              : update.kind === "unavailable"
-                ? update.reason
-                : undefined
-        }
-      >
-        <div className="flex items-center gap-2">
-          {update.kind === "outdated" || update.kind === "unavailable" ? (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => void bridge?.openExternal(update.page)}
-            >
-              <ExternalLink className="size-3.5" />
-
-              {t("发布页")}
-            </Button>
-          ) : null}
-          <Button variant="outline" size="sm" disabled={update.kind === "checking"} onClick={check}>
-            <RefreshCw className={cn("size-3.5", update.kind === "checking" && "animate-spin")} />
-
-            {t("检查")}
-          </Button>
-        </div>
-      </Row>
+      <AppUpdatePanel />
       <Row label={t("运行环境")}>
         <span className="font-mono text-2xs text-muted">
           {info ? `Electron ${info.electron} · Node ${info.node} · ${info.arch}` : "—"}

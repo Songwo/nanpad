@@ -32,12 +32,17 @@ jobs:
       - run: npm run lint
       - run: npm run i18n:check
       - run: npm test
+      - run: node scripts/updater-engine-integration.mjs
       - run: npm run desktop:dist
       - name: 验证正式版彩色图标与任务栏分组
         shell: pwsh
         run: |
           $version = (Get-Content package.json | ConvertFrom-Json).version
           node scripts/brand-icons-integration.mjs "release/v$version/win-unpacked/Nanpad.exe"
+      - name: 验证本机默认监控与 Markdown 导入
+        run: |
+          node scripts/local-usage-integration.mjs
+          node scripts/markdown-import-integration.mjs
       - run: npm run extension:build
       - name: 验证正式程序的密码迁移与浏览器接口
         shell: pwsh
@@ -59,4 +64,7 @@ jobs:
           $hash = (Get-FileHash $installer -Algorithm SHA256).Hash.ToLower()
           $extensionHash = (Get-FileHash $extension -Algorithm SHA256).Hash.ToLower()
           @("$hash  Nanpad-$version-setup.exe", "$extensionHash  Nanpad-$version-browser-extension.zip") | Set-Content "$directory/SHA256SUMS.txt" -Encoding utf8
-          gh release create "v$version" $installer $extension "$directory/SHA256SUMS.txt" --verify-tag --title "知屿 Zhiyu $version" --notes-file "docs/releases/v$version.md"
+          $metadata = "$directory/latest.yml"
+          $blockmap = "$installer.blockmap"
+          if (!(Test-Path $metadata) -or !(Test-Path $blockmap)) { throw 'Update metadata missing' }
+          gh release create "v$version" $installer $extension $metadata $blockmap "$directory/SHA256SUMS.txt" --verify-tag --title "知屿 Zhiyu $version" --notes-file "docs/releases/v$version.md"

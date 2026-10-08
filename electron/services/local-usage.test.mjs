@@ -110,18 +110,19 @@ async function enabled(f) {
   return monitor;
 }
 
-test("默认关闭，不扫描日志；设置接口拒绝目录等附加参数", async (t) => {
+test("默认开启并采集；主动关闭后重启仍关闭，接口拒绝目录等附加参数", async (t) => {
   const f = await fixture(t);
   await writeFile(
     join(f.roots.codex[0], "session.jsonl"),
     codexMeta() + context() + codex(100, 20),
   );
   const monitor = f.monitor();
-  assert.equal((await monitor.status()).enabled, false);
+  assert.equal((await monitor.status()).enabled, true);
   await monitor.refresh();
-  assert.equal((await monitor.list()).records.length, 0);
-  assert.equal((await monitor.status()).sources[0].available, false);
-  assert.equal((await monitor.status()).lastScannedAt, null);
+  assert.equal((await monitor.list()).records.length, 1);
+  assert.equal((await monitor.status()).sources[0].available, true);
+  await monitor.configure({ enabled: false });
+  assert.equal((await f.monitor().status()).enabled, false);
   await assert.rejects(monitor.configure({ enabled: true, roots: [f.root] }), /只接受/);
 });
 

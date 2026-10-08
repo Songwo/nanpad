@@ -51,6 +51,7 @@ import { Button } from "./ui/button";
 import { EditorDialog } from "./ui/editor-dialog";
 import { t } from "@/lib/i18n";
 import { useSettings } from "@/lib/settings";
+import { DocumentMarkdownImport } from "./document-markdown-import";
 import "./document-reading.css";
 import "./document-actions.css";
 
@@ -146,6 +147,15 @@ export function DocumentsWorkspace() {
           </Button>
         </div>
         <div className="documents-list-heading">
+          <DocumentMarkdownImport
+            onImported={() => {
+              setQuery("");
+              setFilter("all");
+              setBrowsing(false);
+              setNewDocumentId(null);
+              useSettings.getState().setDocumentListCollapsed(false);
+            }}
+          />
           <label className="documents-search">
             <Search className="size-4" />
             <input

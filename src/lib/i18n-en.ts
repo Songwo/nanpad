@@ -9,6 +9,57 @@
  * not agree on where a possessive or a count belongs.
  */
 export const EN: Record<string, string> = {
+  "默认开启，无需解锁密钥库。应用运行时约每 10 秒检查，仅在本机保存用量数字、模型与匿名会话标识，不保存对话、密钥或完整日志路径。":
+    "Enabled by default without unlocking the vault. Checks every 10 seconds while the app runs. Only usage counts, models and anonymous session identifiers are stored locally, never conversations, keys or full log paths.",
+  软件更新: "Software updates",
+  "正在下载更新 {0}%": "Downloading update {0}%",
+  "更新已下载并校验，重启后完成安装。":
+    "The update has been downloaded and verified. Restart to install.",
+  "正在重启安装，请稍候…": "Restarting to install. Please wait…",
+  "正在检查更新…": "Checking for updates…",
+  更新下载进度: "Update download progress",
+  下载更新: "Download update",
+  重启并安装: "Restart and install",
+  重试检查: "Check again",
+  "安装将关闭并重新打开知屿，请先结束正在进行的终端或其他任务。":
+    "Installation will close and reopen Zhiyu. Finish any terminal sessions or other ongoing tasks first.",
+  "应用内更新仅支持 Windows 正式安装版。": "In-app updates require the installed Windows release.",
+  "更新失败，请检查网络或安装权限后重试。":
+    "Update failed. Check your connection or installation permissions and try again.",
+  "更新包缺少有效校验信息，请重新下载。":
+    "Missing update verification data. Download the update again.",
+  "更新包大小不符，请重新下载。": "The update size does not match. Download it again.",
+  "更新包校验失败，请重新下载。": "Update verification failed. Download it again.",
+  "请先检查可用的新版本。": "Check for a new version first.",
+  "请先完整下载并校验更新包。": "Download and verify the update before installing.",
+  "暂时无法检查更新，请稍后重试。": "Unable to check for updates. Try again later.",
+
+  "导入 Markdown": "Import Markdown",
+  "选择 Markdown 文件": "Choose Markdown files",
+  "正在导入 {0}/{1}": "Importing {0}/{1}",
+  松开即可导入文档: "Drop to import documents",
+  "可多选或拖入 · 每篇最多 1 MiB": "Select or drop files · Up to 1 MiB each",
+  "已导入 {0} 篇文档": "Imported {0} documents",
+  "导入完成：{0} 篇成功，{1} 篇未导入。": "Import complete: {0} saved, {1} not imported.",
+  关闭导入结果: "Dismiss import results",
+  查看导入详情: "View import details",
+  "请选择 .md 或 .markdown 文件。": "Choose a .md or .markdown file.",
+  "单篇 Markdown 文件不能超过 1 MiB。": "Each Markdown file must be no larger than 1 MiB.",
+  "文件编码无法识别，请另存为 UTF-8 后重试。":
+    "Unrecognized encoding. Save the file as UTF-8 and try again.",
+  "Markdown 文件为空。": "The Markdown file is empty.",
+  "文件包含二进制内容，无法作为 Markdown 导入。":
+    "The file contains binary data and cannot be imported as Markdown.",
+  "文档结构过于复杂，请拆分后导入。":
+    "The document structure is too complex. Split it into smaller files and try again.",
+  "不安全或相对链接已保留为文本。": "Unsafe or relative links were preserved as text.",
+  "图片以链接或原文保留，未自动加载；可在编辑时手动插入。":
+    "Images were preserved as links or source text without loading them. You can insert images while editing.",
+  "表格、HTML、脚注等未支持的格式已保留为原文。":
+    "Unsupported formats such as tables, HTML and footnotes were preserved as source text.",
+  "四至六级标题按三级标题导入。": "Level 4–6 headings were imported as level 3 headings.",
+  "任务列表以 [x] 和 [ ] 标记保留。": "Task lists were preserved with [x] and [ ] markers.",
+  "一次最多导入 50 篇 Markdown 文档。": "Import up to 50 Markdown documents at a time.",
   浏览器密码: "Browser passwords",
   网站: "Website",
   可导入: "Ready to import",

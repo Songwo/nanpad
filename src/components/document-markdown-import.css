@@ -1,0 +1,100 @@
+.document-import-control {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+
+.document-import-zone {
+  display: grid;
+  gap: 6px;
+  padding: 8px;
+  border: 1px dashed var(--color-line);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface);
+  color: var(--color-ink);
+  transition:
+    border-color 160ms ease,
+    background-color 160ms ease;
+}
+
+.document-import-zone[data-dragging="true"] {
+  border-color: var(--color-ink);
+  background: color-mix(in srgb, var(--color-ink) 6%, var(--color-surface));
+}
+
+.document-import-button {
+  width: 100%;
+  min-height: 44px;
+}
+
+.document-import-hint {
+  color: var(--color-muted);
+  font-size: 11px;
+  line-height: 1.5;
+  text-align: center;
+  overflow-wrap: anywhere;
+}
+
+.document-import-report {
+  max-height: 170px;
+  overflow-y: auto;
+  overflow-wrap: anywhere;
+  padding: 8px;
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-sm);
+  color: var(--color-muted);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.document-import-report-heading {
+  display: flex;
+  align-items: flex-start;
+  gap: 4px;
+  color: var(--color-ink);
+}
+
+.document-import-report-heading > span {
+  flex: 1;
+  padding-block: 4px;
+}
+
+.document-import-report-heading > button {
+  flex-shrink: 0;
+}
+
+.document-import-report summary {
+  cursor: pointer;
+  padding-block: 4px;
+}
+
+.document-import-report ul {
+  display: grid;
+  gap: 8px;
+  padding-top: 4px;
+}
+
+.document-import-error {
+  color: var(--color-crit);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.document-import-spinner {
+  animation: document-import-spin 900ms linear infinite;
+}
+
+@keyframes document-import-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .document-import-zone {
+    transition: none;
+  }
+  .document-import-spinner {
+    animation: none;
+  }
+}

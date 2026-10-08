@@ -14,6 +14,8 @@ import { checkNode } from "./services/node-check.mjs";
 import { UsageStore } from "./services/usage.mjs";
 import { LocalUsageMonitor } from "./services/local-usage.mjs";
 import { DocumentsStore } from "./services/documents.mjs";
+import electronUpdater from "electron-updater";
+import { DesktopUpdater } from "./services/app-updater.mjs";
 import {
   app,
   BrowserWindow,
@@ -600,7 +602,6 @@ function registerIpc() {
   const usage = new UsageStore(join(app.getPath("userData"), "usage-history.json"), vault);
   const localUsage = new LocalUsageMonitor({
     file: join(app.getPath("userData"), "local-usage.json"),
-    shouldCollect: () => Boolean(vault?.unlocked),
     // 隔离测试只能读取自身数据目录内的合成日志，不触碰用户日志。
     ...(!app.isPackaged && process.env.NANPAD_TEST_DATA_DIR
       ? {
@@ -615,7 +616,7 @@ function registerIpc() {
   });
   const localStatus = async () => {
     const status = await localUsage.status();
-    return { ...status, paused: status.enabled && !vault.unlocked };
+    return { ...status, paused: false };
   };
   handle("usage:list", async () => {
     const [remote, local] = await Promise.all([usage.list(), localUsage.list()]);
@@ -638,20 +639,19 @@ function registerIpc() {
       typeof input.enabled !== "boolean"
     )
       throw new Error("监控设置只接受开启或关闭，不接受日志路径。");
-    if (input.enabled && !vault.unlocked) throw new Error("请先解锁密钥库再开启本机监控。");
     await localUsage.configure({ enabled: input.enabled });
-    if (input.enabled && vault.unlocked) await localUsage.refresh();
+    if (input.enabled) await localUsage.refresh();
     return localStatus();
   });
   handle("usage:local-refresh", async () => {
-    if (!vault.unlocked) throw new Error("密钥库已锁定，本机采集已暂停。");
     await localUsage.refresh();
     return localStatus();
   });
   const localTimer = setInterval(() => {
-    if (vault.unlocked) void localUsage.refresh().catch(() => {});
+    void localUsage.refresh().catch(() => {});
   }, 10_000);
   localTimer.unref();
+  void localUsage.refresh().catch(() => {});
   app.once("before-quit", () => clearInterval(localTimer));
   for (const method of ["add", "remove", "refresh"])
     handle("usage:" + method, (...args) => usage[method](...args));
@@ -939,7 +939,29 @@ function registerIpc() {
     packaged: app.isPackaged,
   }));
 
-  handle("app:check-update", () => checkForUpdate(APP_VERSION));
+  const updateEngine = electronUpdater.autoUpdater;
+  updateEngine.setFeedURL({
+    provider: "github",
+    owner: "Songwo",
+    repo: "nanpad",
+    private: false,
+    releaseType: "release",
+  });
+  if (process.platform === "win32" && app.isPackaged)
+    updateEngine.installDirectory = dirname(process.execPath);
+  const updates = new DesktopUpdater({
+    engine: updateEngine,
+    current: APP_VERSION,
+    supported: app.isPackaged && process.platform === "win32",
+    publish: (state) => emit("app:update-status", state),
+    prepare: async () => {
+      await Promise.all([assetWrites, preferenceWrites, ...writes.values(), localUsage.queue]);
+    },
+  });
+  handle("app:check-update", () => updates.check());
+  handle("app:update-status", () => updates.status());
+  handle("app:download-update", () => updates.download());
+  handle("app:install-update", () => updates.install());
   handle("shell:open-path", async (target) => {
     const allowed = app.getPath("userData");
     // Only ever open our own data directory — never a path the page chose.
@@ -1140,80 +1162,6 @@ export const credentialId = (serverId) => `ssh:${serverId}`;
 /** Vault key for a server's pinned host key fingerprint — must match the renderer. */
 export const hostKeyId = (host, port) =>
   `ssh-host:${String(host).trim().toLowerCase()}:${Number(port) || 22}`;
-
-const RELEASES_API = "https://api.github.com/repos/Songwo/nanpad/releases/latest";
-const RELEASES_PAGE = "https://github.com/Songwo/nanpad/releases";
-
-/**
- * Ask GitHub what the newest release is.
- *
- * Uses Electron's `net` rather than `fetch` so it follows the system proxy —
- * on a machine behind a corporate or local proxy, a bare fetch would just time
- * out. A private repository answers 404 to an unauthenticated request, which is
- * reported as "cannot check", not as "up to date".
- */
-async function checkForUpdate(current) {
-  const body = await new Promise((resolve, reject) => {
-    const request = net.request({ url: RELEASES_API, method: "GET" });
-    request.setHeader("accept", "application/vnd.github+json");
-    request.setHeader("user-agent", `Nanpad/${current}`);
-    let text = "";
-    request.on("response", (response) => {
-      response.on("data", (chunk) => (text += chunk.toString("utf8")));
-      response.on("end", () => resolve({ status: response.statusCode, text }));
-      response.on("error", reject);
-    });
-    request.on("error", reject);
-    request.end();
-    setTimeout(() => reject(new Error("检查更新超时，请确认网络可达 GitHub")), 8_000);
-  });
-
-  if (body.status === 404) {
-    return { state: "unavailable", current, page: RELEASES_PAGE, reason: "仓库为私有或尚无发布" };
-  }
-  if (body.status === 403) {
-    return {
-      state: "unavailable",
-      current,
-      page: RELEASES_PAGE,
-      reason: "GitHub 接口限流，请稍后再试",
-    };
-  }
-  if (body.status !== 200) {
-    return {
-      state: "unavailable",
-      current,
-      page: RELEASES_PAGE,
-      reason: `GitHub 返回 ${body.status}`,
-    };
-  }
-
-  const tag = String(JSON.parse(body.text)?.tag_name ?? "").replace(/^v/, "");
-  if (!tag) {
-    return { state: "unavailable", current, page: RELEASES_PAGE, reason: "最新发布没有版本号" };
-  }
-  return {
-    state: compareVersions(tag, current) > 0 ? "outdated" : "current",
-    current,
-    latest: tag,
-    page: RELEASES_PAGE,
-  };
-}
-
-/** Numeric-segment compare; enough for the `major.minor.patch` tags we cut. */
-function compareVersions(a, b) {
-  const pa = String(a)
-    .split(".")
-    .map((n) => Number.parseInt(n, 10) || 0);
-  const pb = String(b)
-    .split(".")
-    .map((n) => Number.parseInt(n, 10) || 0);
-  for (let i = 0; i < Math.max(pa.length, pb.length); i += 1) {
-    const diff = (pa[i] ?? 0) - (pb[i] ?? 0);
-    if (diff !== 0) return diff;
-  }
-  return 0;
-}
 
 // One window per launch; a second instance just focuses the first.
 if (!app.requestSingleInstanceLock()) {

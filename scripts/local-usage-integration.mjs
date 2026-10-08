@@ -90,13 +90,39 @@ function sourceRecord(usage, sourceId) {
   assert.equal(rows.length, 1, `${sourceId} 的同会话同模型统计应去重为一条`);
   return rows[0];
 }
+async function waitForLocalInput(page, input) {
+  const deadline = Date.now() + 20000;
+  let actual;
+  do {
+    actual = sourceRecord(
+      await page.evaluate(() => window.sinan.usage.list()),
+      "local:codex",
+    ).input;
+    if (actual === input) return;
+    await new Promise((done) => setTimeout(done, 300));
+  } while (Date.now() < deadline);
+  console.error(
+    JSON.stringify({
+      expected: input,
+      actual,
+      status: await page.evaluate(() => window.sinan.usage.localStatus()),
+      ui: await page.locator(".local-usage-panel").innerText(),
+    }),
+  );
+  assert.equal(actual, input, "后台定时采集必须真正读取新增用量");
+}
 const env = { ...process.env, NANPAD_TEST_DATA_DIR: directory };
 delete env.ELECTRON_RUN_AS_NODE;
 delete env.SINAN_DEV_URL;
 let instance;
 const errors = [];
 try {
-  instance = await electron.launch({ args: [resolve("electron/main.mjs")], env, timeout: 45000 });
+  instance = await electron.launch({
+    args: [resolve("electron/main.mjs")],
+    env,
+    locale: "zh-CN",
+    timeout: 45000,
+  });
   const page = await instance.firstWindow();
   page.on("pageerror", (error) => errors.push(error.message));
   await instance.evaluate(({ BrowserWindow }) => {
@@ -104,9 +130,12 @@ try {
     window.webContents.setBackgroundThrottling(false);
     window.showInactive();
   });
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  assert.equal((await page.evaluate(() => window.sinan.vault.status())).unlocked, false);
+  assert.equal((await page.evaluate(() => window.sinan.usage.localStatus())).enabled, true);
+  await page.evaluate(() => window.sinan.usage.refreshLocal());
+  assert.ok((await page.evaluate(() => window.sinan.usage.list())).records.length > 0);
   await completeOnboarding(page);
-  assert.equal((await page.evaluate(() => window.sinan.usage.localStatus())).enabled, false);
-  assert.equal((await page.evaluate(() => window.sinan.usage.list())).records.length, 0);
   const rejected = await page.evaluate(async () => {
     try {
       await window.sinan.usage.configureLocal({ enabled: true, roots: { codex: ["C:/"] } });
@@ -121,21 +150,8 @@ try {
     .first()
     .click();
   await page.evaluate(() => window.sinan.vault.lock());
-  await page.getByRole("button", { name: "开启本机监控", exact: true }).click();
-  await page.getByRole("heading", { name: "解锁密钥库", exact: true }).waitFor();
-  await page
-    .locator("form")
-    .filter({ has: page.getByRole("heading", { name: "解锁密钥库", exact: true }) })
-    .getByRole("button", { name: "取消", exact: true })
-    .click();
-  assert.equal(
-    (await page.evaluate(() => window.sinan.usage.localStatus())).enabled,
-    false,
-    "取消解锁不改变监控设置",
-  );
-  await page.getByRole("button", { name: "开启本机监控", exact: true }).click();
-  await page.locator('.z-gate input[type="password"]').fill("integration-master-2026");
-  await page.getByRole("button", { name: "解锁", exact: true }).click();
+  await page.getByRole("button", { name: "立即采集", exact: true }).click();
+  assert.equal(await page.getByRole("heading", { name: "解锁密钥库", exact: true }).count(), 0);
   await page.getByText("监控已开启", { exact: true }).waitFor();
   let usage = await page.evaluate(() => window.sinan.usage.list());
   assert.equal(sourceRecord(usage, "local:codex").input, 100);
@@ -176,11 +192,7 @@ try {
   await writeFile(join(grokLogs, "usage.json"), JSON.stringify(grokDocument(220, 40)));
   await appendFile(file, event(150, 30));
   await page.getByRole("button", { name: "立即采集", exact: true }).click();
-  await page.waitForFunction(
-    async () =>
-      (await window.sinan.usage.list()).records.find((row) => row.sourceId === "local:codex")
-        ?.input === 150,
-  );
+  await waitForLocalInput(page, 150);
   usage = await page.evaluate(() => window.sinan.usage.list());
   assert.equal(sourceRecord(usage, "local:gemini").input, 64);
   assert.equal(sourceRecord(usage, "local:gemini").output, 20);
@@ -206,11 +218,7 @@ try {
     150,
   );
   await page.getByRole("button", { name: "开启本机监控", exact: true }).click();
-  await page.waitForFunction(
-    async () =>
-      (await window.sinan.usage.list()).records.find((row) => row.sourceId === "local:codex")
-        ?.input === 180,
-  );
+  await waitForLocalInput(page, 180);
   await page.setViewportSize({ width: 1440, height: 960 });
   await page.getByText("监控已开启", { exact: true }).waitFor();
   await page.waitForFunction(() =>
@@ -223,20 +231,16 @@ try {
   await page.screenshot({ path: "release/screenshots/usage-desktop-integrated.png" });
   await instance.evaluate(({ powerMonitor }) => powerMonitor.emit("lock-screen"));
   assert.equal((await page.evaluate(() => window.sinan.vault.status())).unlocked, false);
-  assert.equal((await page.evaluate(() => window.sinan.usage.localStatus())).paused, true);
-  assert.equal(
-    await page.evaluate(async () => {
-      try {
-        await window.sinan.usage.refreshLocal();
-        return false;
-      } catch {
-        return true;
-      }
-    }),
-    true,
-  );
-  await page.evaluate(() => window.sinan.vault.unlock("integration-master-2026"));
   assert.equal((await page.evaluate(() => window.sinan.usage.localStatus())).paused, false);
+  await appendFile(file, event(200, 45));
+  await page.evaluate(() => window.sinan.usage.refreshLocal());
+  assert.equal(
+    sourceRecord(await page.evaluate(() => window.sinan.usage.list()), "local:codex").input,
+    200,
+  );
+  // 保持锁库，等待后台定时器采集新增记录，不依赖手动刷新。
+  await appendFile(file, event(210, 50));
+  await waitForLocalInput(page, 210);
   // 恶意辅助窗口虽加载同一预载桥，仍不能读取主窗口服务。
   const foreign = await instance.evaluate(async ({ BrowserWindow }, preload) => {
     const extra = new BrowserWindow({
@@ -255,7 +259,7 @@ try {
   assert.equal(foreign, true, "非主窗口IPC拒绝");
   await page.evaluate(() => window.sinan.usage.configureLocal({ enabled: false }));
   usage = await page.evaluate(() => window.sinan.usage.list());
-  assert.equal(sourceRecord(usage, "local:codex").input, 180, "停用保留历史");
+  assert.equal(sourceRecord(usage, "local:codex").input, 210, "停用保留历史");
   assert.equal(sourceRecord(usage, "local:claude").input, 55);
   assert.equal(sourceRecord(usage, "local:grok").input, 220);
   assert.equal(sourceRecord(usage, "local:gemini").input, 64);
@@ -266,13 +270,13 @@ try {
   console.log(
     JSON.stringify({
       ok: true,
-      defaultOff: true,
+      defaultOn: true,
       increments: true,
       clients: ["Codex", "Claude Code", "Grok Build", "Gemini CLI"],
       emptyGeminiReportsNoUsage: true,
       snapshotDeduplication: true,
       pauseResume: true,
-      lockScreen: true,
+      collectsWhileLocked: true,
       fixedRoots: true,
       foreignWindowRejected: true,
       privacy: true,

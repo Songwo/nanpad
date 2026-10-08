@@ -14,7 +14,7 @@
 
 ## 版本准备
 
-更新 package.json、package-lock.json、browser-extension/manifest.json 与 src/lib/changelog.ts，执行 `node scripts/write-changelog.mjs` 同步 CHANGELOG.md。本版说明保存在 `docs/releases/v1.3.1.md`。README 的安装包名、构建目录及教程应与版本一致；描述实际支持范围，不将本机协议测试写成真实账号登录成功。
+更新 package.json、package-lock.json、browser-extension/manifest.json 与 src/lib/changelog.ts，执行 `node scripts/write-changelog.mjs` 同步 CHANGELOG.md。本版说明保存在 `docs/releases/v1.4.0.md`。README 的安装包名、构建目录及教程应与版本一致；描述实际支持范围，不将本机协议测试写成真实账号登录成功。
 
 ## 必须验证
 
@@ -57,3 +57,7 @@ npm run desktop:dist -- --win --x64 --publish never
 首次公开仓库时检查可达历史、截图和附件，不只扫描当前目录。确认源码许可证及第三方声明，排除用户数据、真实邮箱、Token、回调链接及个人浏览器截图。历史中已存在的信息不能靠删除当前文件解决，历史处理和仓库可见性变化应由维护者明确决定。
 
 当前发行未配置 Authenticode 证书。需要签名发行时，在维护者受保护的构建环境中配置 electron-builder 签名参数；证书与密码不得写入仓库。
+
+## 1.4.0 应用内更新验证
+
+发布必须包含安装包、`.exe.blockmap`、`latest.yml`、配套插件 ZIP 和 SHA256SUMS。`latest.yml` 由同一次 electron-builder 构建生成，不手写摘要；安装包的 SHA512 和长度必须匹配元数据。只上传安装包会导致应用内检查或下载失败。验证默认监控及锁库采集、Markdown 导入与重启保存，并运行更新引擎真实下载和坏校验拒绝测试、更新 UI 与保存失败测试。

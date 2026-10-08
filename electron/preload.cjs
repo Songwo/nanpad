@@ -124,6 +124,12 @@ contextBridge.exposeInMainWorld("sinan", {
 
   info: () => unwrap(ipcRenderer.invoke("app:info")),
   checkUpdate: () => unwrap(ipcRenderer.invoke("app:check-update")),
+  updates: {
+    status: () => unwrap(ipcRenderer.invoke("app:update-status")),
+    download: () => unwrap(ipcRenderer.invoke("app:download-update")),
+    install: () => unwrap(ipcRenderer.invoke("app:install-update")),
+    onStatus: (handler) => on("app:update-status", handler),
+  },
   openDataDir: () => unwrap(ipcRenderer.invoke("shell:open-path", "userData")),
   openExternal: (url) => unwrap(ipcRenderer.invoke("shell:open-external", url)),
   pickJson: () => unwrap(ipcRenderer.invoke("dialog:pick-json")),

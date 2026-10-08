@@ -12,6 +12,7 @@ const lock = JSON.parse(await readFile(join(root, "package-lock.json"), "utf8"))
 const dependencies = Object.fromEntries(
   [
     "ssh2",
+    "electron-updater",
     "imapflow",
     "openai",
     "minisearch",
