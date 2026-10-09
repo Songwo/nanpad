@@ -209,6 +209,13 @@ jobs:
           if existing and (not existing["prerelease"] or existing["target_commitish"] != source_sha):
               raise RuntimeError("既有发布不是同源码的测试版，拒绝覆盖")
 
+          def current_release():
+              # 未公开草稿尚无标签对象，按标签读取会返回 404；数值 ID 可读取草稿。
+              matches = [release for release in api("releases?per_page=100") if release["tag_name"] == tag]
+              if len(matches) != 1:
+                  raise RuntimeError("无法唯一定位本次测试版发布")
+              return api(f"releases/{matches[0]['id']}")
+
           def verify_release(release):
               assets = {asset["name"]: asset for asset in release["assets"]}
               if set(assets) != set(expected_files):
@@ -230,10 +237,10 @@ jobs:
               else:
                   subprocess.run(["gh", "release", "edit", tag, "--repo", repo, "--notes-file", str(notes)], check=True)
               subprocess.run(["gh", "release", "upload", tag, "--repo", repo, "--clobber", *map(str, files)], check=True, timeout=300)
-              current = api(f"releases/tags/{tag}")
+              current = current_release()
               verify_release(current)
               subprocess.run(["gh", "release", "edit", tag, "--repo", repo, "--draft=false", "--prerelease", "--latest=false"], check=True)
-              current = api(f"releases/tags/{tag}")
+              current = current_release()
               if current["draft"] or not current["prerelease"] or api(f"commits/{tag}")["sha"] != source_sha:
                   raise RuntimeError("发布后的测试版状态或来源不一致")
               verify_release(current)
