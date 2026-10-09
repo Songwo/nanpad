@@ -61,7 +61,8 @@ jobs:
           node scripts/document-markdown-integration.mjs &&
           node scripts/document-account-extract-integration.mjs &&
           node scripts/wxpusher-ui-integration.mjs &&
-          node scripts/page-scroll-integration.mjs
+          node scripts/page-scroll-integration.mjs &&
+          node scripts/main-identity-ui-integration.mjs
           STATUS=$?
           kill $DEV_PID 2>/dev/null || true
           exit $STATUS

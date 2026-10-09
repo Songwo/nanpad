@@ -68,6 +68,11 @@ export function UsageWorkspace() {
       if (document.visibilityState === "visible")
         void load(false).catch((e) => setError(errorText(e)));
     };
+    const resume = () => {
+      // 休眠期间通知可能丢失；唤醒仅重读主进程快照，不请求重新采集。
+      if (document.visibilityState === "visible")
+        void load(true).catch((e) => setError(errorText(e)));
+    };
     const unsubscribe = usageCache.subscribe((recordsChanged) => {
       const snapshot = usageCache.peek();
       if (!recordsChanged && snapshot) setLocalStatus(snapshot.status);
@@ -76,13 +81,13 @@ export function UsageWorkspace() {
     update();
     // 新桌面端在采集结束后推送；定时器只兼容旧桥和补偿丢失事件。
     const timer = setInterval(update, desktop()?.usage.onChanged ? 60000 : 10000);
-    document.addEventListener("visibilitychange", update);
-    window.addEventListener("focus", update);
+    document.addEventListener("visibilitychange", resume);
+    window.addEventListener("focus", resume);
     return () => {
       unsubscribe();
       clearInterval(timer);
-      document.removeEventListener("visibilitychange", update);
-      window.removeEventListener("focus", update);
+      document.removeEventListener("visibilitychange", resume);
+      window.removeEventListener("focus", resume);
     };
   }, [load]);
   const latest = new Map<string, UsageRecord>();

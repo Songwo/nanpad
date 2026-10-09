@@ -477,6 +477,10 @@ function ProfileMenu({ compact = false }: { compact?: boolean }) {
           <div className="border-b border-line px-3 py-1.5 text-[11px] font-semibold text-muted">
             {t("工作区与备份")}
           </div>
+          {item(t("个人资料"), () => {
+            window.dispatchEvent(new Event("settings:profile"));
+            useAppStore.getState().setSettingsOpen(true);
+          })}
           {item(t("导出 JSON 快照"), () => {
             const s = useAppStore.getState();
             downloadJson("zhiyu-assets.json", snapshotOf(s));

@@ -163,7 +163,7 @@ try {
       ],
     };
     window.__usageStatus = {
-      enabled: false,
+      enabled: true,
       paused: false,
       intervalMs: 10000,
       lastScannedAt: null,
@@ -173,7 +173,9 @@ try {
       ],
     };
     window.__usageCalls = [];
+    window.__vaultUnlocked = true;
     window.sinan = {
+      vault: { status: async () => ({ exists: true, unlocked: window.__vaultUnlocked }) },
       usage: {
         configureLocal: async ({ enabled }) => {
           window.__usageCalls.push({ type: "configure", enabled });
@@ -343,10 +345,15 @@ try {
   checks.push("下载真实 JSON，只导出当前筛选与允许字段，排除注入的密钥、路径和对话");
 
   const enable = panel.getByRole("button", { name: "开启本机监控", exact: true });
+  const disable = panel.getByRole("button", { name: "关闭本机监控", exact: true });
   const refresh = panel.getByRole("button", { name: "立即采集", exact: true });
+  assert.equal(await disable.getAttribute("aria-pressed"), "true");
+  assert.equal(await refresh.isDisabled(), false);
+  assert.deepEqual(await page.evaluate(() => window.__usageCalls), []);
+  await disable.click();
+  await enable.waitFor();
   assert.equal(await enable.getAttribute("aria-pressed"), "false");
   assert.equal(await refresh.isDisabled(), true);
-  assert.deepEqual(await page.evaluate(() => window.__usageCalls), []);
   await page.evaluate(() => {
     window.__configureFails = true;
   });
@@ -357,17 +364,20 @@ try {
     window.__configureFails = false;
   });
   await enable.click();
-  const disable = panel.getByRole("button", { name: "关闭本机监控", exact: true });
   await disable.waitFor();
   assert.equal(await disable.getAttribute("aria-pressed"), "true");
   assert.equal(await refresh.isDisabled(), false);
-  assert.equal(await panel.getByText("日志已发现", { exact: true }).count(), 1);
-  assert.equal(await panel.getByText("未发现可用日志", { exact: true }).count(), 1);
-  await page.evaluate(() => window.__updateUsageStatus({ paused: true }));
-  await panel.getByText("锁库暂停", { exact: true }).waitFor();
-  assert.equal(await refresh.isDisabled(), true);
-  assert.equal(await panel.getByText("等待解锁", { exact: true }).count(), 2);
-  await page.evaluate(() => window.__updateUsageStatus({ paused: false }));
+  assert.equal(await panel.getByText("采集正常", { exact: true }).count(), 1);
+  assert.equal(await panel.getByText("未发现日志目录", { exact: true }).count(), 1);
+  // 自 1.4.0 起本机采集与密钥库独立，锁库仍可读取非敏感统计。
+  await page.evaluate(() => {
+    window.__vaultUnlocked = false;
+    window.__updateUsageStatus({});
+  });
+  assert.equal(await refresh.isDisabled(), false);
+  assert.equal(await panel.getByText("采集正常", { exact: true }).count(), 1);
+  await refresh.click();
+  assert.equal(await page.evaluate(() => window.__usageCalls.at(-1).type), "refresh");
   await page.evaluate(() => {
     window.__refreshFails = true;
   });
@@ -382,7 +392,7 @@ try {
   await disable.click();
   await enable.waitFor();
   assert.equal(await refresh.isDisabled(), true);
-  checks.push("监控默认关闭、显式开启与关闭、锁库暂停、设置和采集失败可重试");
+  checks.push("默认开启、主动关闭与重新开启、锁库仍可采集、设置和采集失败可重试");
 
   await enable.click();
   await select("来源筛选", "全部来源");

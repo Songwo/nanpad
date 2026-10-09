@@ -9,6 +9,52 @@
  * not agree on where a possessive or a count belongs.
  */
 export const EN: Record<string, string> = {
+  "无法启动登录，请重试。": "Unable to start sign-in. Please try again.",
+  "Linux.do 主身份": "Linux.do primary identity",
+  "登录成功，请确认主身份": "Signed in. Confirm your primary identity.",
+  "同步 Linux.do 昵称": "Sync Linux.do display name",
+  "同步 Linux.do 头像": "Sync Linux.do avatar",
+  "未勾选时保留本机昵称和头像；手动修改个人资料会关闭对应同步。":
+    "Keep your local name and avatar when unchecked. Editing either locally turns off its sync.",
+  保存同步偏好: "Save sync preferences",
+  "确认将主身份从 @{0} 更换为 @{1}，已有本机资产和文档保留。":
+    "Replace the primary identity @{0} with @{1}. Existing local assets and documents will be kept.",
+  "请在浏览器完成 Linux.do 登录，授权后这里会显示资料预览。":
+    "Sign in to Linux.do in your browser. Your profile preview will appear here after authorization.",
+  "正在检查登录服务…": "Checking sign-in service…",
+  "登录服务暂未就绪，你可以继续本机使用，稍后在个人资料中绑定。":
+    "Sign-in is not ready yet. Continue locally and link your identity in your profile later.",
+  重新检查: "Check again",
+  "Linux.do 登录用于绑定主身份；本机资产不会上传，密钥库仍由本地主密码保护。":
+    "Linux.do sign-in links your primary identity. Local assets stay on this device, and your vault remains protected by its master password.",
+  "退出后清除本机登录凭据，保留身份资料及已保存的文档，不会退出其他设备。":
+    "Signing out removes this device’s sign-in credentials, keeps your profile and saved documents, and does not sign out other devices.",
+  "确认退出 Linux.do 登录": "Confirm Linux.do sign-out",
+  "退出 Linux.do 登录": "Sign out of Linux.do",
+  "读取公开帖子失败，请重试。": "Unable to load public posts. Please try again.",
+  "已将 {0} 条帖子全文保存为文档": "Saved the full content of {0} posts as a document",
+  我的帖子: "My posts",
+  "读取本人公开主题与回复，勾选后保存正文全文。缓存 15 分钟，受限帖子会单独提示。":
+    "Load your public topics and replies, then select posts to save their full content. Cached for 15 minutes; restricted posts are reported individually.",
+  "保存所选全文（{0}）": "Save selected full posts ({0})",
+  "每次最多选择 20 条。保存后可在文档中提取账号，检查后再加密入库。":
+    "Select up to 20 posts at a time. You can extract accounts from the saved document, review them, and save them to the encrypted vault.",
+  打开已保存文档: "Open saved document",
+  主身份已绑定: "Primary identity linked",
+  "已退出 Linux.do 登录，本机资料已保留": "Signed out of Linux.do. Your local data has been kept.",
+  身份资料已更新: "Identity profile updated",
+  "使用社区账号绑定知屿，也可以先在本机开始。":
+    "Link your community account to Zhiyu, or start locally.",
+  "管理你的社区身份、资料同步和本人帖子。":
+    "Manage your community identity, profile sync, and posts.",
+  已绑定主身份: "Primary identity linked",
+  已退出登录: "Signed out",
+  确认更换主身份: "Confirm identity change",
+  确认绑定主身份: "Confirm identity link",
+  更换登录账号: "Switch sign-in account",
+  "重新登录 Linux.do": "Sign in to Linux.do again",
+  "使用 Linux.do 登录": "Sign in with Linux.do",
+  加载我的帖子: "Load my posts",
   "已将 {0} 条帖子全文保存为关联文档": "Saved {0} full posts as a linked document",
   "列表展示公开帖子摘要，保存时读取所选帖子的全文。缓存 15 分钟；已取得条数不代表总发帖数。":
     "The list previews public posts. Saving fetches the full content of selected posts. Cached for 15 minutes; loaded entries are not the total post count.",

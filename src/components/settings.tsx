@@ -21,6 +21,7 @@ import { MailPushSettings } from "./mail-push-settings";
 import { ExtensionSettings } from "./extension-settings";
 import { AppUpdatePanel } from "./app-update-panel";
 import { ProfileForm } from "./onboarding";
+import { PrimaryIdentityPanel } from "./primary-identity-panel";
 import { Field, Input, Select } from "./ui/input";
 import { RELEASES } from "@/lib/changelog";
 import { desktop, type AppInfo } from "@/lib/desktop";
@@ -63,6 +64,15 @@ export function Settings() {
   const setOpen = useAppStore((s) => s.setSettingsOpen);
   const { mounted, shown } = usePresence(open, 180);
   const [tab, setTab] = useState<Tab>("appearance");
+
+  useEffect(() => {
+    const showProfile = () => {
+      setTab("profile");
+      setOpen(true);
+    };
+    window.addEventListener("settings:profile", showProfile);
+    return () => window.removeEventListener("settings:profile", showProfile);
+  }, [setOpen]);
 
   useEffect(() => {
     if (!open) return;
@@ -117,7 +127,15 @@ export function Settings() {
             </Button>
           </div>
           <div className="px-6 pb-8">
-            {tab === "profile" && (desktop() ? <ProfileForm /> : <p>{t("仅桌面版可用")}</p>)}
+            {tab === "profile" &&
+              (desktop() ? (
+                <div className="space-y-6">
+                  <PrimaryIdentityPanel />
+                  <ProfileForm />
+                </div>
+              ) : (
+                <p>{t("仅桌面版可用")}</p>
+              ))}
             {tab === "appearance" && <Appearance />}
             {tab === "monitoring" && <Monitoring />}
             {tab === "vault" && <VaultSection />}

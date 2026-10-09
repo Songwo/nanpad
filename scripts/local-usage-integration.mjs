@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { mkdtemp, mkdir, writeFile, appendFile, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve, relative, isAbsolute } from "node:path";
@@ -6,6 +7,20 @@ import { _electron as electron } from "playwright";
 import { completeOnboarding } from "./onboarding-helper.mjs";
 
 const directory = await mkdtemp(join(tmpdir(), "nanpad-local-usage-ipc-"));
+// 用真实旧版上限启动 Electron，覆盖迁移后定时采集、IPC 广播与图表更新整条链。
+await writeFile(
+  join(directory, "local-usage.json"),
+  JSON.stringify({
+    version: 1,
+    enabled: true,
+    checkpoints: [],
+    records: [],
+    events: Array.from({ length: 100_000 }, (_, index) => [
+      createHash("sha256").update(`historical-fixture-${index}`).digest("hex"),
+      true,
+    ]),
+  }),
+);
 const logs = join(directory, "qa-logs", "codex");
 const claudeLogs = join(directory, "qa-logs", "claude");
 const grokLogs = join(directory, "qa-logs", "grok", "synthetic-session");
@@ -291,6 +306,13 @@ try {
   assert.equal(sourceRecord(usage, "local:grok").input, 220);
   assert.equal(sourceRecord(usage, "local:gemini").input, 64);
   const cache = await readFile(join(directory, "local-usage.json"), "utf8");
+  const manifest = JSON.parse(cache);
+  assert.equal(manifest.version, 2, "正式 Electron 引擎迁移完整十万条旧事件索引");
+  const indexBytes = await readFile(join(directory, manifest.index));
+  assert.doesNotMatch(
+    indexBytes.toString("utf8"),
+    /PRIVATE_|synthetic\.jsonl|qa-session|qa-claude-|qa-grok-|qa-gemini-/,
+  );
   assert.doesNotMatch(cache, /PRIVATE_|synthetic\.jsonl|qa-session|qa-claude-|qa-grok-|qa-gemini-/);
   assert.equal(cache.includes(directory), false);
   assert.deepEqual(errors, []);
@@ -300,6 +322,7 @@ try {
       defaultOn: true,
       increments: true,
       liveChartAfterScan: true,
+      legacy100kIndexMigration: true,
       statusOnlyEvents: true,
       clients: ["Codex", "Claude Code", "Grok Build", "Gemini CLI"],
       emptyGeminiReportsNoUsage: true,

@@ -1,0 +1,34 @@
+[Unit]
+Description=Zhiyu Linux.do identity login
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=zhiyu-identity
+Group=zhiyu-identity
+WorkingDirectory=/opt/zhiyu-identity/current
+Environment=NODE_ENV=production
+Environment=ZHIYU_IDENTITY_CONFIG=/etc/zhiyu-identity/config.json
+ExecStart=/usr/bin/node /opt/zhiyu-identity/current/main.mjs
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=15
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+CapabilityBoundingSet=
+AmbientCapabilities=
+LockPersonality=true
+MemoryMax=256M
+TasksMax=64
+
+[Install]
+WantedBy=multi-user.target

@@ -9,6 +9,7 @@ import { Button } from "./ui/button";
 import { Field, Input } from "./ui/input";
 import { LogoMark } from "./logo";
 import { ImagePicker } from "./image-picker";
+import { PrimaryIdentityPanel } from "./primary-identity-panel";
 
 export function ProfileForm({ initial = false }: { initial?: boolean }) {
   const profile = useProfile((s) => s.profile);
@@ -16,12 +17,38 @@ export function ProfileForm({ initial = false }: { initial?: boolean }) {
     initial ? initialWorkspaceName(profile?.name, t("我的工作区")) : (profile?.name ?? ""),
   );
   const [avatar, setAvatar] = useState(profile?.avatarDataUrl ?? "");
+  const nameDirty = useRef(false);
+  const avatarDirty = useRef(false);
   const [imageBusy, setImageBusy] = useState(false);
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [saved, setSaved] = useState(false);
+  useEffect(() => {
+    // 登录同步回来的资料更新尚未编辑的字段，保留用户正在输入的草稿。
+    if (!nameDirty.current)
+      setName(
+        initial ? initialWorkspaceName(profile?.name, t("我的工作区")) : (profile?.name ?? ""),
+      );
+    if (!avatarDirty.current) setAvatar(profile?.avatarDataUrl ?? "");
+  }, [profile?.name, profile?.avatarDataUrl, initial]);
+  useEffect(() => {
+    const syncDraft = (event: Event) => {
+      const detail = (event as CustomEvent<{ syncName?: boolean; syncAvatar?: boolean }>).detail;
+      const latest = useProfile.getState().profile;
+      if (detail?.syncName) {
+        nameDirty.current = false;
+        setName(latest?.name ?? "");
+      }
+      if (detail?.syncAvatar) {
+        avatarDirty.current = false;
+        setAvatar(latest?.avatarDataUrl ?? "");
+      }
+    };
+    window.addEventListener("profile:identity-synced", syncDraft);
+    return () => window.removeEventListener("profile:identity-synced", syncDraft);
+  }, []);
   return (
     <form
       className="space-y-4"
@@ -36,11 +63,13 @@ export function ProfileForm({ initial = false }: { initial?: boolean }) {
             throw new Error(t("两次主密码不一致"));
           await desktop()?.profile.save({
             name: name.trim(),
-            avatarDataUrl: avatar,
+            ...(avatarDirty.current ? { avatarDataUrl: avatar } : {}),
             password: initial ? password : undefined,
           });
           setPassword("");
           setConfirm("");
+          nameDirty.current = false;
+          avatarDirty.current = false;
           await useProfile.getState().refresh();
           await useVault.getState().refresh();
           setSaved(true);
@@ -56,6 +85,7 @@ export function ProfileForm({ initial = false }: { initial?: boolean }) {
           avatar
           value={avatar}
           onChange={(value) => {
+            avatarDirty.current = true;
             setAvatar(value);
             setSaved(false);
           }}
@@ -71,7 +101,11 @@ export function ProfileForm({ initial = false }: { initial?: boolean }) {
           required
           maxLength={40}
           value={name}
-          onChange={(e) => setName(e.target.value)}
+          onChange={(e) => {
+            nameDirty.current = true;
+            setName(e.target.value);
+            setSaved(false);
+          }}
         />
       </Field>
       {initial && (
@@ -146,7 +180,7 @@ export function Onboarding() {
       ref={dialog}
       onCancel={(e) => e.preventDefault()}
       aria-label={t("首次设置")}
-      className="m-auto w-full max-w-md rounded-lg border border-line bg-card p-6 text-ink shadow-float backdrop:bg-ink/40"
+      className="m-auto max-h-[90vh] w-full max-w-md overflow-y-auto rounded-lg border border-line bg-card p-6 text-ink shadow-float backdrop:bg-ink/40"
     >
       <LogoMark className="mb-4 size-10" />
       <h1 className="mb-2 text-xl font-semibold">{t("欢迎使用知屿")}</h1>
@@ -161,7 +195,10 @@ export function Onboarding() {
           <Button onClick={() => void refresh()}>{t("重试")}</Button>
         </>
       ) : profile ? (
-        <ProfileForm initial />
+        <>
+          <PrimaryIdentityPanel initial />
+          <ProfileForm initial />
+        </>
       ) : (
         <p>{t("加载中…")}</p>
       )}

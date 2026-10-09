@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import { syncBuiltinESMExports } from "node:module";
+import { createHash } from "node:crypto";
 import {
   appendFile,
   copyFile,
@@ -12,6 +13,7 @@ import {
   rename,
   rm,
   symlink,
+  utimes,
   writeFile,
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -109,6 +111,214 @@ async function enabled(f) {
   await monitor.refresh();
   return monitor;
 }
+
+test("旧版十万事件缓存自动迁移，补回已推进偏移却漏记的跨日事件，重放与重启不翻倍", async (t) => {
+  const f = await fixture(t);
+  const path = join(f.roots.codex[0], "session.jsonl");
+  const prefix = codexMeta() + context() + codex(100, 10);
+  await writeFile(path, prefix);
+  const initial = await enabled(f);
+  const old = JSON.parse(await readFile(f.file, "utf8"));
+  initial.error = "测试中的旧进程已退出";
+  for (let index = old.events.length; index < 100_000; index++)
+    old.events.push([createHash("sha256").update(`synthetic-old-${index}`).digest("hex"), true]);
+  const body =
+    prefix + codex(200, 20, 0, "2026-10-08T12:00:00Z") + codex(300, 30, 0, "2026-10-09T12:00:00Z");
+  await writeFile(path, body);
+  old.checkpoints[0][1].offset = Buffer.byteLength(body);
+  old.checkpoints[0][1].total = { input: 300, output: 30, cached: 0, cacheWrite: 0 };
+  await writeFile(f.file, JSON.stringify(old));
+  const monitor = f.monitor();
+  await monitor.refresh();
+  assert.equal((await monitor.status()).error, undefined);
+  assert.equal(JSON.parse(await readFile(f.file, "utf8")).version, 2);
+  let rows = (await monitor.list()).records;
+  assert.equal(
+    rows.reduce((sum, row) => sum + row.input, 0),
+    300,
+  );
+  assert.ok(rows.some((row) => row.sampleAt.startsWith("2026-10-09")));
+  await copyFile(path, join(f.roots.codex[1], "copy.jsonl"));
+  await monitor.refresh();
+  const restarted = f.monitor();
+  await restarted.refresh();
+  assert.equal((await restarted.status()).error, undefined);
+  rows = (await restarted.list()).records;
+  assert.equal(
+    rows.reduce((sum, row) => sum + row.input, 0),
+    300,
+  );
+  await appendFile(path, codex(350, 40, 0, "2026-10-09T12:01:00Z"));
+  await restarted.refresh();
+  assert.equal(
+    (await restarted.list()).records.reduce((sum, row) => sum + row.input, 0),
+    350,
+  );
+});
+
+test("索引迁移发布失败保留原 JSON，重试仍能恢复旧汇总和去重", async (t) => {
+  const f = await fixture(t);
+  await writeFile(
+    join(f.roots.codex[0], "session.jsonl"),
+    codexMeta() + context() + codex(100, 10),
+  );
+  const monitor = await enabled(f);
+  const original = await readFile(f.file, "utf8");
+  const write = monitor.writeState;
+  monitor.writeState = async () => {
+    throw new Error("synthetic disk failure");
+  };
+  await assert.rejects(monitor.migrateIndex(), /synthetic disk failure/);
+  assert.equal(await readFile(f.file, "utf8"), original);
+  monitor.writeState = write;
+  await monitor.migrateIndex();
+  const manifest = JSON.parse(await readFile(f.file, "utf8"));
+  assert.equal(await readFile(join(f.root, "cache", manifest.backup), "utf8"), original);
+  await monitor.refresh();
+  assert.equal((await monitor.list()).records[0].input, 100);
+});
+
+test("索引事务保存失败同步回滚事件、汇总和偏移，重启后重新采集不会漏记或双计", async (t) => {
+  const f = await fixture(t);
+  const path = join(f.roots.claude[0], "session.jsonl");
+  await writeFile(path, claude({ input: 100, cached: 0, cacheWrite: 0 }));
+  const monitor = await enabled(f);
+  await monitor.migrateIndex();
+  await monitor.refresh();
+  await appendFile(path, claude({ input: 200, cached: 0, cacheWrite: 0 }));
+  const openIndex = monitor.openIndex.bind(monitor);
+  monitor.openIndex = async () => {
+    await openIndex();
+    monitor.eventIndex.save = () => {
+      throw new Error("synthetic disk failure");
+    };
+  };
+  await monitor.refresh();
+  assert.equal((await monitor.status()).enabled, false);
+  assert.ok((await monitor.status()).error.includes("保存失败"));
+  assert.equal((await monitor.list()).records[0].input, 100);
+  const restarted = f.monitor();
+  await restarted.refresh();
+  assert.equal((await restarted.list()).records[0].input, 200);
+  await restarted.refresh();
+  assert.equal((await restarted.list()).records[0].input, 200);
+});
+
+test("事件索引和 SQLite 日志的硬链接不会被读写", async (t) => {
+  const f = await fixture(t);
+  await writeFile(
+    join(f.roots.codex[0], "session.jsonl"),
+    codexMeta() + context() + codex(100, 10),
+  );
+  const monitor = await enabled(f);
+  await monitor.migrateIndex();
+  const path = monitor.indexPath;
+  await link(path, join(f.root, "index-copy.sqlite"));
+  const linked = f.monitor();
+  assert.equal((await linked.status()).enabled, false);
+  assert.ok((await linked.status()).error);
+  await fs.promises.unlink(join(f.root, "index-copy.sqlite"));
+  const target = join(f.root, "journal-target");
+  await writeFile(target, "PRIVATE_INDEX_MARKER");
+  await link(target, `${path}-journal`);
+  const journal = f.monitor();
+  assert.equal((await journal.status()).enabled, false);
+  assert.equal(await readFile(target, "utf8"), "PRIVATE_INDEX_MARKER");
+});
+
+test("1024 个历史文件下新增当天目录和旧会话追加在下一轮采集，历史仍持续轮转", async (t) => {
+  const f = await fixture(t);
+  const historical = join(f.roots.codex[0], "2026", "09", "01");
+  await mkdir(historical, { recursive: true });
+  const start = Date.parse("2026-10-09T12:00:00Z");
+  const paths = Array.from({ length: 1024 }, (_, index) =>
+    join(historical, `${String(index).padStart(4, "0")}.jsonl`),
+  );
+  for (let offset = 0; offset < paths.length; offset += 32)
+    await Promise.all(
+      paths.slice(offset, offset + 32).map(async (path, index) => {
+        await writeFile(path, codexMeta(`history-${offset + index}`) + context() + codex(1, 1));
+        await utimes(path, new Date("2026-09-01"), new Date("2026-09-01"));
+      }),
+    );
+  const monitor = f.monitor({ now: () => start });
+  // 先完成目录发现，不预先读取正文，用真实文件验证调度顺序。
+  await monitor.ready;
+  for (let pass = 0; pass < 12; pass++) await monitor.discover();
+  assert.equal(monitor.files.size, 1024);
+  await monitor.refresh();
+  const before = (await monitor.list()).records.length;
+  const today = join(f.roots.codex[0], "2026", "10", "09");
+  await mkdir(today, { recursive: true });
+  await writeFile(
+    join(today, "new.jsonl"),
+    codexMeta("new-today") + context() + codex(777, 1, 0, "2026-10-09T12:00:00Z"),
+  );
+  await appendFile(paths[1023], codex(888, 2, 0, "2026-10-09T12:00:00Z"));
+  const tick = performance.now();
+  await monitor.refresh();
+  t.diagnostic(
+    `1025 文件自动刷新耗时 ${Math.round(performance.now() - tick)} ms，元数据并发上限 32，正文预算 8 MiB / 64 文件`,
+  );
+  const rows = (await monitor.list()).records;
+  assert.ok(rows.some((row) => row.input === 777));
+  assert.ok(rows.some((row) => row.input === 887 || row.input === 888));
+  assert.ok(rows.length > before + 2, "历史轮转仍有进展");
+});
+
+test("4096 个文件的调度只检查元数据，并发不超过 32 且正文候选不超过 64", async (t) => {
+  const f = await fixture(t);
+  const monitor = f.monitor();
+  await monitor.ready;
+  const paths = Array.from({ length: LOCAL_USAGE_LIMITS.files }, (_, index) =>
+    join(f.roots.codex[0], `${index}.jsonl`),
+  );
+  for (let offset = 0; offset < paths.length; offset += 32)
+    await Promise.all(
+      paths.slice(offset, offset + 32).map(async (path, index) => {
+        await writeFile(path, "");
+        monitor.files.set(String(offset + index), {
+          key: String(offset + index),
+          path,
+          client: "codex",
+        });
+      }),
+    );
+  const original = fs.promises.lstat;
+  const originalOpen = fs.promises.open;
+  let active = 0;
+  let maxActive = 0;
+  let reads = 0;
+  fs.promises.lstat = async (...args) => {
+    active++;
+    maxActive = Math.max(maxActive, active);
+    try {
+      return await original(...args);
+    } finally {
+      active--;
+    }
+  };
+  fs.promises.open = async (...args) => {
+    reads++;
+    return originalOpen(...args);
+  };
+  syncBuiltinESMExports();
+  try {
+    monitor.lastRefreshStats = { metadataFiles: 0, metadataMs: 0 };
+    const files = await monitor.scheduleFiles("codex");
+    assert.equal(files.length, LOCAL_USAGE_LIMITS.filesPerRefresh);
+    assert.equal(reads, 0);
+    assert.ok(maxActive <= 32);
+    assert.equal(monitor.lastRefreshStats.metadataFiles, 4096);
+    t.diagnostic(
+      `4096 文件元数据耗时 ${Math.round(monitor.lastRefreshStats.metadataMs)} ms，实际峰值并发 ${maxActive}，正文读取 ${reads}`,
+    );
+  } finally {
+    fs.promises.lstat = original;
+    fs.promises.open = originalOpen;
+    syncBuiltinESMExports();
+  }
+});
 
 test("默认开启并采集；主动关闭后重启仍关闭，接口拒绝目录等附加参数", async (t) => {
   const f = await fixture(t);
@@ -445,6 +655,11 @@ test("系统将缓存文件透明重定向时可重启读取，保留历史和�
     const again = f.monitor();
     assert.equal((await again.status()).error, undefined);
     assert.equal((await again.list()).records[0].input, 150, "映射后的写入能再次读取");
+    await restarted.migrateIndex();
+    const indexed = f.monitor();
+    await indexed.refresh();
+    assert.equal((await indexed.status()).error, undefined);
+    assert.equal((await indexed.list()).records[0].input, 150, "文件级透明映射的索引也能重启恢复");
     assert.equal((await initial.list()).records[0].input, 100);
   } finally {
     Object.assign(fs.promises, originals);
@@ -733,6 +948,60 @@ const geminiMessage = (id, output = 20) => ({
   timestamp: TIME,
   content: "PRIVATE_CONVERSATION_MARKER",
   tokens: { input: 100, output, cached: 40, thoughts: 15, tool: 5, total: 140 },
+});
+
+test("新 JSON 快照因剩余字节预算不足而延期时，下轮仍优先完成首次读取", async (t) => {
+  const f = await fixture(t);
+  await writeFile(join(f.roots.grok[0], "usage.json"), JSON.stringify(grokUsage([grokTurn(1)])));
+  const monitor = f.monitor();
+  await monitor.ready;
+  await monitor.discover();
+  const fresh = [...monitor.files.values()].find((file) => file.client === "grok");
+  assert.ok(fresh);
+  assert.equal(await monitor.readSnapshot(fresh, 1), 0, "不得超过本轮剩余正文预算");
+  assert.equal(fresh.pendingWork, true);
+  assert.equal(fresh.scanned, false);
+  // 用已经读完且元数据未变的调度条目填满历史队列，单独验证预算延期后的优先级。
+  monitor.files.clear();
+  for (let index = 0; index < LOCAL_USAGE_LIMITS.filesPerRefresh; index++)
+    monitor.files.set(`history-${index}`, {
+      ...fresh,
+      key: `history-${index}`,
+      scanned: true,
+      pendingWork: false,
+    });
+  monitor.files.set(fresh.key, fresh);
+  const scheduled = await monitor.scheduleFiles("grok");
+  assert.equal(scheduled[0].item.key, fresh.key);
+  assert.ok((await monitor.readSnapshot(fresh, LOCAL_USAGE_LIMITS.bytesPerRefresh)) > 0);
+  assert.equal(fresh.scanned, true);
+  assert.equal((await monitor.list()).records[0].input, 100);
+});
+
+test("已经读过的 JSON 快照更新后预算不足，下轮仍优先补采新累计值", async (t) => {
+  const f = await fixture(t);
+  const path = join(f.roots.grok[0], "usage.json");
+  await writeFile(path, JSON.stringify(grokUsage([grokTurn(1)])));
+  const monitor = await enabled(f);
+  const changed = [...monitor.files.values()].find((file) => file.client === "grok");
+  assert.equal(changed.scanned, true);
+  monitor.now = () => Date.parse(TIME) + 120_000;
+  await writeFile(path, JSON.stringify(grokUsage([grokTurn(1, 150)])));
+  assert.equal(await monitor.readSnapshot(changed, 1), 0);
+  assert.equal(changed.pendingWork, true);
+  assert.equal(changed.scanned, true);
+  monitor.files.clear();
+  for (let index = 0; index < LOCAL_USAGE_LIMITS.filesPerRefresh; index++)
+    monitor.files.set(`history-${index}`, {
+      ...changed,
+      key: `history-${index}`,
+      pendingWork: false,
+    });
+  monitor.files.set(changed.key, changed);
+  const scheduled = await monitor.scheduleFiles("grok");
+  assert.equal(scheduled[0].item.key, changed.key);
+  await monitor.readSnapshot(changed, LOCAL_USAGE_LIMITS.bytesPerRefresh);
+  assert.equal((await monitor.list()).records[0].input, 150);
 });
 
 test("Grok 只读取 usage.json，按轮次模型去重且缓存与推理不重复计入", async (t) => {

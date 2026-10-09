@@ -84,3 +84,87 @@ test("个人资料保存执行注入的主进程图片解码校验", async (t) =
   await assert.rejects(service.save({ name: "失败修改", avatarDataUrl: avatar }), /decode/);
   assert.equal((await service.get()).name, "原名字");
 });
+
+test("主身份同步只覆盖展示，本地昵称头像草稿在关闭同步后恢复", async (t) => {
+  const { service, file } = await fixture(t);
+  const identity = {
+    connected: true,
+    profile: { name: "论坛昵称", username: "forum" },
+    syncName: true,
+    syncAvatar: true,
+    avatarDataUrl: avatar,
+  };
+  service.setIdentitySource({
+    get: async () => structuredClone(identity),
+    preferences: async (value) => Object.assign(identity, value),
+  });
+  await writeFile(file, JSON.stringify({ name: "本地昵称", avatarDataUrl: "" }));
+  assert.equal((await service.get()).name, "论坛昵称");
+  await service.save({ name: "论坛昵称", avatarDataUrl: avatar });
+  assert.deepEqual(JSON.parse(await readFile(file, "utf8")), {
+    name: "本地昵称",
+    avatarDataUrl: "",
+  });
+  assert.equal(identity.syncName, true);
+  assert.equal(identity.syncAvatar, true);
+  identity.syncName = false;
+  identity.syncAvatar = false;
+  assert.equal((await service.get()).name, "本地昵称");
+  assert.equal((await service.get()).avatarDataUrl, "");
+});
+
+test("编辑昵称或头像只关闭该项同步，保留另一项与主身份", async (t) => {
+  const { service, file } = await fixture(t);
+  const identity = {
+    connected: true,
+    profile: { name: "论坛昵称", username: "forum" },
+    syncName: true,
+    syncAvatar: true,
+    avatarDataUrl: avatar,
+  };
+  service.setIdentitySource({
+    get: async () => structuredClone(identity),
+    preferences: async (value) => Object.assign(identity, value),
+  });
+  await writeFile(file, JSON.stringify({ name: "本地昵称", avatarDataUrl: "" }));
+  await service.save({ name: "自定义昵称" });
+  assert.equal(identity.syncName, false);
+  assert.equal(identity.syncAvatar, true);
+  assert.equal((await service.get()).mainIdentity.profile.username, "forum");
+  await service.save({ name: "自定义昵称", avatarDataUrl: "" });
+  assert.equal(identity.syncAvatar, false);
+});
+
+test("首次绑定身份不会假装密钥库已就绪，身份解密失败仍可使用本机资料", async (t) => {
+  const { service, creates } = await fixture(t, false);
+  const identity = {
+    connected: true,
+    profile: { name: "论坛昵称" },
+    syncName: true,
+    syncAvatar: false,
+  };
+  service.setIdentitySource({ get: async () => identity, preferences: async () => {} });
+  assert.equal((await service.get()).ready, false);
+  await service.save({ name: "论坛昵称", password: "test-password-123" });
+  assert.equal(creates(), 1);
+  assert.equal((await service.get()).ready, true);
+  service.setIdentitySource({
+    get: async () => {
+      throw new Error("OS key unavailable");
+    },
+  });
+  const recovered = await service.get();
+  assert.equal(recovered.mainIdentity, null);
+  assert.equal(recovered.vaultExists, true);
+});
+
+test("旧密钥库存在但本地资料缺失时，绑定主身份不能跳过主密码确认", async (t) => {
+  const { service } = await fixture(t, true);
+  service.setIdentitySource({
+    get: async () => ({ profile: { name: "论坛昵称" }, syncName: true, syncAvatar: false }),
+  });
+  const current = await service.get();
+  assert.equal(current.name, "论坛昵称");
+  assert.equal(current.ready, false);
+  assert.equal(current.vaultExists, true);
+});

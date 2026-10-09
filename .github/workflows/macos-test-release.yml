@@ -1,0 +1,250 @@
+name: macOS 公开测试版发布
+
+on:
+  workflow_dispatch:
+    inputs:
+      run_id:
+        description: 已成功的 macOS 双架构构建运行 ID
+        required: true
+        type: string
+      version:
+        description: 来源正式版版本号，需要已有对应的 v 标签
+        required: true
+        default: "1.7.0"
+        type: string
+      tag:
+        description: 独立测试版标签，格式 mac-test-版本号.序号
+        required: true
+        default: "mac-test-1.7.0.1"
+        type: string
+
+permissions:
+  contents: write
+  actions: read
+
+concurrency:
+  group: macos-test-release-${{ inputs.tag }}
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: 核验原始构建并发布独立预发布版
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          MAC_SOURCE_RUN: ${{ inputs.run_id }}
+          MAC_VERSION: ${{ inputs.version }}
+          MAC_RELEASE_TAG: ${{ inputs.tag }}
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import base64
+          import hashlib
+          import json
+          import os
+          import pathlib
+          import plistlib
+          import re
+          import shutil
+          import struct
+          import subprocess
+          import tempfile
+          import zipfile
+
+          repo = os.environ["GH_REPO"]
+          run_id = os.environ["MAC_SOURCE_RUN"]
+          version = os.environ["MAC_VERSION"]
+          tag = os.environ["MAC_RELEASE_TAG"]
+          if not re.fullmatch(r"[0-9]+", run_id):
+              raise RuntimeError("构建运行 ID 无效")
+          if not re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+", version):
+              raise RuntimeError("版本号无效")
+          if not re.fullmatch(r"mac-test-" + re.escape(version) + r"\.[0-9]+", tag):
+              raise RuntimeError("测试版标签必须使用独立 mac-test 前缀并与版本匹配")
+
+          def api(path):
+              return json.loads(subprocess.check_output(["gh", "api", f"repos/{repo}/{path}"], text=True))
+
+          def digest(path):
+              hasher = hashlib.sha256()
+              with path.open("rb") as stream:
+                  for block in iter(lambda: stream.read(1024 * 1024), b""):
+                      hasher.update(block)
+              return hasher.hexdigest()
+
+          # 按来源正式标签锁定代码，不能拿当前 main 代替旧构建的来源。
+          source_sha = api(f"commits/v{version}")["sha"]
+          run = api(f"actions/runs/{run_id}")
+          if (run["status"] != "completed" or run["conclusion"] != "success"
+                  or run["head_sha"] != source_sha
+                  or run["path"] != ".github/workflows/macos-package.yml"
+                  or run["head_repository"]["full_name"] != repo):
+              raise RuntimeError("来源构建没有成功，或构建来源与正式版标签不一致")
+          package_file = api(f"contents/package.json?ref={source_sha}")
+          package = json.loads(base64.b64decode(package_file["content"]))
+          if package["version"] != version:
+              raise RuntimeError("源码版本与输入版本不一致")
+
+          metadata = api(f"actions/runs/{run_id}/artifacts?per_page=100")["artifacts"]
+          work = pathlib.Path(tempfile.mkdtemp(prefix="zhiyu-mac-test-"))
+          reports = []
+          files = []
+          for arch, expected_cpu in [("arm64", 0x0100000C), ("x64", 0x01000007)]:
+              name = f"Zhiyu-mac-{arch}-unsigned"
+              candidates = [item for item in metadata if item["name"] == name]
+              if len(candidates) != 1:
+                  raise RuntimeError(f"构建必须包含唯一的 {arch} 附件")
+              item = candidates[0]
+              if item["expired"] or item["workflow_run"]["head_sha"] != source_sha:
+                  raise RuntimeError("附件已过期或来自不同源码")
+              if not re.fullmatch(r"sha256:[0-9a-f]{64}", item.get("digest", "")):
+                  raise RuntimeError("附件缺少可信的 SHA-256 摘要")
+              if not 1024 * 1024 <= item["size_in_bytes"] <= 512 * 1024 * 1024:
+                  raise RuntimeError("附件大小超出预期")
+
+              wrapper = work / f"artifact-{item['id']}.zip"
+              with wrapper.open("wb") as destination:
+                  subprocess.run(["gh", "api", f"repos/{repo}/actions/artifacts/{item['id']}/zip"], stdout=destination, check=True, timeout=300)
+              if wrapper.stat().st_size != item["size_in_bytes"] or digest(wrapper) != item["digest"][7:]:
+                  raise RuntimeError("Actions 原始附件的大小或 SHA-256 不匹配")
+
+              archive_name = name + ".zip"
+              target = work / f"Zhiyu-{version}-mac-{arch}-unsigned.zip"
+              with zipfile.ZipFile(wrapper) as outer:
+                  if outer.namelist() != [archive_name]:
+                      raise RuntimeError("附件归档中出现非预期文件")
+                  with outer.open(archive_name) as source, target.open("wb") as destination:
+                      shutil.copyfileobj(source, destination, 1024 * 1024)
+
+              # 仅在压缩包中读版本和二进制头，不执行程序，不展开整个 .app。
+              with zipfile.ZipFile(target) as app_zip:
+                  names = app_zip.namelist()
+                  if any(name.startswith("/") or ".." in pathlib.PurePosixPath(name).parts for name in names):
+                      raise RuntimeError("程序归档包含无效路径")
+                  if sum(entry.file_size for entry in app_zip.infolist()) > 2 * 1024 * 1024 * 1024:
+                      raise RuntimeError("程序解压大小超出预期")
+                  app = "Zhiyu.app/Contents/"
+                  info_entry = app_zip.getinfo(app + "Info.plist")
+                  if info_entry.file_size > 1024 * 1024:
+                      raise RuntimeError("应用资料文件异常")
+                  info = plistlib.loads(app_zip.read(info_entry))
+                  if info["CFBundleShortVersionString"] != version or info["CFBundleExecutable"] != "Zhiyu":
+                      raise RuntimeError("程序名称或版本不匹配")
+                  executable = app_zip.getinfo(app + "MacOS/Zhiyu")
+                  if not (executable.external_attr >> 16) & 0o111:
+                      raise RuntimeError("程序缺少可执行权限")
+                  with app_zip.open(executable) as binary:
+                      header = binary.read(32)
+                  if header[:4] != bytes.fromhex("cffaedfe") or struct.unpack("<I", header[4:8])[0] != expected_cpu:
+                      raise RuntimeError("Mach-O 可执行文件的 CPU 架构不匹配")
+                  if app_zip.getinfo(app + "Resources/app.asar").file_size <= 100_000:
+                      raise RuntimeError("程序资源不完整")
+                  if app_zip.testzip() is not None:
+                      raise RuntimeError("程序 ZIP 的 CRC 校验失败")
+
+              reports.append({"file": target.name, "sha256": digest(target), "bytes": target.stat().st_size,
+                              "architecture": arch, "version": version, "cpuType": hex(expected_cpu),
+                              "artifactId": item["id"], "artifactSha256": item["digest"],
+                              "sourceCommit": source_sha, "workflowRun": int(run_id)})
+              files.append(target)
+              print(f"已验证 {target.name}，SHA-256 {reports[-1]['sha256']}", flush=True)
+
+          checksum = work / "SHA256SUMS.txt"
+          checksum.write_text("".join(f"{item['sha256']}  {item['file']}\n" for item in reports), encoding="utf-8")
+          verification = work / "BUILD-VERIFICATION.json"
+          verification.write_text(json.dumps(reports, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+          files.extend([checksum, verification])
+          expected_files = {path.name: {"sha256": digest(path), "bytes": path.stat().st_size} for path in files}
+
+          notes = work / "release-notes.md"
+          notes.write_text(f"""# 知屿 Zhiyu {version} · macOS 公开测试版
+
+          感谢社区帮助测试！现在将 Apple Silicon 和 Intel 两种架构的程序放到 Release，方便直接下载。
+
+          这是 **Pre-release（公开测试版）**，应用版本为 **{version}**。两个 ZIP 直接来自已成功的 macOS 构建，程序内容未重新打包或修改。
+
+          ## 下载选择
+
+          | 设备 | 下载文件 |
+          | --- | --- |
+          | Apple Silicon（M 系列芯片） | `Zhiyu-{version}-mac-arm64-unsigned.zip` |
+          | Intel 芯片 Mac | `Zhiyu-{version}-mac-x64-unsigned.zip` |
+
+          下载适合芯片的 ZIP，解压后将 `Zhiyu.app` 放到「应用程序」。校验值见 `SHA256SUMS.txt`，构建来源和验证信息见 `BUILD-VERIFICATION.json`。
+
+          ## 已验证的内容
+
+          - GitHub 的真实 macOS runner 已分别完成 arm64 与 x64 的构建和类型检查。
+          - 发布前已核对源码提交、Actions 原始附件 SHA-256、ZIP 完整性、应用版本、`.app` 结构、可执行权限和 Mach-O CPU 架构。
+          - 对于 1.6.0，[@Liberniz 已反馈](https://github.com/{repo}/issues/2#issuecomment-6072196096)：arm64 包在 **MacBook Air M5** 上使用正常，并提供了界面截图。感谢实机测试！
+
+          ## 当前测试范围
+
+          维护者目前没有 Mac 实机。上述社区反馈不能覆盖所有 macOS 版本、Intel 设备和全部功能。程序**未使用 Apple Developer 证书签名，未完成 Apple 公证**，系统可能提示无法验证开发者。如遇系统阻止，可参考 [Apple 关于打开来自未知开发者应用的说明](https://support.apple.com/zh-cn/102445)，确认来源后再决定是否打开。
+
+          本测试版不会替代 Windows 正式版，也不会作为 Windows 自动更新的目标。
+
+          若发现问题，欢迎到 [Issue #2](https://github.com/{repo}/issues/2) 补充 macOS 版本、芯片类型、具体操作和错误表现；截图和日志请先隐藏账号、密码、令牌等个人信息。
+
+          ## 构建来源
+
+          - 源码提交：[`{source_sha}`](https://github.com/{repo}/commit/{source_sha})
+          - 构建记录：[macOS 双架构构建 #{run_id}](https://github.com/{repo}/actions/runs/{run_id})
+          - 完整功能与更新日志：[知屿 {version}](https://github.com/{repo}/releases/tag/v{version})
+          """.replace("\n          ", "\n"), encoding="utf-8")
+
+          # 同标签只能补完草稿或复验同一份已发布附件，不能覆盖不同来源的程序。
+          existing = None
+          releases = api("releases?per_page=100")
+          for release in releases:
+              if release["tag_name"] == tag:
+                  existing = release
+                  break
+          refs = subprocess.run(["gh", "api", f"repos/{repo}/git/ref/tags/{tag}"], capture_output=True, text=True)
+          if refs.returncode == 0 and api(f"commits/{tag}")["sha"] != source_sha:
+              raise RuntimeError("既有测试版标签指向不同源码，拒绝发布")
+          if existing and (not existing["prerelease"] or existing["target_commitish"] != source_sha):
+              raise RuntimeError("既有发布不是同源码的测试版，拒绝覆盖")
+
+          def verify_release(release):
+              assets = {asset["name"]: asset for asset in release["assets"]}
+              if set(assets) != set(expected_files):
+                  raise RuntimeError("Release 附件集合与本次已验证文件不一致")
+              for name, expected in expected_files.items():
+                  asset = assets[name]
+                  if asset.get("digest") != "sha256:" + expected["sha256"] or asset["size"] != expected["bytes"] or asset["state"] != "uploaded":
+                      raise RuntimeError("Release 远端附件摘要、大小或上传状态不匹配")
+
+          if existing and not existing["draft"]:
+              verify_release(existing)
+              url = existing["html_url"]
+              print("同版本已发布且附件验证一致：" + url)
+          else:
+              if not existing:
+                  subprocess.run(["gh", "release", "create", tag, "--repo", repo, "--target", source_sha,
+                                  "--draft", "--prerelease", "--title", f"知屿 Zhiyu {version} · macOS 公开测试版",
+                                  "--notes-file", str(notes)], check=True)
+              else:
+                  subprocess.run(["gh", "release", "edit", tag, "--repo", repo, "--notes-file", str(notes)], check=True)
+              subprocess.run(["gh", "release", "upload", tag, "--repo", repo, "--clobber", *map(str, files)], check=True, timeout=300)
+              current = api(f"releases/tags/{tag}")
+              verify_release(current)
+              subprocess.run(["gh", "release", "edit", tag, "--repo", repo, "--draft=false", "--prerelease", "--latest=false"], check=True)
+              current = api(f"releases/tags/{tag}")
+              if current["draft"] or not current["prerelease"] or api(f"commits/{tag}")["sha"] != source_sha:
+                  raise RuntimeError("发布后的测试版状态或来源不一致")
+              verify_release(current)
+              url = current["html_url"]
+
+          latest = api("releases/latest")
+          if latest["tag_name"] == tag or latest["prerelease"]:
+              raise RuntimeError("测试版错误地覆盖了最新正式版")
+          with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as summary:
+              summary.write(f"已发布并验证 [macOS 公开测试版]({url})。\n\n来源提交：`{source_sha}`。最新正式版仍为 `{latest['tag_name']}`。\n\n")
+              for item in reports:
+                  summary.write(f"- `{item['file']}`：`{item['sha256']}`\n")
+          print(url)
+          PY

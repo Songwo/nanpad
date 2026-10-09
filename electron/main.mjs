@@ -54,9 +54,14 @@ import { MetricsStore } from "./services/metrics.mjs";
 import { notificationCandidates, NotificationTracker } from "./services/notifications.mjs";
 import { AgentService } from "./services/agent-service.mjs";
 import { ProfileService } from "./services/profile.mjs";
-import { createImageNormalizer, normalizeSnapshotImages } from "./services/image-data.mjs";
+import {
+  createImageNormalizer,
+  normalizeSnapshotImages,
+  inspectRaster,
+} from "./services/image-data.mjs";
 import { AiAccounts } from "./services/ai-accounts.mjs";
 import { IdentityAccounts } from "./services/identity-accounts.mjs";
+import { MainIdentityService } from "./services/main-identity.mjs";
 import { identityPostsDocument } from "./services/identity-documents.mjs";
 import { AccountTotp } from "./services/account-totp.mjs";
 import { DocumentAccountImports } from "./services/document-account-imports.mjs";
@@ -100,6 +105,7 @@ let metrics;
 let agent;
 let aiAccounts;
 let identities;
+let mainIdentity;
 let accountTotp;
 let documentAccounts;
 let mailboxes;
@@ -679,11 +685,66 @@ function registerIpc() {
     }
     return { count: result.count };
   });
+  mainIdentity = new MainIdentityService({
+    file: join(app.getPath("userData"), "main-identity.enc"),
+    safeStorage,
+    fetchImpl: (...args) => net.fetch(...args),
+    openExternal: (url) => shell.openExternal(url),
+    normalizeImage: (value) => {
+      if (value === "" || value === null || value === undefined) return "";
+      const match =
+        typeof value === "string" &&
+        /^data:(image\/(?:png|jpeg|webp));base64,([A-Za-z0-9+/]+={0,2})$/.exec(value);
+      if (!match || value.length > 1_500_000) throw new Error("身份头像格式无效或文件过大。");
+      const bytes = Buffer.from(match[2], "base64");
+      if (bytes.length > 1024 * 1024 || bytes.toString("base64") !== match[2])
+        throw new Error("身份头像格式无效或文件过大。");
+      const size = inspectRaster(bytes, match[1]);
+      const image = nativeImage.createFromBuffer(bytes);
+      if (image.isEmpty()) throw new Error("身份头像无法解码。");
+      const ratio = Math.min(1, 512 / Math.max(size.width, size.height));
+      const normalized = image.resize({
+        width: Math.max(1, Math.round(size.width * ratio)),
+        height: Math.max(1, Math.round(size.height * ratio)),
+        quality: "best",
+      });
+      return normalizeImage(`data:image/png;base64,${normalized.toPNG().toString("base64")}`);
+    },
+  });
+  for (const method of [
+    "get",
+    "availability",
+    "start",
+    "status",
+    "cancel",
+    "bind",
+    "preferences",
+    "refresh",
+    "disconnect",
+    "loadPosts",
+  ])
+    handle("main-identity:" + method, (...args) => mainIdentity[method](...args));
+  handle("main-identity:save-posts", async (input) => {
+    const identity = await mainIdentity.get();
+    const session = mainIdentity.captureSession();
+    const assertCurrent = () => mainIdentity.assertCurrent(session);
+    assertCurrent();
+    const result = await mainIdentity.readPosts(input?.postIds, { force: input?.force === true });
+    assertCurrent();
+    if (!result.items.length) return { documentId: null, imported: 0, errors: result.errors };
+    const doc = identityPostsDocument({ profile: identity.profile }, result.items);
+    // 主身份不属于账号资产，不能创建指向不存在账号的文档关联。
+    doc.bindings = [];
+    const saved = await documents.save(doc, { assertCurrent });
+    emit("documents:changed", { document: saved });
+    return { documentId: saved.id, imported: result.items.length, errors: result.errors };
+  });
   const profile = new ProfileService(
     join(app.getPath("userData"), "profile.json"),
     vault,
     normalizeImage,
   );
+  profile.setIdentitySource(mainIdentity);
   handle("profile:get", () => profile.get());
   handle("profile:save", async (value) => {
     const result = await profile.save(value);
@@ -1396,6 +1457,7 @@ if (!app.requestSingleInstanceLock()) {
   app.on("before-quit", () => {
     stopPrivateTasks();
     identities?.stop();
+    mainIdentity?.stop();
     documentAccounts?.stop();
     void extensionBridge?.stop();
     quitting = true;

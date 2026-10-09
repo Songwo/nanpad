@@ -161,6 +161,7 @@ export interface PersistedFile extends Snapshot {
 export interface DesktopBridge {
   documentAccounts: import("./document-accounts").DocumentAccountsBridge;
   identities: import("./identities").IdentityBridge;
+  mainIdentity: import("./main-identity").MainIdentityBridge;
   totp: import("./totp").TotpBridge;
   passwords: {
     previewImport(): Promise<null | {

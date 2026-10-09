@@ -14,7 +14,7 @@
 
 ## 版本准备
 
-更新 package.json、package-lock.json、browser-extension/manifest.json 与 src/lib/changelog.ts，执行 `node scripts/write-changelog.mjs` 同步 CHANGELOG.md。本版说明保存在 `docs/releases/v1.6.0.md`。README 的安装包名、构建目录及教程应与版本一致；描述实际支持范围，不将本机协议测试写成真实账号登录成功。
+更新 package.json、package-lock.json、browser-extension/manifest.json 与 src/lib/changelog.ts，执行 `node scripts/write-changelog.mjs` 同步 CHANGELOG.md。本版说明保存在 `docs/releases/v1.7.0.md`。README 的安装包名、构建目录及教程应与版本一致；描述实际支持范围，不将本机协议测试写成真实账号登录成功。
 
 ## 必须验证
 
@@ -46,7 +46,7 @@ npm run desktop:dist -- --win --x64 --publish never
 
 打包脚本将主进程及编译后的界面放入系统临时目录中的独立暂存区，使用仓库锁文件版本安装 `ssh2`、`electron-updater`、`imapflow`、`openai`、`minisearch`、`nodemailer`、`mailparser`、`html-to-text`、`sanitize-html`、`unified`、`remark-parse`、`remark-gfm` 及其运行依赖，再通过 electron-builder 内置的目录遍历器收集依赖，避免将网页构建工具装进桌面包。暂存区先解析真实路径，npm 子进程只通过工作目录定位项目，避免 macOS 符号链接路径与 `--prefix` 解析不一致。排除可选原生加速模块，SSH 使用库自带的 JavaScript 实现；无需 Visual Studio 编译环境。复用本机已安装的同版本 Electron，输出到 `release/v版本号/`；构建结束清理暂存区。
 
-安装包生成后检查版本和包内容，运行 `node scripts/release-smoke.mjs release/v1.6.0/win-unpacked/Zhiyu.exe` 验证打包程序，计算 SHA256，补齐 Release 说明中的验证记录。该脚本使用独立临时数据目录，不修改日常资料。发布时显式选择源码、文档和必要资源，不提交临时截图、日志、用户数据或运行目录。将发布标签指向已经验证的提交，再上传 `Zhiyu-1.6.0-setup.exe`、浏览器扩展包与 `SHA256SUMS.txt`，以及下文要求的应用内更新附件。
+安装包生成后检查版本和包内容，运行 `node scripts/release-smoke.mjs release/v1.7.0/win-unpacked/Zhiyu.exe` 验证打包程序，计算 SHA256，补齐 Release 说明中的验证记录。该脚本使用独立临时数据目录，不修改日常资料。发布时显式选择源码、文档和必要资源，不提交临时截图、日志、用户数据或运行目录。将发布标签指向已经验证的提交，再上传 `Zhiyu-1.7.0-setup.exe`、浏览器扩展包与 `SHA256SUMS.txt`，以及下文要求的应用内更新附件。
 
 1.3.1 的 Windows 正式发布流水线额外运行 `passwords-desktop-integration.mjs` 验证实际打包程序的 CSV、加密库、后台资产同步、锁库与文档保存，并在 `extension:build` 后运行 `browser-companion-integration.mjs` 加载真实扩展，覆盖原生表单整页导航、多账号填写与文档提示。依赖中文界面标签的 Electron 测试必须显式设置 `locale: "zh-CN"`，不能依赖开发机的系统语言。测试只使用独立临时资料和合成账号，不读取真实浏览器密码库；真实浏览器原生 CSV 导入结果与第三方在线文档兼容性应单独记录。
 
@@ -130,3 +130,32 @@ Linux.do 的真实 OAuth 需要账户持有人在软件里配置自己的 Connec
 macOS 的 Apple Silicon / Intel 构建由「macOS 打包检查」工作流验证，成功后仅产生未签名测试 ZIP。具体命令、路径与限制见 [macOS 构建说明](MAC-BUILD.md)。没有实际工作流结果时，不填写 macOS 构建通过；Windows 测试不能替代 macOS 构建、运行、签名或公证验证。
 
 1.6.0 发布附件使用 `Zhiyu-1.6.0-setup.exe` 和 `Zhiyu-1.6.0-browser-extension.zip`，插件目录为 `zhiyu-browser-extension`。仓库、Pages 下载页、更新源和新附件统一使用知屿 Zhiyu。内部安装身份、原用户目录和已有协议用于升级兼容，不随外部品牌更名而随意修改；历史附件名与历史验证结果保持事实原状。
+
+## 1.7.0 主身份登录与兼容验证
+
+本版将 Linux.do 新登录入口移到首次设置和个人资料，普通用户通过统一登录服务绑定主身份，不再在密钥库里填写 Connect 应用配置。以上 1.6.0 章节保留当时的入口和验证事实，不作为当前主身份登录步骤。
+
+开发预览运行时验证首次设置、个人资料、同步选择、改绑确认、退出、帖子失败重试及窄窗口布局：
+
+```bash
+node scripts/main-identity-ui-integration.mjs
+```
+
+正式包生成后，验证实际 Electron 程序中的主身份链路，同时保留旧身份与 TOTP 兼容回归：
+
+```bash
+node scripts/main-identity-desktop-integration.mjs release/v1.7.0/win-unpacked/Zhiyu.exe
+node scripts/identity-totp-desktop-integration.mjs release/v1.7.0/win-unpacked/Zhiyu.exe
+```
+
+两个桌面脚本都以第一个参数指定实际可执行文件，通过 `--user-data-dir` 使用独立临时资料，检查运行的是打包程序，并关闭测试资料的本机用量扫描。省略程序参数会启动源码主进程，不能替代正式包验收。
+
+`main-identity-desktop-integration.mjs` 使用真实 Electron、本机随机端口回调和系统安全存储；外部登录服务、论坛响应和系统浏览器调用使用合成样本。检查未创建密钥库时可预览身份但不跳过主密码设置，锁库状态可刷新主身份，昵称／头像同步与缺失头像可重启恢复，界面与普通资料不返回登录凭据，帖子全文保存不创建虚构账号关联，以及退出后清除凭据、帖子缓存但保留身份和文档。
+
+`identity-totp-desktop-integration.mjs` 在本版用于历史身份兼容：通过保留的旧接口准备身份记录，检查已有账号的资料维护、本人帖子全文、文档账号提取、TOTP 与锁库，并确认密钥库没有新的「导入身份」入口。它不替代主身份登录验证，也不表示普通用户仍需自己申请 Connect 应用。
+
+本次 `npm test` 已通过 905 项测试（812 项 Node 测试、93 项 TypeScript 测试），失败、取消和跳过均为 0。新增回归覆盖统一登录服务、桌面主身份与个人资料同步；测试数量只记录本次实际结果，后续修改应重新运行并更新对应发布记录。
+
+截至 2026 年 10 月 9 日，公网 `https://auth.allinsong.top/healthz` 已返回 `configured: true`，`POST /v1/login/start` 已返回 HTTP 200，并核对官方授权地址、`https://auth.allinsong.top/oauth/linuxdo/callback` 回调和 S256 PKCE。上述检查只验证服务入口和授权请求构造；真实用户尚未在浏览器完成授权，账号绑定、平台资料和头像实际可用性仍待实际用户验证。协议测试与真实 OAuth 结果必须分别记录，不发布完整授权链接、应用密钥或服务凭据。
+
+1.7.0 安装包、更新元数据、下载页和扩展版本保持一致，附件使用 `Zhiyu-1.7.0-setup.exe` 与 `Zhiyu-1.7.0-browser-extension.zip`。插件本版只同步版本号。升级继续保留原数据目录及 1.6.0 密钥库身份资产，不把旧账号自动迁移为主身份；主身份使用独立系统加密文件，登录不能代替本地主密码。

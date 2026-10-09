@@ -216,28 +216,57 @@ try {
     .locator("aside:visible nav")
     .getByRole("button", { name: /^密钥库/ })
     .click();
-  await page.getByRole("button", { name: "导入身份", exact: true }).click();
-  await importDialog().getByLabel("Client ID", { exact: true }).fill("integration-client");
-  await importDialog()
-    .getByLabel("Client Secret", { exact: true })
-    .fill("integration-private-client-secret");
-  await importDialog()
-    .getByLabel("回调地址", { exact: true })
-    .fill(`http://127.0.0.1:${port}/oauth/linuxdo/callback`);
-  await importDialog().getByRole("button", { name: "保存接入配置", exact: true }).click();
-  await authorizeInFixture();
+  // 新主身份入口位于个人资料；通过原有真实 IPC 播种旧版本身份资产，验证升级兼容。
+  assert.equal(await page.getByRole("button", { name: "导入身份", exact: true }).count(), 0);
+  const configured = await page.evaluate(
+    (port) =>
+      window.sinan.identities.configure({
+        clientId: "integration-client",
+        clientSecret: "integration-private-client-secret",
+        redirectUri: `http://127.0.0.1:${port}/oauth/linuxdo/callback`,
+      }),
+    port,
+  );
+  assert.equal(configured.configured, true);
+  assert.equal(configured.hasClientSecret, true);
+  assert.equal(JSON.stringify(configured).includes("integration-private-client-secret"), false);
+  async function previewHistoricalIdentity() {
+    const started = await page.evaluate(() => window.sinan.identities.start());
+    const opened = await instance.evaluate(() => globalThis.identityFixture.opened.at(-1));
+    const authorize = new URL(opened);
+    assert.equal(authorize.origin, "https://connect.linux.do");
+    assert.equal(authorize.searchParams.get("code_challenge_method"), "S256");
+    const callback = new URL(authorize.searchParams.get("redirect_uri"));
+    assert.equal(callback.hostname, "127.0.0.1");
+    assert.equal(callback.port, String(port));
+    callback.search = new URLSearchParams({
+      state: authorize.searchParams.get("state"),
+      code: "historical-integration-code",
+    }).toString();
+    const response = await fetch(callback);
+    assert.equal(response.status, 200);
+    await response.text();
+    const preview = await page.evaluate((id) => window.sinan.identities.status(id), started.id);
+    assert.equal(preview.status, "ready");
+    assert.equal(preview.preview.username, "qa_identity_owner");
+    return started.id;
+  }
+  const cancelledSession = await previewHistoricalIdentity();
   assert.equal(
     (await stored()).state.secrets.some((asset) => asset.identityProvider === "linuxdo"),
     false,
   );
-  await importDialog().getByRole("button", { name: "取消本次授权", exact: true }).click();
+  await page.evaluate((id) => window.sinan.identities.cancel(id), cancelledSession);
   assert.equal(
     (await stored()).state.secrets.some((asset) => asset.identityProvider === "linuxdo"),
     false,
   );
-  await authorizeInFixture();
-  await importDialog().getByRole("button", { name: "确认导入身份", exact: true }).click();
-  await importDialog().waitFor({ state: "detached" });
+  const historicalSession = await previewHistoricalIdentity();
+  await page.evaluate(
+    (sessionId) => window.sinan.identities.commit({ sessionId }),
+    historicalSession,
+  );
+  await openAccount(fixtureName);
   await identityPanel().getByText("@qa_identity_owner", { exact: true }).waitFor();
   const account = (await stored()).state.secrets.find(
     (asset) => asset.identityProvider === "linuxdo",
@@ -375,9 +404,10 @@ try {
   await identityPanel().getByRole("button", { name: "查看已缓存帖子", exact: true }).click();
   assert.equal(await identityPanel().getByRole("checkbox").count(), 2);
   assert.equal(await postCallCount(), failedCalls);
-  await details().getByRole("button", { name: "关闭", exact: true }).last().click();
-  await details().waitFor({ state: "detached" });
-  await page.getByRole("button", { name: "导入身份", exact: true }).click();
+  await identityPanel().getByRole("button", { name: "断开本机授权", exact: true }).click();
+  await identityPanel().getByRole("button", { name: "确认断开本机授权", exact: true }).click();
+  await identityPanel().getByText("已断开授权", { exact: true }).waitFor();
+  await identityPanel().getByRole("button", { name: "重新授权", exact: true }).click();
   await authorizeInFixture();
   await importDialog().getByRole("button", { name: "确认导入身份", exact: true }).click();
   await importDialog().waitFor({ state: "detached" });
@@ -556,6 +586,8 @@ try {
       officialEndpointsMocked: true,
       loopbackReal: true,
       confirmBeforeImport: true,
+      historicalIdentityFixture: true,
+      historicalReauthorizationUi: true,
       duplicateIdentityPreservesAccount: true,
       publicPostsNoCredentials: true,
       cacheAnd403: true,

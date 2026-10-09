@@ -32,6 +32,12 @@ const categories = [
 ];
 const number = (value: number) => value.toLocaleString();
 
+function localDayStart() {
+  const date = new Date();
+  date.setHours(0, 0, 0, 0);
+  return date.getTime();
+}
+
 export function UsageInsights({
   data,
   localHistoryRequest = 0,
@@ -44,6 +50,29 @@ export function UsageInsights({
   const [period, setPeriod] = useState("30");
   const [model, setModel] = useState("all");
   const [page, setPage] = useState(0);
+  const [dayStart, setDayStart] = useState(localDayStart);
+  useEffect(() => {
+    let timer: ReturnType<typeof setTimeout>;
+    const updateDay = () => {
+      clearTimeout(timer);
+      setDayStart(localDayStart());
+      const nextDay = new Date();
+      // 按日历推进，避免夏令时切换时把一天固定当作 24 小时。
+      nextDay.setHours(24, 0, 0, 0);
+      timer = setTimeout(updateDay, Math.max(1, nextDay.getTime() - Date.now()));
+    };
+    const resume = () => {
+      if (document.visibilityState === "visible") updateDay();
+    };
+    updateDay();
+    document.addEventListener("visibilitychange", resume);
+    window.addEventListener("focus", resume);
+    return () => {
+      clearTimeout(timer);
+      document.removeEventListener("visibilitychange", resume);
+      window.removeEventListener("focus", resume);
+    };
+  }, []);
   useEffect(() => {
     if (!localHistoryRequest) return;
     setCategory("local");
@@ -53,8 +82,8 @@ export function UsageInsights({
     setPage(0);
   }, [localHistoryRequest]);
   const base = useMemo(
-    () => filterUsage(data.records, { source, period, model }),
-    [data.records, source, period, model],
+    () => filterUsage(data.records, { source, period, model }, dayStart),
+    [data.records, source, period, model, dayStart],
   );
   const summary = summarizeUsage(base);
   const rows = useMemo(() => filterUsage(base, { category, period: "all" }), [base, category]);
@@ -147,7 +176,7 @@ export function UsageInsights({
           </button>
         ))}
       </div>
-      <UsageCharts rows={base} category={category} />
+      <UsageCharts rows={base} category={category} now={dayStart} />
       <div className="usage-history">
         <div className="usage-history-heading">
           <div>

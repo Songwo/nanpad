@@ -4,6 +4,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { homedir } from "node:os";
 import { basename, dirname, isAbsolute, join, parse, relative, resolve, sep } from "node:path";
 import { snapshotUsage } from "./local-usage-parsers.mjs";
+import { EVENT_INDEX_LIMITS, openEventIndex } from "./local-usage-event-index.mjs";
 
 const CLIENTS = { codex: "Codex", claude: "Claude Code", grok: "Grok Build", gemini: "Gemini CLI" };
 const FIELDS = ["input", "output", "cached", "cacheWrite"];
@@ -155,12 +156,15 @@ export class LocalUsageMonitor {
     this.files = new Map();
     this.checkpoints = new Map();
     this.events = new Map();
+    this.indexPath = null;
+    this.eventIndex = null;
     this.records = new Map();
     this.recordsRevision = 0;
     this.directoryKeys = new Set();
     this.scannedDirectories = new Set();
     this.directories = [];
     this.activeDirectories = new Map();
+    this.currentDirectories = new Map();
     this.fileCursors = new Map();
     this.clientCursor = 0;
     this.queue = Promise.resolve();
@@ -198,7 +202,14 @@ export class LocalUsageMonitor {
         if (!bytesRead) break;
         position += bytesRead;
       }
-      const data = JSON.parse(buffer.subarray(0, position).toString("utf8"));
+      let data = JSON.parse(buffer.subarray(0, position).toString("utf8"));
+      if (data.version === 2) {
+        if (!/^usage-events-[a-f0-9-]{36}\.sqlite$/.test(data.index))
+          throw new Error("STATE_INVALID");
+        this.indexPath = join(dirname(await realpath(this.file)), data.index);
+        await this.openIndex();
+        data = JSON.parse(this.eventIndex.load());
+      }
       if (
         data.version !== 1 ||
         !Array.isArray(data.checkpoints) ||
@@ -284,12 +295,13 @@ export class LocalUsageMonitor {
       if (error.code !== "ENOENT") {
         this.enabled = false;
         this.checkpoints.clear();
-        this.events.clear();
+        this.events = new Map();
         this.records.clear();
         this.error = "本地统计缓存无法安全读取，已停止采集；请检查应用数据目录权限或恢复缓存";
       }
     } finally {
       await handle?.close();
+      this.closeIndex();
     }
   }
 
@@ -371,6 +383,9 @@ export class LocalUsageMonitor {
           this.directories.push(directory);
         }
         this.activeDirectories.clear();
+        for (const directory of this.currentDirectories.values())
+          await directory.handle.close().catch(() => {});
+        this.currentDirectories.clear();
       }
       try {
         await this.persist();
@@ -386,15 +401,18 @@ export class LocalUsageMonitor {
   refresh() {
     return this.serialize(async () => {
       if (!this.canCollect()) return this.snapshot();
+      this.lastRefreshStats = { metadataFiles: 0, metadataMs: 0, filesRead: 0, bytesRead: 0 };
       try {
+        if (!this.indexPath && this.events.size >= LOCAL_USAGE_LIMITS.events)
+          await this.migrateIndex();
+        if (this.indexPath) {
+          await this.openIndex();
+          this.eventIndex.begin();
+        }
         await this.discover();
         const clients = Object.keys(CLIENTS);
-        const byClient = Object.fromEntries(
-          clients.map((client) => [
-            client,
-            [...this.files.values()].filter((file) => file.client === client),
-          ]),
-        );
+        const byClient = {};
+        for (const client of clients) byClient[client] = await this.scheduleFiles(client);
         const processedByClient = Object.fromEntries(clients.map((client) => [client, 0]));
         let budget = LOCAL_USAGE_LIMITS.bytesPerRefresh;
         let processed = 0;
@@ -409,21 +427,40 @@ export class LocalUsageMonitor {
           const client = clients[this.clientCursor++ % clients.length];
           const files = byClient[client];
           if (processedByClient[client] >= files.length) continue;
-          processedByClient[client]++;
+          const { item, cursor } = files[processedByClient[client]++];
+          this.fileCursors.set(client, cursor);
           processed++;
-          const cursor = this.fileCursors.get(client) ?? 0;
-          const item = files[cursor % files.length];
-          this.fileCursors.set(client, cursor + 1);
-          budget -=
+          const bytes =
             item.format === "json"
               ? await this.readSnapshot(item, budget)
               : await this.readLog(item, Math.min(budget, LOCAL_USAGE_LIMITS.bytesPerFile));
+          budget -= bytes;
+          this.lastRefreshStats.filesRead++;
+          this.lastRefreshStats.bytesRead += bytes;
         }
         this.lastScannedAt = new Date(this.now()).toISOString();
         await this.persist();
-      } catch {
-        this.error = "本地统计缓存保存失败，已停止采集；请检查可用空间和应用数据目录权限";
+      } catch (error) {
+        if (this.indexPath) {
+          this.closeIndex();
+          try {
+            await this.openIndex();
+            const saved = JSON.parse(this.eventIndex.load());
+            this.checkpoints = new Map(saved.checkpoints);
+            this.records = new Map(saved.records);
+            this.lastScannedAt = saved.lastScannedAt;
+            this.recordsRevision++;
+          } catch {
+            /* 原缓存无法安全打开时保留内存中的历史信息并停止采集。 */
+          }
+        }
+        this.error =
+          error.errcode === 13
+            ? "本地统计索引达到 512 MiB 安全上限或磁盘空间不足，已停止采集并保留历史记录"
+            : "本地统计缓存保存失败，已停止采集；请检查可用空间和应用数据目录权限";
         this.enabled = false;
+      } finally {
+        this.closeIndex();
       }
       return this.snapshot();
     });
@@ -476,6 +513,55 @@ export class LocalUsageMonitor {
     return this.canCollect() ? digest : null;
   }
 
+  async scheduleFiles(client) {
+    const started = performance.now();
+    const files = [...this.files.values()].filter((file) => file.client === client);
+    const priority = [];
+    // 仅读文件元数据，不读取日志正文；限制并发，实际打开仍执行完整的根和链接校验。
+    for (let offset = 0; offset < files.length; offset += 32) {
+      await Promise.all(
+        files.slice(offset, offset + 32).map(async (file) => {
+          try {
+            const stat = await lstat(file.path);
+            if (stat.isSymbolicLink() || !stat.isFile()) return;
+            const changed = file.observedSize !== stat.size || file.observedMtime !== stat.mtimeMs;
+            if (
+              changed ||
+              (file.pendingWork && (file.format === "json" || !file.scanned)) ||
+              file.lastActiveAt >= this.now() - 60_000
+            )
+              priority.push({ file, modified: stat.mtimeMs });
+          } catch {
+            /* 不可读文件由常规轮转产生统一警告。 */
+          }
+        }),
+      );
+    }
+    priority.sort((a, b) => b.modified - a.modified);
+    if (this.lastRefreshStats) {
+      this.lastRefreshStats.metadataFiles += files.length;
+      this.lastRefreshStats.metadataMs += performance.now() - started;
+    }
+    const ordered = [];
+    const selected = new Set();
+    let cursor = this.fileCursors.get(client) ?? 0;
+    let hot = 0;
+    let historical = 0;
+    while (ordered.length < Math.min(files.length, LOCAL_USAGE_LIMITS.filesPerRefresh)) {
+      let file;
+      if (ordered.length % 2 === 0 && hot < priority.length) file = priority[hot++].file;
+      else if (historical < files.length) {
+        file = files[cursor++ % files.length];
+        historical++;
+      } else if (hot < priority.length) file = priority[hot++].file;
+      else break;
+      if (selected.has(file.key)) continue;
+      selected.add(file.key);
+      ordered.push({ item: file, cursor });
+    }
+    return ordered;
+  }
+
   enqueueDirectory(item) {
     const key = `${item.client}:${item.path}`;
     if (this.directoryKeys.has(key)) return;
@@ -518,8 +604,83 @@ export class LocalUsageMonitor {
     );
     for (const client of Object.keys(CLIENTS)) {
       if (!this.canCollect()) return;
-      await this.discoverSource(client, entriesPerSource);
+      const used = client === "codex" ? await this.discoverCurrentCodex(32) : 0;
+      await this.discoverSource(client, entriesPerSource - used);
     }
+  }
+
+  async discoverCurrentCodex(limit) {
+    const targets = [];
+    for (const root of this.roots.filter((item) => item.client === "codex" && item.identity)) {
+      for (const delta of [0, -1]) {
+        const date = new Date(this.now());
+        date.setDate(date.getDate() + delta);
+        const path = join(
+          root.path,
+          String(date.getFullYear()),
+          String(date.getMonth() + 1).padStart(2, "0"),
+          String(date.getDate()).padStart(2, "0"),
+        );
+        targets.push({ ...root, root: root.path, rootIdentity: root.identity, path, depth: 3 });
+      }
+    }
+    const paths = new Set(targets.map((item) => item.path));
+    for (const [path, directory] of this.currentDirectories) {
+      if (paths.has(path)) continue;
+      await directory.handle.close().catch(() => {});
+      this.currentDirectories.delete(path);
+    }
+    let entries = 0;
+    for (const target of targets) {
+      if (!this.canCollect() || entries >= limit) break;
+      let directory = this.currentDirectories.get(target.path);
+      try {
+        await verifyRoot({ path: target.root, identity: target.rootIdentity });
+        if (!(await safePath(target.path)).isDirectory()) continue;
+        if (!directory) {
+          directory = { ...target, handle: await opendir(target.path, { bufferSize: 16 }) };
+          this.currentDirectories.set(target.path, directory);
+        }
+        const perDirectory = Math.max(1, Math.floor(limit / Math.max(1, targets.length)));
+        for (let used = 0; used < perDirectory && entries < limit && this.canCollect(); used++) {
+          const entry = await directory.handle.read();
+          if (!entry) {
+            await directory.handle.close();
+            this.currentDirectories.delete(target.path);
+            break;
+          }
+          entries++;
+          if (entry.isFile() && !entry.isSymbolicLink() && entry.name.endsWith(".jsonl"))
+            this.registerFile(directory, entry.name);
+        }
+      } catch (error) {
+        if (directory) await directory.handle.close().catch(() => {});
+        this.currentDirectories.delete(target.path);
+        if (error.code !== "ENOENT") this.warn("codex", "部分日志目录不可安全读取，已跳过");
+      }
+    }
+    return entries;
+  }
+
+  registerFile(directory, name) {
+    const path = join(directory.path, name);
+    const key = hash(`${directory.client}:${path}`);
+    if (this.files.has(key)) return;
+    if (this.files.size >= LOCAL_USAGE_LIMITS.files) {
+      this.warn(directory.client, "日志文件数量达到安全上限，统计可能不完整");
+      return;
+    }
+    this.files.set(key, {
+      key,
+      path,
+      root: directory.root,
+      rootIdentity: directory.rootIdentity,
+      client: directory.client,
+      format: ["grok", "gemini"].includes(directory.client) ? "json" : "jsonl",
+      pendingWork: true,
+      scanned: false,
+      pending: Buffer.alloc(0),
+    });
   }
 
   async discoverSource(client, entryLimit) {
@@ -620,23 +781,7 @@ export class LocalUsageMonitor {
             basename(directory.path) === "chats" &&
             /^session-[a-zA-Z0-9._-]+\.json$/.test(entry.name)))
       ) {
-        const key = hash(`${directory.client}:${path}`);
-        if (this.files.has(key)) continue;
-        if (this.files.size >= LOCAL_USAGE_LIMITS.files) {
-          this.warn(directory.client, "日志文件数量达到安全上限，统计可能不完整");
-          continue;
-        }
-        this.files.set(key, {
-          key,
-          path,
-          root: directory.root,
-          rootIdentity: directory.rootIdentity,
-          client: directory.client,
-          format: ["grok", "gemini"].includes(directory.client) ? "json" : "jsonl",
-          pendingWork: true,
-          scanned: false,
-          pending: Buffer.alloc(0),
-        });
+        this.registerFile(directory, entry.name);
       }
     }
   }
@@ -651,6 +796,8 @@ export class LocalUsageMonitor {
       handle = opened.handle;
       if (!this.canCollect()) return 0;
       const stat = opened.stat;
+      item.observedSize = stat.size;
+      item.observedMtime = stat.mtimeMs;
       item.pendingWork = true;
       const identity = hash(`${stat.dev}:${stat.ino}:${stat.birthtimeMs}`);
       let checkpoint = this.checkpoints.get(item.key);
@@ -734,8 +881,10 @@ export class LocalUsageMonitor {
       }
       item.pendingWork = checkpoint.offset < stat.size;
       item.scanned = true;
+      if (bytes) item.lastActiveAt = this.now();
     } catch (error) {
       item.pendingWork = false;
+      if (error.localUsageIndex) throw error;
       if (error.code !== "ENOENT") this.warn(item.client, "部分日志文件不可安全读取，已跳过");
     } finally {
       // 未完成的一行下一轮从已提交偏移重读，不在内存长期保留会话内容。
@@ -754,6 +903,8 @@ export class LocalUsageMonitor {
       const opened = await safeOpen(item.path, { path: item.root, identity: item.rootIdentity });
       handle = opened.handle;
       const stat = opened.stat;
+      item.observedSize = stat.size;
+      item.observedMtime = stat.mtimeMs;
       const stamp = hash(`${fileIdentity(stat)}:${stat.size}:${stat.mtimeMs}:${stat.ctimeMs}`);
       const prior = this.checkpoints.get(item.key);
       if (prior?.snapshotStamp === stamp) {
@@ -808,7 +959,6 @@ export class LocalUsageMonitor {
         const session = hash(`${item.client}:${event.session}`);
         const fingerprint = hash(JSON.stringify([item.client, session, event.id]));
         const old = this.events.get(fingerprint);
-        if (!old && !this.allowEvent(item.client)) continue;
         const delta = subtract(event.total, old?.total ?? blank());
         if (!FIELDS.some((field) => delta[field])) continue;
         const key = this.addRecord(
@@ -846,9 +996,11 @@ export class LocalUsageMonitor {
       });
       item.pendingWork = false;
       item.scanned = true;
+      if (bytes) item.lastActiveAt = this.now();
       this.dirty = true;
     } catch (error) {
       item.pendingWork = false;
+      if (error.localUsageIndex) throw error;
       if (error.code !== "ENOENT") this.warn(item.client, "部分日志文件不可安全读取，已跳过");
     } finally {
       await handle?.close();
@@ -927,7 +1079,6 @@ export class LocalUsageMonitor {
       }
       checkpoint.lastEvent = fingerprint;
       if (this.events.has(fingerprint) || !FIELDS.some((key) => delta[key])) return;
-      if (!this.allowEvent(client)) return;
       const key = this.addRecord(client, checkpoint.session, checkpoint.model, time, delta);
       if (key) this.events.set(fingerprint, true);
     } else {
@@ -953,7 +1104,6 @@ export class LocalUsageMonitor {
         typeof event.requestId === "string" && event.requestId.length <= 256 ? event.requestId : "";
       const fingerprint = hash(JSON.stringify([client, session, message.id, requestId]));
       const prior = this.events.get(fingerprint);
-      if (!prior && !this.allowEvent(client)) return;
       const delta = subtract(total, prior?.total ?? blank());
       if (!FIELDS.some((key) => delta[key])) return;
       const key = this.addRecord(
@@ -972,12 +1122,6 @@ export class LocalUsageMonitor {
           ),
         });
     }
-  }
-
-  allowEvent(client) {
-    if (this.events.size < LOCAL_USAGE_LIMITS.events) return true;
-    this.warn(client, "用量事件达到安全上限，已暂停收录新事件");
-    return false;
   }
 
   addRecord(client, session, model, time, delta, existingKey) {
@@ -1003,6 +1147,25 @@ export class LocalUsageMonitor {
 
   async persist() {
     if (!this.dirty) return;
+    if (this.indexPath) {
+      if (!this.eventIndex) {
+        await this.openIndex();
+        this.eventIndex.begin();
+      }
+      try {
+        await this.verifyIndex();
+        this.eventIndex.save(this.serializeState([]));
+        this.eventIndex.commit();
+        this.dirty = false;
+      } finally {
+        this.closeIndex();
+      }
+      return;
+    }
+    if (this.events.size >= LOCAL_USAGE_LIMITS.events) {
+      await this.migrateIndex();
+      return;
+    }
     await mkdir(dirname(this.file), { recursive: true });
     // Windows 8.3 短目录名也是同一目录的系统别名，沿用缓存读取的身份校验。
     await safePath(dirname(this.file), { allowSystemMapping: true });
@@ -1011,15 +1174,31 @@ export class LocalUsageMonitor {
     } catch (error) {
       if (error.code !== "ENOENT") throw error;
     }
+    const data = this.serializeState([...this.events]);
+    await this.writeState(data);
+    this.dirty = false;
+  }
+
+  serializeState(events) {
     const data = JSON.stringify({
       version: 1,
       enabled: this.enabled,
       lastScannedAt: this.lastScannedAt,
       checkpoints: [...this.checkpoints],
-      events: [...this.events],
+      events,
       records: [...this.records],
     });
     if (Buffer.byteLength(data) > LOCAL_USAGE_LIMITS.stateBytes) throw new Error("STATE_LIMIT");
+    return data;
+  }
+
+  async writeState(data) {
+    try {
+      const existing = await safeOpen(this.file, undefined, { allowSystemMapping: true });
+      await existing.handle.close();
+    } catch (error) {
+      if (error.code !== "ENOENT") throw error;
+    }
     const temporary = `${this.file}.${randomUUID()}.tmp`;
     let handle;
     try {
@@ -1029,10 +1208,115 @@ export class LocalUsageMonitor {
       await handle.close();
       handle = null;
       await rename(temporary, this.file);
-      this.dirty = false;
     } finally {
       await handle?.close();
       await unlink(temporary).catch(() => {});
+    }
+  }
+
+  async verifyIndex() {
+    const stat = await safePath(this.indexPath);
+    if (!stat.isFile() || stat.nlink !== 1 || stat.size > EVENT_INDEX_LIMITS.bytes)
+      throw new Error("UNSAFE_INDEX");
+    for (const suffix of ["-journal", "-wal", "-shm"]) {
+      try {
+        const sidecar = await safePath(`${this.indexPath}${suffix}`);
+        if (!sidecar.isFile() || sidecar.nlink !== 1) throw new Error("UNSAFE_INDEX");
+      } catch (error) {
+        if (error.code !== "ENOENT") throw error;
+      }
+    }
+    return stat;
+  }
+
+  async openIndex() {
+    if (this.eventIndex) return;
+    const before = await this.verifyIndex();
+    const index = await openEventIndex(this.indexPath);
+    try {
+      const after = await this.verifyIndex();
+      if (fileIdentity(before) !== fileIdentity(after)) throw new Error("UNSAFE_INDEX");
+      this.eventIndex = index;
+      this.events = index;
+    } catch (error) {
+      index.close();
+      throw error;
+    }
+  }
+
+  closeIndex() {
+    if (!this.eventIndex) return;
+    try {
+      this.eventIndex.rollback();
+    } finally {
+      this.eventIndex.close();
+    }
+    this.eventIndex = null;
+  }
+
+  async migrateIndex() {
+    await mkdir(dirname(this.file), { recursive: true });
+    await safePath(dirname(this.file), { allowSystemMapping: true });
+    let directory = await realpath(dirname(this.file));
+    let existing;
+    try {
+      existing = await safeOpen(this.file, undefined, { allowSystemMapping: true });
+      // 系统可能仅重定向缓存文件而不重定向目录；指针与索引必须同处真实目录。
+      directory = dirname(await realpath(this.file));
+      await safePath(directory);
+    } catch (error) {
+      if (error.code !== "ENOENT") throw error;
+    } finally {
+      await existing?.handle.close();
+    }
+    const path = join(directory, `usage-events-${randomUUID()}.sqlite`);
+    const handle = await open(path, "wx", 0o600);
+    await handle.close();
+    let index;
+    let backup;
+    try {
+      index = await openEventIndex(path, { create: true });
+      index.begin();
+      for (const [key, value] of this.events) index.set(key, value);
+      // 旧版达到十万事件后仍推进 offset；从头受控重放，完整索引防止历史翻倍。
+      const state = JSON.parse(this.serializeState([]));
+      state.checkpoints = [];
+      index.save(JSON.stringify(state));
+      index.commit();
+      index.close();
+      index = null;
+      // 独立保留升级前的原始缓存，不能以已清检查点的新状态冒充迁移备份。
+      let prior;
+      try {
+        prior = await safeOpen(this.file, undefined, { allowSystemMapping: true });
+        if (prior.stat.size > LOCAL_USAGE_LIMITS.stateBytes) throw new Error("STATE_LIMIT");
+        backup = `${basename(this.file)}.v1-${randomUUID()}.backup.json`;
+        const saved = await open(join(dirname(path), backup), "wx", 0o600);
+        try {
+          await saved.writeFile(await prior.handle.readFile());
+          await saved.sync();
+        } finally {
+          await saved.close();
+        }
+      } catch (error) {
+        if (error.code !== "ENOENT") throw error;
+      } finally {
+        await prior?.handle.close();
+      }
+      await this.writeState(
+        JSON.stringify({ version: 2, index: basename(path), ...(backup ? { backup } : {}) }),
+      );
+      this.indexPath = path;
+      this.checkpoints.clear();
+      this.events = null;
+      this.dirty = false;
+    } catch (error) {
+      if (index) {
+        index.rollback();
+        index.close();
+      }
+      await unlink(path).catch(() => {});
+      throw error;
     }
   }
 }

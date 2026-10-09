@@ -6,6 +6,7 @@ export interface Profile {
   avatarDataUrl?: string;
   ready: boolean;
   vaultExists: boolean;
+  mainIdentity?: import("./main-identity").MainIdentity | null;
 }
 export const useProfile = create<{
   profile: Profile | null;

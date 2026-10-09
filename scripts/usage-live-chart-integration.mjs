@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { mkdir } from "node:fs/promises";
 import { chromium } from "playwright";
+import { chooseOption } from "./select-helper.mjs";
 
 // 独立合成来源，验证真实组件在采集事件后的更新，不读取用户统计或凭据。
 const origin = new URL(process.env.NANPAD_QA_URL ?? "http://127.0.0.1:8080").origin;
@@ -16,6 +17,7 @@ try {
     permissions: ["local-network-access"],
   });
   const page = await context.newPage();
+  await page.clock.install({ time: new Date("2026-10-08T15:59:30Z") });
   page.setDefaultTimeout(15000);
   page.on("pageerror", (error) => errors.push(error.message));
   page.on("console", (message) => {
@@ -140,6 +142,48 @@ try {
     window.__show(true);
   });
   await today.getByText("5,000,000 Token", { exact: true }).waitFor({ timeout: 1500 });
+  // 相同数据对象、无采集通知时跨过本地午夜，不能把昨天继续当作今天。
+  await chooseOption(page, page.getByLabel("时间范围", { exact: true }), "今天");
+  const beforeMidnightReads = await page.evaluate(() => window.__calls.list);
+  await page.clock.runFor(31000);
+  await page.getByText("当前筛选没有记录", { exact: true }).waitFor({ timeout: 1500 });
+  assert.equal(await today.count(), 0, "跨午夜后昨日摘要不得仍标作今日");
+  assert.equal(
+    await page.evaluate(() => window.__calls.list),
+    beforeMidnightReads,
+    "跨天只重算已有数据",
+  );
+  // 主进程新增今日用量后，仅凭事件让日期、图表和明细一起更新。
+  await page.evaluate(() => {
+    const day = new Date();
+    day.setHours(0, 0, 0, 0);
+    window.__usage.records.push({
+      ...window.__usage.records[1],
+      key: day.toISOString(),
+      bucketStart: day.toISOString(),
+      input: 12345,
+      output: 67,
+    });
+    window.__changed({ recordsChanged: true });
+  });
+  await today.getByText("12,345 Token", { exact: true }).waitFor({ timeout: 1500 });
+  assert.equal(await today.locator("time").getAttribute("datetime"), "2026-10-09");
+  // 休眠/隐藏时若丢失一次通知，唤醒必须检查本机快照，即使缓存尚未到期。
+  await page.evaluate(() => {
+    window.__usage.records.at(-1).input = 23456;
+    window.dispatchEvent(new Event("focus"));
+  });
+  await today.getByText("23,456 Token", { exact: true }).waitFor({ timeout: 1500 });
+  await page.evaluate(() => {
+    window.__usage.records.at(-1).input = 34567;
+    document.dispatchEvent(new Event("visibilitychange"));
+  });
+  await today.getByText("34,567 Token", { exact: true }).waitFor({ timeout: 1500 });
+  assert.equal(
+    await page.evaluate(() => window.__calls.collect),
+    0,
+    "唤醒仅补读缓存，不触发远程采集",
+  );
   assert.deepEqual(errors, []);
   console.log(
     JSON.stringify({
@@ -151,6 +195,9 @@ try {
       zeroNotMarked: true,
       mobileOverflow: false,
       reentryInvalidation: true,
+      midnightRollover: true,
+      nextDayEvent: true,
+      wakeWithoutEvent: true,
       errors,
     }),
   );

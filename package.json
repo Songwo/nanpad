@@ -5,7 +5,7 @@
   "type": "module",
   "main": "electron/main.mjs",
   "engines": {
-    "node": ">=22.6"
+    "node": ">=22.13"
   },
   "overrides": {
     "nf3": "0.3.17"
@@ -129,7 +129,7 @@
     "vite": "^8.2.0"
   },
   "productName": "知屿 Zhiyu",
-  "version": "1.6.0",
+  "version": "1.7.0",
   "author": "Songwo",
   "homepage": "https://github.com/Songwo/zhiyu",
   "repository": {

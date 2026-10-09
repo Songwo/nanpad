@@ -91,7 +91,15 @@ function ChartTooltip({
   );
 }
 
-export function UsageCharts({ rows, category }: { rows: UsageRecord[]; category: string }) {
+export function UsageCharts({
+  rows,
+  category,
+  now = Date.now(),
+}: {
+  rows: UsageRecord[];
+  category: string;
+  now?: number;
+}) {
   const [metric, setMetric] = useState<Metric | null>(null);
   const [group, setGroup] = useState<"source" | "model">("source");
   const [quotaId, setQuotaId] = useState("");
@@ -111,7 +119,7 @@ export function UsageCharts({ rows, category }: { rows: UsageRecord[]; category:
   const selectedQuota = quotas.find((item) => item.id === quotaId) ?? quotas[0];
   const quotaDaily = selectedQuota?.daily ?? [];
   const smallPoints = quota ? [] : smallUsagePoints(chart.daily);
-  const today = quota ? undefined : todayUsagePoint(chart.daily);
+  const today = quota ? undefined : todayUsagePoint(chart.daily, now);
   const firstLabel = t(traffic ? "上传" : "输入 Token");
   const secondLabel = t(traffic ? "下载" : "输出 Token");
   const format = (value: number) =>
