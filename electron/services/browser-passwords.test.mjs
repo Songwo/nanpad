@@ -11,6 +11,28 @@ const header = "name,url,username,password,note\r\n";
 const csvRow = (...fields) =>
   fields.map((field) => `"${field.replaceAll('"', '""')}"`).join(",") + "\r\n";
 
+function assertNoPlaintextCredentials(raw, values) {
+  const serialized = JSON.stringify(JSON.parse(raw));
+  assert.doesNotMatch(serialized, /"(?:username|password|url|note)"\s*:/);
+  // 比较完整 JSON 字符串值，随机 Base64 密文中的短用户名片段不代表明文泄露。
+  for (const value of values)
+    assert.equal(serialized.includes(JSON.stringify(value)), false, "存在明文凭据值");
+}
+
+test("明文泄露检查不会误判密文中的 bob，但仍拒绝明文字段和值", () => {
+  const data = "OV14bobyXJDA";
+  assert.equal(Buffer.from(data, "base64").toString("base64"), data);
+  assert.match(data, /bob/);
+  const raw = JSON.stringify({ records: { "account:fixture": { data } } });
+  assertNoPlaintextCredentials(raw, ["alice", "bob", "=formula-secret"]);
+  for (const field of ["username", "password", "url", "note"])
+    assert.throws(() =>
+      assertNoPlaintextCredentials(JSON.stringify({ records: { [field]: "leaked" } }), []),
+    );
+  for (const value of ["alice", "bob", "=formula-secret", 'p,"\nword'])
+    assert.throws(() => assertNoPlaintextCredentials(JSON.stringify({ data: value }), [value]));
+});
+
 async function setup(t, options = {}) {
   const directory = await mkdtemp(join(tmpdir(), "zhiyu-browser-passwords-"));
   t.after(() => rm(directory, { force: true, recursive: true }));
@@ -53,7 +75,19 @@ test("Chrome/Edge CSV 支持 BOM、引号、换行和同站多账号，预览不
   const stored = await vault.readAll("account:");
   assert.equal(Object.values(stored)[0].password, 'p,"\nword');
   assert.equal(Object.values(stored)[0].note, "第一行\r\n第二行");
-  assert.doesNotMatch(await readFile(file, "utf8"), /formula-secret|alice|bob|example\.test/);
+  const raw = await readFile(file, "utf8");
+  assertNoPlaintextCredentials(raw, [
+    "alice",
+    "bob",
+    'p,"\nword',
+    "=formula-secret",
+    "https://example.test/login",
+    "https://example.test/",
+    "第一行\r\n第二行",
+  ]);
+  const restarted = new Vault(file);
+  await restarted.unlock(MASTER);
+  assert.deepEqual(await restarted.readAll("account:"), stored);
   await assert.rejects(passwords.commit(preview.ticket), /失效|过期/);
 });
 

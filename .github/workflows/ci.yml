@@ -34,6 +34,10 @@ jobs:
       # installs a mismatched browser build.
       - run: npm ci
 
+      - name: 安装独立登录服务依赖
+        working-directory: services/identity-login
+        run: npm ci --omit=dev --ignore-scripts
+
       - run: npx playwright install chromium --with-deps
 
       - run: npm run typecheck
@@ -68,6 +72,10 @@ jobs:
           exit $STATUS
 
       - run: npm test
+
+      - name: 验证独立登录服务与出站代理
+        working-directory: services/identity-login
+        run: npm test
 
       # Building the web bundle catches bundling and route-tree regressions
       # that typecheck alone misses; db:migrate exits early without

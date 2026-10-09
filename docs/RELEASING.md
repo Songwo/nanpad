@@ -154,8 +154,8 @@ node scripts/identity-totp-desktop-integration.mjs release/v1.7.0/win-unpacked/Z
 
 `identity-totp-desktop-integration.mjs` 在本版用于历史身份兼容：通过保留的旧接口准备身份记录，检查已有账号的资料维护、本人帖子全文、文档账号提取、TOTP 与锁库，并确认密钥库没有新的「导入身份」入口。它不替代主身份登录验证，也不表示普通用户仍需自己申请 Connect 应用。
 
-本次 `npm test` 已通过 905 项测试（812 项 Node 测试、93 项 TypeScript 测试），失败、取消和跳过均为 0。新增回归覆盖统一登录服务、桌面主身份与个人资料同步；测试数量只记录本次实际结果，后续修改应重新运行并更新对应发布记录。
+本次 `npm test` 已通过 913 项测试（820 项 Node 测试、93 项 TypeScript 测试），失败、取消和跳过均为 0。新增回归覆盖统一登录服务、桌面主身份与个人资料同步；测试数量只记录本次实际结果，后续修改应重新运行并更新对应发布记录。
 
-截至 2026 年 10 月 9 日，公网 `https://auth.allinsong.top/healthz` 已返回 `configured: true`，`POST /v1/login/start` 已返回 HTTP 200，并核对官方授权地址、`https://auth.allinsong.top/oauth/linuxdo/callback` 回调和 S256 PKCE。上述检查只验证服务入口和授权请求构造；真实用户尚未在浏览器完成授权，账号绑定、平台资料和头像实际可用性仍待实际用户验证。协议测试与真实 OAuth 结果必须分别记录，不发布完整授权链接、应用密钥或服务凭据。
+截至 2026 年 10 月 9 日，公网 `https://auth.allinsong.top/healthz` 已返回 `configured: true`，`POST /v1/login/start` 已返回 HTTP 200，并核对官方授权地址、`https://auth.allinsong.top/oauth/linuxdo/callback` 回调和 S256 PKCE。随后已通过用户本人发起的真实授权与绑定，本机已连接状态、邮箱和等级字段已核对；没有公开其账号信息。未提供可用头像时继续保留本地头像，不能据此宣称任意头像或受限帖子均可读取。协议测试与真实 OAuth 结果必须分别记录，不发布完整授权链接、应用密钥或服务凭据。
 
 1.7.0 安装包、更新元数据、下载页和扩展版本保持一致，附件使用 `Zhiyu-1.7.0-setup.exe` 与 `Zhiyu-1.7.0-browser-extension.zip`。插件本版只同步版本号。升级继续保留原数据目录及 1.6.0 密钥库身份资产，不把旧账号自动迁移为主身份；主身份使用独立系统加密文件，登录不能代替本地主密码。

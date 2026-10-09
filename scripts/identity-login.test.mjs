@@ -19,6 +19,7 @@ const profile = {
 async function fixture(t, configOverrides = {}, limits = {}) {
   let time = Date.now();
   const calls = [];
+  const diagnostics = [];
   const behavior = { profile, status: 200, tokenStatus: 200, oversize: false, hang: false };
   const provider = createServer(async (req, res) => {
     const chunks = [];
@@ -29,7 +30,8 @@ async function fixture(t, configOverrides = {}, limits = {}) {
       form: new URLSearchParams(Buffer.concat(chunks).toString()),
     });
     if (behavior.hang) return;
-    res.setHeader("Content-Type", "application/json");
+    res.setHeader("Content-Type", behavior.contentType || "application/json");
+    if (behavior.challenge) res.setHeader("cf-mitigated", "challenge");
     if (req.url === "/oauth2/token") {
       res.statusCode = behavior.tokenStatus;
       res.end(
@@ -56,9 +58,11 @@ async function fixture(t, configOverrides = {}, limits = {}) {
   };
   const service = createIdentityLoginServer({
     config,
+    onDiagnostic: (event) => diagnostics.push(event),
     now: () => time,
     limits,
     fetchImpl: (url, options) => {
+      if (behavior.networkError) throw behavior.networkError;
       assert.equal(new URL(url).origin, "https://connect.linux.do");
       assert.equal(options.redirect, "error");
       assert.equal(options.credentials, "omit");
@@ -144,6 +148,7 @@ async function fixture(t, configOverrides = {}, limits = {}) {
     handoff,
     login,
     calls,
+    diagnostics,
     behavior,
     config,
     advance: (ms) => {
@@ -352,6 +357,70 @@ test("上游超大正文和错误响应仅返回安全错误", async (t) => {
   f.behavior.tokenStatus = 500;
   const retry = await f.handoff();
   assert.equal(retry.target.searchParams.get("error"), "login_failed");
+});
+
+test("登录失败诊断只记录阶段和固定元数据，不包含授权或资料", async (t) => {
+  const f = await fixture(t);
+  f.behavior.tokenStatus = 401;
+  const failed = await f.handoff();
+  assert.equal(failed.target.searchParams.get("error"), "login_failed");
+  assert.deepEqual(f.diagnostics, [
+    {
+      stage: "token",
+      reason: "http_error",
+      httpStatus: 401,
+      contentType: "json",
+      challenge: false,
+    },
+  ]);
+  f.behavior.tokenStatus = 200;
+  f.behavior.profile = { ...profile, username: "invalid/private-value" };
+  await f.handoff();
+  assert.equal(f.diagnostics[1].stage, "profile");
+  assert.equal(f.diagnostics[1].reason, "invalid_profile");
+  const serialized = JSON.stringify(f.diagnostics);
+  for (const secret of [
+    "private-access",
+    "private-refresh",
+    "provider-code",
+    "fixture-secret",
+    "invalid/private-value",
+    "sample@example.test",
+    failed.state,
+  ])
+    assert.equal(serialized.includes(secret), false);
+});
+
+test("网络错误仅允许固定代码进入诊断，不记录错误正文或地址", async (t) => {
+  const f = await fixture(t);
+  for (const code of ["ENOTFOUND", "PRIVATE-CREDENTIAL"]) {
+    f.behavior.networkError = new TypeError("PRIVATE-CREDENTIAL URL", {
+      cause: Object.assign(new Error("PRIVATE-CREDENTIAL"), { code }),
+    });
+    const result = await f.handoff();
+    assert.equal(result.target.searchParams.get("error"), "login_failed");
+  }
+  assert.equal(f.diagnostics[0].networkCode, "ENOTFOUND");
+  assert.equal(f.diagnostics[0].reason, "network_error");
+  assert.equal(f.diagnostics[1].networkCode, undefined);
+  assert.equal(JSON.stringify(f.diagnostics).includes("PRIVATE-CREDENTIAL"), false);
+});
+
+test("上游 HTML 挑战能够与 JSON 鉴权错误区分且不输出正文", async (t) => {
+  const f = await fixture(t);
+  f.behavior.tokenStatus = 403;
+  f.behavior.contentType = "text/html; charset=utf-8";
+  f.behavior.challenge = true;
+  await f.handoff();
+  assert.deepEqual(f.diagnostics, [
+    {
+      stage: "token",
+      reason: "http_error",
+      httpStatus: 403,
+      contentType: "html",
+      challenge: true,
+    },
+  ]);
 });
 
 test("跨站 Origin、恶意 Host、错误媒体类型和超大请求被拒绝", async (t) => {

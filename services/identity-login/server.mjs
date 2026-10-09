@@ -227,6 +227,7 @@ export function createIdentityLoginServer({
   fetchImpl = fetch,
   now = Date.now,
   limits = {},
+  onDiagnostic = () => {},
 } = {}) {
   const settings = normalizeConfig(config);
   const pending = new Map();
@@ -320,6 +321,13 @@ export function createIdentityLoginServer({
   }
   async function provider(path, options = {}) {
     const controller = new AbortController();
+    const diagnostic = {
+      stage: path === "/oauth2/token" ? "token" : "profile",
+      reason: "network_error",
+      httpStatus: null,
+      contentType: "missing",
+      challenge: false,
+    };
     const timer = setTimeout(() => controller.abort(), timeoutMs);
     timer.unref?.();
     try {
@@ -330,18 +338,33 @@ export function createIdentityLoginServer({
         signal: controller.signal,
         headers: { Accept: "application/json", ...options.headers },
       });
+      diagnostic.httpStatus = response.status;
+      const contentType = response.headers.get("content-type") || "";
+      diagnostic.contentType = /^application\/json\b/i.test(contentType)
+        ? "json"
+        : /^text\/html\b/i.test(contentType)
+          ? "html"
+          : contentType
+            ? "other"
+            : "missing";
+      diagnostic.challenge = response.headers.get("cf-mitigated") === "challenge";
       if (!response.ok) {
+        diagnostic.reason = "http_error";
         await response.body?.cancel();
         if (response.status === 401 || response.status === 403) throw expired();
         throw unavailable();
       }
       if (Number(response.headers.get("content-length")) > PROVIDER_LIMIT) {
+        diagnostic.reason = "response_too_large";
         await response.body?.cancel();
         throw unavailable();
       }
       const parts = [];
       let size = 0;
-      if (!response.body) throw unavailable();
+      if (!response.body) {
+        diagnostic.reason = "empty_response";
+        throw unavailable();
+      }
       const reader = response.body.getReader();
       try {
         for (;;) {
@@ -349,6 +372,7 @@ export function createIdentityLoginServer({
           if (done) break;
           size += value.byteLength;
           if (size > PROVIDER_LIMIT) {
+            diagnostic.reason = "response_too_large";
             await reader.cancel();
             throw unavailable();
           }
@@ -357,10 +381,32 @@ export function createIdentityLoginServer({
       } finally {
         reader.releaseLock();
       }
+      diagnostic.reason = "invalid_json";
       return JSON.parse(Buffer.concat(parts).toString("utf8"));
     } catch (error) {
-      if (error instanceof LoginError) throw error;
-      throw unavailable();
+      if (controller.signal.aborted) diagnostic.reason = "timeout";
+      const networkCode = error?.cause?.code ?? error?.code;
+      if (
+        [
+          "ENOTFOUND",
+          "EAI_AGAIN",
+          "ECONNREFUSED",
+          "ECONNRESET",
+          "ETIMEDOUT",
+          "ENETUNREACH",
+          "EHOSTUNREACH",
+          "UND_ERR_CONNECT_TIMEOUT",
+          "UND_ERR_HEADERS_TIMEOUT",
+          "UND_ERR_BODY_TIMEOUT",
+          "CERT_HAS_EXPIRED",
+          "UNABLE_TO_VERIFY_LEAF_SIGNATURE",
+          "DEPTH_ZERO_SELF_SIGNED_CERT",
+        ].includes(networkCode)
+      )
+        diagnostic.networkCode = networkCode;
+      const failure = error instanceof LoginError ? error : unavailable();
+      failure.diagnostic = diagnostic;
+      throw failure;
     } finally {
       clearTimeout(timer);
     }
@@ -412,6 +458,7 @@ export function createIdentityLoginServer({
       redirect(res, session, { error: "login_failed" });
       return;
     }
+    let stage = "token";
     try {
       const tokens = await token({
         grant_type: "authorization_code",
@@ -419,7 +466,9 @@ export function createIdentityLoginServer({
         redirect_uri: callback,
         code_verifier: session.verifier,
       });
+      stage = "profile";
       const profile = await user(tokens);
+      stage = "handoff";
       if (session.expiresAt <= now() || handoffs.size >= maxHandoffs) throw invalid();
       const handoff = nonce();
       handoffs.set(handoff, {
@@ -429,7 +478,25 @@ export function createIdentityLoginServer({
         expiresAt: now() + HANDOFF_TTL,
       });
       redirect(res, session, { code: handoff });
-    } catch {
+    } catch (error) {
+      // 仅输出固定分类和状态，不记录 URL、上游正文、凭据或任何用户资料。
+      const diagnostic =
+        error instanceof LoginError && error.diagnostic
+          ? error.diagnostic
+          : {
+              stage,
+              reason:
+                stage === "token"
+                  ? "invalid_token"
+                  : stage === "profile"
+                    ? "invalid_profile"
+                    : "handoff_unavailable",
+            };
+      try {
+        onDiagnostic(diagnostic);
+      } catch {
+        // 诊断输出失败不能阻止浏览器返回客户端。
+      }
       redirect(res, session, { error: "login_failed" });
     }
   }

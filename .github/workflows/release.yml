@@ -20,6 +20,9 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      - name: 安装独立登录服务依赖
+        working-directory: services/identity-login
+        run: npm ci --omit=dev --ignore-scripts
       - name: 安装 Electron 运行时
         run: node node_modules/electron/install.js
       - name: 校验版本标签
@@ -32,6 +35,9 @@ jobs:
       - run: npm run lint
       - run: npm run i18n:check
       - run: npm test
+      - name: 验证独立登录服务与出站代理
+        working-directory: services/identity-login
+        run: npm test
       - run: node scripts/updater-engine-integration.mjs
       - run: npm run desktop:dist
       - name: 验证改名后的安装目录兼容
