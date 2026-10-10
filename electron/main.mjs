@@ -49,6 +49,7 @@ import { MailboxService, validateMailboxConnection } from "./services/mailbox-se
 import { MailPushService } from "./services/mail-push.mjs";
 import { MailClient, validateSmtp } from "./services/mail-client.mjs";
 import { OAUTH_PROVIDERS, signIn as oauthSignIn } from "./services/oauth.mjs";
+import { readOAuthClientFile } from "./services/oauth-client-file.mjs";
 import { Vault, vaultPath } from "./services/vault.mjs";
 import { MetricsStore } from "./services/metrics.mjs";
 import { notificationCandidates, NotificationTracker } from "./services/notifications.mjs";
@@ -180,10 +181,7 @@ function stopPrivateTasks() {
 }
 
 function lockVault() {
-  stopPrivateTasks();
-  const result = vault?.lock();
-  emit("vault:changed", {});
-  return result;
+  return vault?.lock();
 }
 
 function assertPublicVaultRecord(id) {
@@ -421,6 +419,14 @@ async function createWindow() {
     if (/^https?:/.test(url)) shell.openExternal(url);
   });
 
+  // 渲染页面仅放行智能粘贴和凭据复制需要的剪贴板权限，拒绝其余设备权限。
+  const RENDERER_PERMISSIONS = new Set(["clipboard-read", "clipboard-sanitized-write"]);
+  const ses = win.webContents.session;
+  ses.setPermissionRequestHandler((_contents, permission, callback) =>
+    callback(RENDERER_PERMISSIONS.has(permission)),
+  );
+  ses.setPermissionCheckHandler((_contents, permission) => RENDERER_PERMISSIONS.has(permission));
+
   if (DEV_URL) {
     await win.loadURL(DEV_URL);
   } else {
@@ -494,6 +500,11 @@ function registerIpc() {
     captures.discard(id);
   });
   vault = new Vault(vaultPath(app.getPath("userData")));
+  // 外部恢复与写入冲突也会自动锁库，必须清理会话并通知界面隐藏已读取的凭据。
+  vault.onLock(() => {
+    stopPrivateTasks();
+    emit("vault:changed", {});
+  });
   documentAccounts = new DocumentAccountImports({
     vault,
     documents,
@@ -1319,7 +1330,7 @@ function registerIpc() {
       properties: ["openFile"],
     });
     if (result.canceled || !result.filePaths[0]) return null;
-    return JSON.parse(await readFile(result.filePaths[0], "utf8"));
+    return readOAuthClientFile(result.filePaths[0]);
   });
 
   // ---- network probes -----------------------------------------------------

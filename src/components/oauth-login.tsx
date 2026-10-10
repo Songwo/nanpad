@@ -20,8 +20,9 @@ function readClientFile(json: unknown): { clientId: string; clientSecret: string
   // Google writes `{installed: {...}}` for desktop clients, `{web: {...}}` otherwise.
   const block = root.installed ?? root.web ?? (root as unknown as Record<string, string>);
   const clientId = (block as Record<string, string>)?.client_id;
-  if (!clientId) return null;
-  return { clientId, clientSecret: (block as Record<string, string>)?.client_secret ?? "" };
+  const clientSecret = (block as Record<string, string>)?.client_secret ?? "";
+  if (typeof clientId !== "string" || !clientId.trim() || typeof clientSecret !== "string") return null;
+  return { clientId, clientSecret };
 }
 
 /**
@@ -76,16 +77,20 @@ export function OAuthLogin({
   const config = providers[provider];
 
   async function pickFile() {
-    const json = await bridge!.pickJson();
-    if (!json) return;
-    const parsed = readClientFile(json);
-    if (!parsed) {
-      toast(t("这个 JSON 里没有 client_id"));
-      return;
+    try {
+      const json = await bridge!.pickJson();
+      if (json === null) return;
+      const parsed = readClientFile(json);
+      if (!parsed) {
+        toast.error(t("这个 JSON 里没有有效的 client_id 或 client_secret"));
+        return;
+      }
+      setClientId(parsed.clientId);
+      setClientSecret(parsed.clientSecret);
+      toast(t("已读取客户端配置，保存后即可登录"));
+    } catch {
+      toast.error(t("无法读取客户端配置，请选择不超过 256 KB 的有效 JSON 文件。"));
     }
-    setClientId(parsed.clientId);
-    setClientSecret(parsed.clientSecret);
-    toast(t("已读取客户端配置，保存后即可登录"));
   }
 
   async function saveClient() {

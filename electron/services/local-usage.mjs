@@ -96,7 +96,7 @@ async function safePath(path, { allowSystemMapping = false } = {}) {
     if ((await lstat(current)).isSymbolicLink()) throw new Error("UNSAFE_PATH");
   }
   const canonical = await realpath(absolute);
-  const stat = await lstat(absolute);
+  const stat = await lstat(absolute, { bigint: true });
   if (stat.isSymbolicLink()) throw new Error("UNSAFE_PATH");
   if (relative(absolute, canonical) !== "") {
     if (!allowSystemMapping) throw new Error("UNSAFE_PATH");
@@ -108,7 +108,10 @@ async function safePath(path, { allowSystemMapping = false } = {}) {
   }
   return stat;
 }
-const fileIdentity = (stat) => hash(`${stat.dev}:${stat.ino}:${stat.birthtimeMs}`);
+// NTFS 文件 ID 可能超过 Number 的安全整数范围，安全校验必须保持原始整数精度。
+const fileIdentity = (stat) => hash(`${stat.dev}:${stat.ino}:${stat.birthtimeNs}`);
+// 已保存的日志断点沿用旧哈希；它只负责增量位置，不用于路径或打开句柄的安全校验。
+const logCheckpointIdentity = (stat) => hash(`${stat.dev}:${stat.ino}:${stat.birthtimeMs}`);
 async function verifyRoot(anchor) {
   if (!anchor) return;
   const stat = await safePath(anchor.path);
@@ -117,21 +120,21 @@ async function verifyRoot(anchor) {
 async function safeOpen(path, anchor, options) {
   await verifyRoot(anchor);
   const before = await safePath(path, options);
-  if (!before.isFile() || before.nlink !== 1) throw new Error("UNSAFE_PATH");
+  if (!before.isFile() || before.nlink !== 1n) throw new Error("UNSAFE_PATH");
   const handle = await open(path, constants.O_RDONLY | (constants.O_NOFOLLOW || 0));
   try {
-    const after = await handle.stat();
+    const after = await handle.stat({ bigint: true });
     const current = await safePath(path, options);
     await verifyRoot(anchor);
     if (
       !after.isFile() ||
-      after.nlink !== 1 ||
-      before.dev !== after.dev ||
-      before.ino !== after.ino ||
-      current.ino !== after.ino
+      after.nlink !== 1n ||
+      fileIdentity(before) !== fileIdentity(after) ||
+      fileIdentity(current) !== fileIdentity(after)
     )
       throw new Error("UNSAFE_PATH");
-    return { handle, stat: after };
+    // 通过路径与句柄精确校验后，再提供读取预算和既有断点需要的 Number 元数据。
+    return { handle, stat: await handle.stat() };
   } catch (error) {
     await handle.close();
     throw error;
@@ -799,7 +802,7 @@ export class LocalUsageMonitor {
       item.observedSize = stat.size;
       item.observedMtime = stat.mtimeMs;
       item.pendingWork = true;
-      const identity = hash(`${stat.dev}:${stat.ino}:${stat.birthtimeMs}`);
+      const identity = logCheckpointIdentity(stat);
       let checkpoint = this.checkpoints.get(item.key);
       let changed =
         !checkpoint ||
@@ -905,7 +908,9 @@ export class LocalUsageMonitor {
       const stat = opened.stat;
       item.observedSize = stat.size;
       item.observedMtime = stat.mtimeMs;
-      const stamp = hash(`${fileIdentity(stat)}:${stat.size}:${stat.mtimeMs}:${stat.ctimeMs}`);
+      const stamp = hash(
+        `${logCheckpointIdentity(stat)}:${stat.size}:${stat.mtimeMs}:${stat.ctimeMs}`,
+      );
       const prior = this.checkpoints.get(item.key);
       if (prior?.snapshotStamp === stamp) {
         item.pendingWork = false;
@@ -987,7 +992,7 @@ export class LocalUsageMonitor {
       this.checkpoints.set(item.key, {
         offset: stat.size,
         session: hash(`${item.client}:${document.sessionId ?? "unknown"}`),
-        identity: fileIdentity(stat),
+        identity: logCheckpointIdentity(stat),
         epoch: 0,
         model: "unknown",
         total: null,
@@ -1216,12 +1221,12 @@ export class LocalUsageMonitor {
 
   async verifyIndex() {
     const stat = await safePath(this.indexPath);
-    if (!stat.isFile() || stat.nlink !== 1 || stat.size > EVENT_INDEX_LIMITS.bytes)
+    if (!stat.isFile() || stat.nlink !== 1n || stat.size > EVENT_INDEX_LIMITS.bytes)
       throw new Error("UNSAFE_INDEX");
     for (const suffix of ["-journal", "-wal", "-shm"]) {
       try {
         const sidecar = await safePath(`${this.indexPath}${suffix}`);
-        if (!sidecar.isFile() || sidecar.nlink !== 1) throw new Error("UNSAFE_INDEX");
+        if (!sidecar.isFile() || sidecar.nlink !== 1n) throw new Error("UNSAFE_INDEX");
       } catch (error) {
         if (error.code !== "ENOENT") throw error;
       }

@@ -4,6 +4,7 @@ import { join, resolve } from "node:path";
 import { tmpdir } from "node:os";
 import { _electron as electron } from "playwright";
 import { completeOnboarding } from "./onboarding-helper.mjs";
+import { Vault } from "../electron/services/vault.mjs";
 
 // 合成账号和隔离数据目录；复制动作只写测试变量，不碰系统剪贴板。
 const directory = await mkdtemp(join(tmpdir(), "zhiyu-vault-usability-"));
@@ -129,6 +130,38 @@ try {
   await gate.waitFor({ state: "detached" });
   await details.getByText(fixture.username, { exact: true }).waitFor();
   assert.equal(await details.getByText(fixture.password, { exact: true }).count(), 0);
+  await details.getByRole("button", { name: "显示", exact: true }).click();
+  await details.getByText(fixture.password, { exact: true }).waitFor();
+  // 外部恢复触发的内部锁定，也必须通知页面清除已显示的账号与密码。
+  const originalVault = await readFile(join(directory, "vault.enc"));
+  const restoredFile = join(directory, "restored.enc");
+  const restoredVault = new Vault(restoredFile);
+  await restoredVault.create("restored-backup-master-2026");
+  await restoredVault.set(`account:${fixture.id}`, {
+    kind: "account",
+    username: fixture.username,
+    password: fixture.password,
+    url: fixture.url,
+  });
+  restoredVault.lock();
+  await writeFile(join(directory, "vault.enc"), await readFile(restoredFile));
+  assert.equal((await page.evaluate(() => window.sinan.vault.status())).unlocked, false);
+  await details.getByRole("button", { name: "解锁查看", exact: true }).waitFor();
+  assert.equal(await details.getByText(fixture.password, { exact: true }).count(), 0);
+  assert.equal(await details.getByText(fixture.username, { exact: true }).count(), 0);
+  await details.getByRole("button", { name: "解锁查看", exact: true }).click();
+  gate = page.getByRole("dialog", { name: "解锁密钥库", exact: true });
+  await gate.getByLabel("主密码", { exact: true }).fill("restored-backup-master-2026");
+  await gate.getByRole("button", { name: "解锁", exact: true }).click();
+  await gate.waitFor({ state: "detached" });
+  await details.getByText(fixture.username, { exact: true }).waitFor();
+  await writeFile(join(directory, "vault.enc"), originalVault);
+  assert.equal((await page.evaluate(() => window.sinan.vault.status())).unlocked, false);
+  await details.getByRole("button", { name: "解锁查看", exact: true }).click();
+  gate = page.getByRole("dialog", { name: "解锁密钥库", exact: true });
+  await gate.getByLabel("主密码", { exact: true }).fill("integration-master-2026");
+  await gate.getByRole("button", { name: "解锁", exact: true }).click();
+  await gate.waitFor({ state: "detached" });
   await details.getByRole("button", { name: "显示", exact: true }).click();
   await details.getByText(fixture.password, { exact: true }).waitFor();
   await details.getByRole("button", { name: "隐藏", exact: true }).click();

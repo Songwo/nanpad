@@ -14,7 +14,7 @@
 
 ## 版本准备
 
-更新 package.json、package-lock.json、browser-extension/manifest.json 与 src/lib/changelog.ts，执行 `node scripts/write-changelog.mjs` 同步 CHANGELOG.md。本版说明保存在 `docs/releases/v1.7.0.md`。README 的安装包名、构建目录及教程应与版本一致；描述实际支持范围，不将本机协议测试写成真实账号登录成功。
+更新 package.json、package-lock.json、browser-extension/manifest.json 与 src/lib/changelog.ts，执行 `node scripts/write-changelog.mjs` 同步 CHANGELOG.md。本版说明保存在 `docs/releases/v1.7.1.md`。README 的安装包名、构建目录及教程应与版本一致；描述实际支持范围，不将本机协议测试写成真实账号登录成功。
 
 ## 必须验证
 
@@ -46,7 +46,7 @@ npm run desktop:dist -- --win --x64 --publish never
 
 打包脚本将主进程及编译后的界面放入系统临时目录中的独立暂存区，使用仓库锁文件版本安装 `ssh2`、`electron-updater`、`imapflow`、`openai`、`minisearch`、`nodemailer`、`mailparser`、`html-to-text`、`sanitize-html`、`unified`、`remark-parse`、`remark-gfm` 及其运行依赖，再通过 electron-builder 内置的目录遍历器收集依赖，避免将网页构建工具装进桌面包。暂存区先解析真实路径，npm 子进程只通过工作目录定位项目，避免 macOS 符号链接路径与 `--prefix` 解析不一致。排除可选原生加速模块，SSH 使用库自带的 JavaScript 实现；无需 Visual Studio 编译环境。复用本机已安装的同版本 Electron，输出到 `release/v版本号/`；构建结束清理暂存区。
 
-安装包生成后检查版本和包内容，运行 `node scripts/release-smoke.mjs release/v1.7.0/win-unpacked/Zhiyu.exe` 验证打包程序，计算 SHA256，补齐 Release 说明中的验证记录。该脚本使用独立临时数据目录，不修改日常资料。发布时显式选择源码、文档和必要资源，不提交临时截图、日志、用户数据或运行目录。将发布标签指向已经验证的提交，再上传 `Zhiyu-1.7.0-setup.exe`、浏览器扩展包与 `SHA256SUMS.txt`，以及下文要求的应用内更新附件。
+安装包生成后检查版本和包内容，运行 `node scripts/release-smoke.mjs release/v1.7.1/win-unpacked/Zhiyu.exe` 验证打包程序，计算 SHA256，补齐 Release 说明中的验证记录。该脚本使用独立临时数据目录，不修改日常资料。发布时显式选择源码、文档和必要资源，不提交临时截图、日志、用户数据或运行目录。将发布标签指向已经验证的提交，再上传 `Zhiyu-1.7.1-setup.exe`、浏览器扩展包与 `SHA256SUMS.txt`，以及下文要求的应用内更新附件。
 
 1.3.1 的 Windows 正式发布流水线额外运行 `passwords-desktop-integration.mjs` 验证实际打包程序的 CSV、加密库、后台资产同步、锁库与文档保存，并在 `extension:build` 后运行 `browser-companion-integration.mjs` 加载真实扩展，覆盖原生表单整页导航、多账号填写与文档提示。依赖中文界面标签的 Electron 测试必须显式设置 `locale: "zh-CN"`，不能依赖开发机的系统语言。测试只使用独立临时资料和合成账号，不读取真实浏览器密码库；真实浏览器原生 CSV 导入结果与第三方在线文档兼容性应单独记录。
 
@@ -159,3 +159,22 @@ node scripts/identity-totp-desktop-integration.mjs release/v1.7.0/win-unpacked/Z
 截至 2026 年 10 月 9 日，公网 `https://auth.allinsong.top/healthz` 已返回 `configured: true`，`POST /v1/login/start` 已返回 HTTP 200，并核对官方授权地址、`https://auth.allinsong.top/oauth/linuxdo/callback` 回调和 S256 PKCE。随后已通过用户本人发起的真实授权与绑定，本机已连接状态、邮箱和等级字段已核对；没有公开其账号信息。未提供可用头像时继续保留本地头像，不能据此宣称任意头像或受限帖子均可读取。协议测试与真实 OAuth 结果必须分别记录，不发布完整授权链接、应用密钥或服务凭据。
 
 1.7.0 安装包、更新元数据、下载页和扩展版本保持一致，附件使用 `Zhiyu-1.7.0-setup.exe` 与 `Zhiyu-1.7.0-browser-extension.zip`。插件本版只同步版本号。升级继续保留原数据目录及 1.6.0 密钥库身份资产，不把旧账号自动迁移为主身份；主身份使用独立系统加密文件，登录不能代替本地主密码。
+
+## 1.7.1 安全与性能修补验证
+
+本版新建和改密要求 10 至 256 位，新库写入 v2 与当前 scrypt 参数；旧 v1 库仍可用原来的 6 位主密码解锁，普通读写不改格式，改密后才升级。回归应检查非法 KDF 参数与内存、运算量上限，恢复不同密钥备份后的自动锁定，以及异步读取、派生或保存期间外部文件变化时拒绝覆盖。
+
+除前述完整检查外，以下定向回归覆盖密钥库、模型 API Key 的系统加密存储边界、OAuth 配置导入与本机用量采集：
+
+```bash
+node --test electron/services/vault.test.mjs electron/services/agent-service.test.mjs
+node --test electron/services/oauth-client-file.test.mjs electron/services/local-usage.test.mjs
+```
+
+桌面权限检查剪贴板正常使用而其他权限被拒，正式包加载时内容安全策略不得阻止现有功能。展开服务器详情后核对历史指标展示、加载过程与控制台；构建输出应将 recharts 从初始加载路径分离。
+
+OAuth 客户端 JSON 检查非普通文件、超过 256 KB、读取期间增长、无效 JSON 和客户端字段类型错误，界面提示不得带出原文件片段。Windows 本机用量检查大文件标识的精确路径与句柄比较，并保留已有日志断点的哈希格式，避免升级后重复统计 Token。
+
+版本一致性检查包括 package.json、锁文件根版本与 `packages[""].version`、浏览器插件清单和首条更新日志。Windows 安装包、扩展 ZIP、更新元数据及校验文件必须来自同次构建。官网正式版继续由已发布 Release 动态渲染；macOS 默认目标为 `mac-test-1.7.1.1` 独立 Pre-release，不影响 Windows 正式更新源。
+
+测试、正式包和 macOS 构建结果应在各命令完成后分别记录；1.7.0 的测试数量和实机反馈不能作为本版通过的证据。

@@ -10,12 +10,12 @@ on:
       version:
         description: 来源正式版版本号，需要已有对应的 v 标签
         required: true
-        default: "1.7.0"
+        default: "1.7.1"
         type: string
       tag:
         description: 独立测试版标签，格式 mac-test-版本号.序号
         required: true
-        default: "mac-test-1.7.0.1"
+        default: "mac-test-1.7.1.1"
         type: string
 
 permissions:

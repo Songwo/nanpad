@@ -295,6 +295,19 @@ test("系统加密不可用时不能保存明文 Key", async (t) => {
   );
   assert.equal((await f.service.config()).hasApiKey, false);
 });
+test("Linux basic_text 后端视为不可用，不以固定密钥伪加密保存 Key", async (t) => {
+  const f = await fixture(t, () => {});
+  f.service.secureStorage = {
+    isEncryptionAvailable: () => true,
+    getSelectedStorageBackend: () => "basic_text",
+    encryptString: (text) => Buffer.from(text),
+  };
+  await assert.rejects(
+    f.service.saveConfig({ ...(await f.service.config()), apiKey: "unsafe-key" }),
+    /加密存储不可用/,
+  );
+  assert.equal((await f.service.config()).hasApiKey, false);
+});
 test("数据迁移后无法解密的 Key 标记为不可读并提示重新输入", async (t) => {
   const f = await fixture(t, () => {});
   await f.service.saveConfig({ ...(await f.service.config()), apiKey: "k1" });

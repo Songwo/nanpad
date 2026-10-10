@@ -752,6 +752,105 @@ test("缓存父目录别名指向不同身份或显式 junction 时仍拒绝写�
   await assert.rejects(readFile(f.file), { code: "ENOENT" });
 });
 
+test("超过安全整数范围且舍入相同的目录 inode 不能通过缓存映射校验", async (t) => {
+  const f = await fixture(t);
+  const directory = join(f.root, "cache");
+  const different = join(f.root, "other-cache");
+  await mkdir(directory);
+  await mkdir(different);
+  const firstId = 9007199254740992n;
+  const secondId = firstId + 1n;
+  assert.equal(Number(firstId), Number(secondId), "复现 NTFS 文件 ID 的 Number 精度丢失");
+  const originalLstat = fs.promises.lstat;
+  const originalRealpath = fs.promises.realpath;
+  fs.promises.lstat = async (path, options) => {
+    const stat = await originalLstat(path, options);
+    if (path === directory || path === different) {
+      const id = path === directory ? firstId : secondId;
+      stat.ino = options?.bigint ? id : Number(id);
+      stat.birthtimeMs = options?.bigint ? 1700000000000n : 1700000000000;
+      if (options?.bigint) stat.birthtimeNs = 1700000000000000000n;
+    }
+    return stat;
+  };
+  fs.promises.realpath = (path, ...args) =>
+    originalRealpath(path === directory ? different : path, ...args);
+  syncBuiltinESMExports();
+  try {
+    await assert.rejects(f.monitor().configure({ enabled: true }), /缓存保存失败/);
+    await assert.rejects(readFile(f.file), { code: "ENOENT" });
+  } finally {
+    fs.promises.lstat = originalLstat;
+    fs.promises.realpath = originalRealpath;
+    syncBuiltinESMExports();
+  }
+});
+
+test("打开日志时替换为舍入相同的大 inode 文件仍拒绝读取", async (t) => {
+  const f = await fixture(t);
+  const path = join(f.roots.codex[0], "session.jsonl");
+  await writeFile(path, codexMeta() + context() + codex(100, 20));
+  const originalLstat = fs.promises.lstat;
+  const originalOpen = fs.promises.open;
+  const replaceId = (stat, id, options) => {
+    stat.ino = options?.bigint ? id : Number(id);
+    stat.birthtimeMs = options?.bigint ? 1700000000000n : 1700000000000;
+    if (options?.bigint) stat.birthtimeNs = 1700000000000000000n;
+    return stat;
+  };
+  fs.promises.lstat = async (file, options) => {
+    const stat = await originalLstat(file, options);
+    return file === path ? replaceId(stat, 9007199254740992n, options) : stat;
+  };
+  fs.promises.open = async (file, ...args) => {
+    const handle = await originalOpen(file, ...args);
+    if (file === path) {
+      const originalStat = handle.stat.bind(handle);
+      handle.stat = async (options) =>
+        replaceId(await originalStat(options), 9007199254740993n, options);
+    }
+    return handle;
+  };
+  syncBuiltinESMExports();
+  try {
+    const monitor = await enabled(f);
+    assert.equal((await monitor.list()).records.length, 0);
+    assert.ok(
+      (await monitor.status()).sources[0].warnings.some((warning) =>
+        warning.includes("不可安全读取"),
+      ),
+    );
+  } finally {
+    fs.promises.lstat = originalLstat;
+    fs.promises.open = originalOpen;
+    syncBuiltinESMExports();
+  }
+});
+
+test("精确路径身份校验保留旧日志断点哈希，重启只收录追加的 Token", async (t) => {
+  const f = await fixture(t);
+  const path = join(f.roots.codex[0], "session.jsonl");
+  await writeFile(path, codexMeta() + context() + codex(100, 20));
+  const initial = await enabled(f);
+  const stat = await fs.promises.stat(path);
+  const legacyIdentity = createHash("sha256")
+    .update(`${stat.dev}:${stat.ino}:${stat.birthtimeMs}`)
+    .digest("hex");
+  const saved = JSON.parse(await readFile(f.file, "utf8"));
+  assert.equal(saved.checkpoints[0][1].identity, legacyIdentity);
+  assert.equal(saved.checkpoints[0][1].offset, stat.size);
+  const restarted = f.monitor();
+  await restarted.refresh();
+  assert.equal(restarted.lastRefreshStats.bytesRead, 0, "保留旧断点，不重新解析历史日志正文");
+  assert.equal((await restarted.list()).records[0].input, 100);
+  const addition = codex(150, 30);
+  await appendFile(path, addition);
+  await restarted.refresh();
+  assert.equal(restarted.lastRefreshStats.bytesRead, Buffer.byteLength(addition));
+  assert.equal((await restarted.list()).records[0].input, 150);
+  assert.equal((await initial.list()).records[0].input, 100);
+});
+
 test("并发刷新和暂停串行化，缓存损坏时停止而不重放历史", async (t) => {
   const f = await fixture(t);
   await writeFile(join(f.roots.claude[0], "session.jsonl"), claude());
@@ -1050,6 +1149,35 @@ test("Grok 只读取 usage.json，按轮次模型去重且缓存与推理不重�
     (await restarted.status()).sources.find((source) => source.id === "local:grok").lastUsageAt,
     "2026-10-07T10:00:00.000Z",
   );
+});
+
+test("精确路径身份校验保留旧 JSON 快照标记，重启和索引迁移后不重复读取正文", async (t) => {
+  const f = await fixture(t);
+  const path = join(f.roots.grok[0], "usage.json");
+  await writeFile(path, JSON.stringify(grokUsage([grokTurn(1)])));
+  const initial = await enabled(f);
+  const stat = await fs.promises.stat(path);
+  const legacyIdentity = createHash("sha256")
+    .update(`${stat.dev}:${stat.ino}:${stat.birthtimeMs}`)
+    .digest("hex");
+  const legacyStamp = createHash("sha256")
+    .update(`${legacyIdentity}:${stat.size}:${stat.mtimeMs}:${stat.ctimeMs}`)
+    .digest("hex");
+  const saved = JSON.parse(await readFile(f.file, "utf8"));
+  assert.equal(saved.checkpoints[0][1].snapshotStamp, legacyStamp);
+  const restarted = f.monitor();
+  await restarted.refresh();
+  assert.equal(restarted.lastRefreshStats.bytesRead, 0);
+  assert.equal((await restarted.list()).records[0].input, 100);
+  await restarted.migrateIndex();
+  // 既有索引迁移会有界回填一次；完成后再次重启仍复用快照标记。
+  const indexed = f.monitor();
+  await indexed.refresh();
+  const again = f.monitor();
+  await again.refresh();
+  assert.equal(again.lastRefreshStats.bytesRead, 0);
+  assert.equal((await again.list()).records[0].input, 100);
+  assert.equal((await initial.list()).records[0].input, 100);
 });
 
 test("Gemini CLI 会话 JSON 计入独立 thoughts/tool，用量重复及文件改写不双计", async (t) => {

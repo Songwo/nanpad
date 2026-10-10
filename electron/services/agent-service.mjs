@@ -319,7 +319,11 @@ export class AgentService {
       if (input.apiKey) {
         if (typeof input.apiKey !== "string" || input.apiKey.length > 4096)
           throw new Error("API Key 格式无效。");
-        if (!this.secureStorage.isEncryptionAvailable())
+        // Linux 无钥匙串时 safeStorage 退化为 basic_text（固定密钥），isEncryptionAvailable 仍为 true。
+        if (
+          !this.secureStorage.isEncryptionAvailable() ||
+          this.secureStorage.getSelectedStorageBackend?.() === "basic_text"
+        )
           throw new Error("系统加密存储不可用，未保存 API Key。");
         encryptedKey = this.secureStorage.encryptString(input.apiKey.trim()).toString("base64");
       }

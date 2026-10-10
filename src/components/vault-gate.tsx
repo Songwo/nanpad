@@ -113,6 +113,9 @@ export function VaultGate() {
                     disabled={working}
                     value={password}
                     autoComplete={exists ? "current-password" : "new-password"}
+                    minLength={exists ? 6 : 10}
+                    maxLength={exists ? undefined : 256}
+                    placeholder={exists ? undefined : t("至少 10 位")}
                     onChange={(e) => setPassword(e.target.value)}
                   />
                 </Field>
@@ -124,6 +127,8 @@ export function VaultGate() {
                       disabled={working}
                       value={confirm}
                       autoComplete="new-password"
+                      minLength={10}
+                      maxLength={256}
                       onChange={(e) => setConfirm(e.target.value)}
                     />
                   </Field>
@@ -161,7 +166,14 @@ export function VaultGate() {
                 >
                   {t("取消")}
                 </Button>
-                <Button type="submit" disabled={working || password.length < 6}>
+                <Button
+                  type="submit"
+                  disabled={
+                    working ||
+                    password.length < (exists ? 6 : 10) ||
+                    (!exists && password.length > 256)
+                  }
+                >
                   {working ? t("处理中…") : exists ? t("解锁") : t("创建")}
                 </Button>
               </div>

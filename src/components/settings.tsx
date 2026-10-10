@@ -426,6 +426,8 @@ function VaultSection() {
                   type="password"
                   value={newPw}
                   autoComplete="new-password"
+                  minLength={10}
+                  maxLength={256}
                   onChange={(e) => setNewPw(e.target.value)}
                 />
               </Field>
@@ -434,13 +436,15 @@ function VaultSection() {
                   type="password"
                   value={confirmPw}
                   autoComplete="new-password"
+                  minLength={10}
+                  maxLength={256}
                   onChange={(e) => setConfirmPw(e.target.value)}
                 />
               </Field>
             </div>
             {error && <p className="text-meta text-crit">{error}</p>}
             <div className="flex items-center gap-3">
-              <Button type="submit" disabled={busy || oldPw.length < 6 || newPw.length < 6}>
+              <Button type="submit" disabled={busy || oldPw.length < 6 || newPw.length < 10}>
                 {busy && <Loader2 className="size-3.5 animate-spin" />}
 
                 {t("更新主密码")}

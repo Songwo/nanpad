@@ -5,18 +5,68 @@ import {
   scrypt,
   timingSafeEqual,
 } from "node:crypto";
-import { renameSync } from "node:fs";
+import { linkSync, renameSync, statSync, unlinkSync } from "node:fs";
 import { readFile, writeFile, mkdir, rm } from "node:fs/promises";
 import { dirname, join } from "node:path";
+import { setTimeout as delay } from "node:timers/promises";
 import { promisify } from "node:util";
 
 const derive = promisify(scrypt);
 
-const VERSION = 1;
+const VERSION = 2;
 const KEY_LEN = 32;
 const IV_LEN = 12;
-// Interactive unlock, so cost is tuned to stay under ~250ms on a laptop.
-const SCRYPT = { N: 2 ** 15, r: 8, p: 1, maxmem: 64 * 1024 * 1024 };
+const MIN_MASTER_LENGTH = 10;
+const MAX_MASTER_LENGTH = 256;
+// v1 文件不含 kdf 字段，始终使用这些历史参数。
+const LEGACY_KDF = { N: 2 ** 15, r: 8, p: 1 };
+// 当前参数每次派生使用约 128 MiB；参数随文件保存，改密时才升级旧库。
+const CURRENT_KDF = { N: 2 ** 17, r: 8, p: 1 };
+const MAXMEM = 256 * 1024 * 1024;
+// 同时限制 CPU 工作量，避免未鉴权的文件通过增大 p 长时间占满派生线程。
+const MAX_KDF_WORK = CURRENT_KDF.N * CURRENT_KDF.r * CURRENT_KDF.p;
+// Windows 可短暂拒绝文件替换；最多等待 2.55 秒，永久权限错误仍向调用方报告。
+const RENAME_RETRY_DELAYS = [50, 100, 200, 400, 800, 1000];
+
+/** 参数同时受内存与运算量限制，不接受越界后退回历史参数的降级。 */
+function normalizeKdf(value) {
+  if (
+    !value ||
+    typeof value !== "object" ||
+    !Number.isInteger(value.N) ||
+    value.N < 2 ** 14 ||
+    value.N > 2 ** 20 ||
+    (value.N & (value.N - 1)) !== 0 ||
+    !Number.isInteger(value.r) ||
+    value.r < 1 ||
+    value.r > 32 ||
+    !Number.isInteger(value.p) ||
+    value.p < 1 ||
+    value.p > 16 ||
+    128 * value.r * (value.N + value.p + 2) >= MAXMEM ||
+    value.N * value.r * value.p > MAX_KDF_WORK
+  )
+    return null;
+  return { N: value.N, r: value.r, p: value.p };
+}
+function kdfOf(doc) {
+  if (doc?.v === 1 && !Object.hasOwn(doc, "kdf")) return LEGACY_KDF;
+  const kdf = doc?.v === VERSION ? normalizeKdf(doc.kdf) : null;
+  if (!kdf) throw new Error("主密码不正确或密钥库格式不受支持");
+  return kdf;
+}
+const deriveKey = (master, salt, kdf) => derive(master, salt, KEY_LEN, { ...kdf, maxmem: MAXMEM });
+const fileStamp = (info) => `${info.dev}:${info.ino}:${info.ctimeNs}:${info.mtimeNs}:${info.size}`;
+const keyContext = (doc) => {
+  const kdf = kdfOf(doc);
+  return `${doc.salt}:${kdf.N}:${kdf.r}:${kdf.p}`;
+};
+
+function assertMaster(master, label) {
+  if (typeof master !== "string" || master.length < MIN_MASTER_LENGTH)
+    throw new Error(`${label}至少 ${MIN_MASTER_LENGTH} 位`);
+  if (master.length > MAX_MASTER_LENGTH) throw new Error(`${label}最多 ${MAX_MASTER_LENGTH} 位`);
+}
 
 /**
  * Credential store for SSH passwords, private keys and API secrets.
@@ -29,7 +79,10 @@ const SCRYPT = { N: 2 ** 15, r: 8, p: 1, maxmem: 64 * 1024 * 1024 };
 export class Vault {
   #file;
   #key = null;
+  #keyContext = null;
   #doc = null;
+  // 文件身份与纳秒时间共同识别恢复操作，包括保留大小和修改时间的替换。
+  #stamp = null;
   #queue = Promise.resolve();
   #generation = 0;
   #lockListeners = new Set();
@@ -68,35 +121,108 @@ export class Vault {
     return task;
   }
 
-  #replaceKey(key) {
+  #replaceKey(key, doc) {
     if (this.#key && this.#key !== key) this.#key.fill(0);
     this.#key = key;
+    this.#keyContext = key ? keyContext(doc) : null;
   }
 
   async #read() {
-    if (this.#doc) return this.#doc;
+    let info;
     try {
-      this.#doc = JSON.parse(await readFile(this.#file, "utf8"));
+      // 同步 stat：缓存命中时不让出事件循环，上层依赖"入队即读"的时序不受影响。
+      info = statSync(this.#file, { bigint: true });
     } catch (error) {
-      if (error.code !== "ENOENT") throw new Error("密钥库读取失败，请保留原文件并检查备份。");
-      this.#doc = null;
+      // 文件缺失或暂时不可访问时沿用内存副本；只有首次读取缺失才视为尚未创建。
+      if (this.#doc) return { doc: this.#doc, stamp: this.#stamp, writable: false };
+      if (error.code === "ENOENT") return { doc: null, stamp: null, writable: true };
+      throw new Error("密钥库读取失败，请保留原文件并检查备份。");
     }
-    return this.#doc;
+    if (!info.isFile()) {
+      if (this.#doc) return { doc: this.#doc, stamp: this.#stamp, writable: false };
+      throw new Error("密钥库读取失败，请保留原文件并检查备份。");
+    }
+    const stamp = fileStamp(info);
+    if (this.#doc && this.#stamp === stamp) return { doc: this.#doc, stamp, writable: true };
+    let doc;
+    try {
+      doc = JSON.parse(await readFile(this.#file, "utf8"));
+    } catch {
+      throw new Error("密钥库读取失败，请保留原文件并检查备份。");
+    }
+    // 异步读取期间可能恢复了另一个文件，不能把旧密文标记成新版本缓存。
+    this.#assertUnchanged({ stamp, writable: true });
+    if (this.#key) {
+      let compatible = false;
+      try {
+        compatible =
+          this.#keyContext === keyContext(doc) &&
+          open(this.#key, doc.check).equals(Buffer.from("sinan-vault"));
+      } catch {
+        // 盐、参数或校验密文异常都不能沿用现有解密密钥。
+      }
+      if (!compatible) this.lock();
+    }
+    this.#doc = doc;
+    this.#stamp = stamp;
+    return { doc, stamp, writable: true };
   }
 
-  async #write(doc, generation, nextKey, beforeCommit) {
+  #assertUnchanged(expected) {
+    if (!expected.writable) throw new Error("密钥库保存失败，请恢复原文件后重试。");
+    let stamp = null;
+    try {
+      const info = statSync(this.#file, { bigint: true });
+      stamp = info.isFile() ? fileStamp(info) : "not-file";
+    } catch (error) {
+      if (error.code !== "ENOENT") stamp = "unreadable";
+    }
+    if (stamp !== expected.stamp) {
+      // 取消本次及旧会话中的排队操作；重新解锁后以恢复的文件为准。
+      this.lock();
+      throw new Error("密钥库文件已变化，操作已取消，请重新解锁后重试。");
+    }
+  }
+
+  async #write(doc, generation, expected, nextKey, beforeCommit) {
     const tmp = `${this.#file}.${randomBytes(12).toString("hex")}.tmp`;
     try {
+      this.#assertUnchanged(expected);
       await mkdir(dirname(this.#file), { recursive: true });
       this.#assertGeneration(generation);
       await writeFile(tmp, JSON.stringify(doc), { encoding: "utf8", mode: 0o600, flag: "wx" });
-      this.#assertGeneration(generation);
-      beforeCommit?.();
-      this.#assertGeneration(generation);
-      // 提交段不让出事件循环，保证锁库不能插在落盘与切换解密密钥之间。
-      renameSync(tmp, this.#file);
+      for (let attempt = 0; ; attempt += 1) {
+        this.#assertGeneration(generation);
+        beforeCommit?.();
+        this.#assertGeneration(generation);
+        // 每次等待后重新验证独立快照，不能覆盖等待期间恢复的备份。
+        this.#assertUnchanged(expected);
+        try {
+          if (expected.stamp === null) {
+            // 首次创建使用不覆盖目标的原子硬链接，保留并发创建或恢复的文件。
+            linkSync(tmp, this.#file);
+            unlinkSync(tmp);
+          } else renameSync(tmp, this.#file);
+          break;
+        } catch (error) {
+          if (
+            expected.stamp === null ||
+            process.platform !== "win32" ||
+            error.code !== "EPERM" ||
+            attempt >= RENAME_RETRY_DELAYS.length
+          )
+            throw error;
+          await delay(RENAME_RETRY_DELAYS[attempt]);
+        }
+      }
+      // 成功替换到切换文档和密钥仍在同一个同步段，不允许锁库插入。
       this.#doc = doc;
-      if (nextKey) this.#replaceKey(nextKey);
+      try {
+        this.#stamp = fileStamp(statSync(this.#file, { bigint: true }));
+      } catch {
+        this.#stamp = null;
+      }
+      if (nextKey) this.#replaceKey(nextKey, doc);
     } catch (error) {
       await rm(tmp, { force: true }).catch(() => {});
       this.#assertGeneration(generation);
@@ -108,7 +234,8 @@ export class Vault {
   status() {
     return this.#enqueue(
       async () => {
-        const doc = await this.#read();
+        const snapshot = await this.#read();
+        const { doc } = snapshot;
         return { exists: Boolean(doc), unlocked: this.unlocked };
       },
       { cancelOnLock: false },
@@ -118,21 +245,24 @@ export class Vault {
   /** First run: pick a master password and seal an empty vault with it. */
   create(master) {
     return this.#enqueue(async (generation) => {
-      if (typeof master !== "string" || master.length < 6) throw new Error("主密码至少 6 位");
-      if (await this.#read()) throw new Error("密钥库已存在，请直接解锁");
+      assertMaster(master, "主密码");
+      const snapshot = await this.#read();
+      if (snapshot.doc) throw new Error("密钥库已存在，请直接解锁");
       this.#assertGeneration(generation);
       const salt = randomBytes(16);
-      const key = await derive(master, salt, KEY_LEN, SCRYPT);
+      const key = await deriveKey(master, salt, CURRENT_KDF);
       try {
         this.#assertGeneration(generation);
         await this.#write(
           {
             v: VERSION,
             salt: salt.toString("base64"),
+            kdf: { ...CURRENT_KDF },
             check: seal(key, Buffer.from("sinan-vault")),
             records: {},
           },
           generation,
+          snapshot,
           key,
         );
         return { ok: true };
@@ -144,7 +274,7 @@ export class Vault {
 
   async #verifiedKey(master, doc, generation) {
     if (typeof master !== "string" || !master) throw new Error("主密码不正确");
-    const key = await derive(master, Buffer.from(doc.salt, "base64"), KEY_LEN, SCRYPT);
+    const key = await deriveKey(master, Buffer.from(doc.salt, "base64"), kdfOf(doc));
     try {
       this.#assertGeneration(generation);
       let probe;
@@ -165,13 +295,15 @@ export class Vault {
 
   unlock(master) {
     return this.#enqueue(async (generation) => {
-      const doc = await this.#read();
+      const snapshot = await this.#read();
+      const { doc } = snapshot;
       if (!doc) throw new Error("密钥库尚未创建");
       this.#assertGeneration(generation);
       const key = await this.#verifiedKey(master, doc, generation);
       try {
         this.#assertGeneration(generation);
-        this.#replaceKey(key);
+        this.#assertUnchanged(snapshot);
+        this.#replaceKey(key, doc);
         return { ok: true };
       } finally {
         if (this.#key !== key) key.fill(0);
@@ -202,9 +334,9 @@ export class Vault {
    */
   changePassword(oldMaster, newMaster) {
     return this.#enqueue(async (generation) => {
-      if (typeof newMaster !== "string" || newMaster.length < 6)
-        throw new Error("新主密码至少 6 位");
-      const doc = await this.#read();
+      assertMaster(newMaster, "新主密码");
+      const snapshot = await this.#read();
+      const { doc } = snapshot;
       if (!doc) throw new Error("密钥库尚未创建");
       this.#assertGeneration(generation);
       const oldKey = await this.#verifiedKey(oldMaster, doc, generation);
@@ -212,7 +344,7 @@ export class Vault {
       try {
         this.#assertGeneration(generation);
         const salt = randomBytes(16);
-        newKey = await derive(newMaster, salt, KEY_LEN, SCRYPT);
+        newKey = await deriveKey(newMaster, salt, CURRENT_KDF);
         this.#assertGeneration(generation);
         const records = Object.create(null);
         for (const [id, rec] of Object.entries(doc.records ?? {}))
@@ -221,10 +353,12 @@ export class Vault {
           {
             v: VERSION,
             salt: salt.toString("base64"),
+            kdf: { ...CURRENT_KDF },
             check: seal(newKey, Buffer.from("sinan-vault")),
             records,
           },
           generation,
+          snapshot,
           newKey,
         );
         return { ok: true, count: Object.keys(records).length };
@@ -243,14 +377,15 @@ export class Vault {
   set(id, secret) {
     return this.#enqueue(
       async (generation) => {
-        const doc = await this.#read();
+        const snapshot = await this.#read();
+        const { doc } = snapshot;
         this.#assertGeneration(generation);
         const key = this.#require();
         const records = {
           ...(doc?.records ?? {}),
           [id]: seal(key, Buffer.from(JSON.stringify(secret), "utf8")),
         };
-        await this.#write({ ...doc, records }, generation);
+        await this.#write({ ...doc, records }, generation, snapshot);
         return { ok: true };
       },
       { requireUnlocked: true },
@@ -260,7 +395,8 @@ export class Vault {
   get(id) {
     return this.#enqueue(
       async (generation) => {
-        const doc = await this.#read();
+        const snapshot = await this.#read();
+        const { doc } = snapshot;
         this.#assertGeneration(generation);
         const key = this.#require();
         if (!Object.hasOwn(doc?.records ?? {}, id)) return null;
@@ -275,7 +411,8 @@ export class Vault {
     return this.#enqueue(
       async (generation) => {
         if (!Array.isArray(entries) || entries.length > 10000) throw new Error("批量凭据数量无效");
-        const doc = await this.#read();
+        const snapshot = await this.#read();
+        const { doc } = snapshot;
         this.#assertGeneration(generation);
         const key = this.#require();
         beforeCommit?.();
@@ -312,7 +449,7 @@ export class Vault {
           });
         }
         if (entries.length)
-          await this.#write({ ...doc, records }, generation, undefined, beforeCommit);
+          await this.#write({ ...doc, records }, generation, snapshot, undefined, beforeCommit);
         return { ok: true, count: entries.length };
       },
       { requireUnlocked: true },
@@ -324,7 +461,8 @@ export class Vault {
     return this.#enqueue(
       async (generation) => {
         if (typeof prefix !== "string") throw new Error("凭据前缀无效");
-        const doc = await this.#read();
+        const snapshot = await this.#read();
+        const { doc } = snapshot;
         this.#assertGeneration(generation);
         const key = this.#require();
         const result = {};
@@ -346,13 +484,14 @@ export class Vault {
   remove(id) {
     return this.#enqueue(
       async (generation) => {
-        const doc = await this.#read();
+        const snapshot = await this.#read();
+        const { doc } = snapshot;
         this.#assertGeneration(generation);
         this.#require();
         if (Object.hasOwn(doc?.records ?? {}, id)) {
           const records = { ...doc.records };
           delete records[id];
-          await this.#write({ ...doc, records }, generation);
+          await this.#write({ ...doc, records }, generation, snapshot);
         }
         return { ok: true };
       },
@@ -370,7 +509,8 @@ export class Vault {
           ids.some((id) => typeof id !== "string" || !id || id.length > 512)
         )
           throw new Error("批量删除凭据标识无效");
-        const doc = await this.#read();
+        const snapshot = await this.#read();
+        const { doc } = snapshot;
         this.#assertGeneration(generation);
         this.#require();
         beforeCommit?.();
@@ -382,7 +522,8 @@ export class Vault {
           delete records[id];
           count += 1;
         }
-        if (count) await this.#write({ ...doc, records }, generation, undefined, beforeCommit);
+        if (count)
+          await this.#write({ ...doc, records }, generation, snapshot, undefined, beforeCommit);
         return { ok: true, count };
       },
       { requireUnlocked: true },
@@ -392,7 +533,8 @@ export class Vault {
   list() {
     return this.#enqueue(
       async () => {
-        const doc = await this.#read();
+        const snapshot = await this.#read();
+        const { doc } = snapshot;
         return Object.keys(doc?.records ?? {});
       },
       { cancelOnLock: false },

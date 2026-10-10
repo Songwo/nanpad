@@ -2,6 +2,10 @@ import { AssetDocuments } from "./asset-documents";
 const PhoneBindings = lazy(() =>
   import("./phone-workspace").then((module) => ({ default: module.PhoneBindings })),
 );
+// 指标图表带着 recharts，只在展开服务器详情时才加载。
+const MetricHistory = lazy(() =>
+  import("./metric-history").then((module) => ({ default: module.MetricHistory })),
+);
 import {
   Activity,
   BookOpen,
@@ -19,7 +23,7 @@ import { ServiceCard } from "./service-card";
 import { AccountPanel } from "./account-panel";
 import { MailStatus } from "./mail-status";
 import { AiAccountsPanel } from "./ai-accounts";
-import { AssetRelations, MetricHistory, SftpBrowser } from "./operations-panel";
+import { AssetRelations, SftpBrowser } from "./operations-panel";
 import { RefreshOneButton } from "./refresh-button";
 import { ServerNodesPanel } from "./server-nodes-panel";
 import { ServerDocsPanel } from "./server-docs-panel";
@@ -351,7 +355,9 @@ export function ExpandLayer() {
               {serverTab === "overview" && (
                 <>
                   <ExpandedBody kind={visible.kind} id={visible.id} />
-                  <MetricHistory key={`metrics:${visible.id}`} serverId={visible.id} />
+                  <Suspense fallback={<p className="p-4 text-sm text-muted">{t("正在加载…")}</p>}>
+                    <MetricHistory key={`metrics:${visible.id}`} serverId={visible.id} />
+                  </Suspense>
                   <AssetRelations key={`links:${visible.kind}:${visible.id}`} asset={visible} />
                   <div ref={accountSection} tabIndex={-1} aria-label={t("凭据位置")}>
                     <AccountPanel
@@ -391,7 +397,9 @@ export function ExpandLayer() {
                 </div>
               )}
               {visible.kind === "server" && (
-                <MetricHistory key={`metrics:${visible.id}`} serverId={visible.id} />
+                <Suspense fallback={<p className="p-4 text-sm text-muted">{t("正在加载…")}</p>}>
+                  <MetricHistory key={`metrics:${visible.id}`} serverId={visible.id} />
+                </Suspense>
               )}
               {visible.kind === "server" && (
                 <SftpBrowser key={`files:${visible.id}`} serverId={visible.id} />

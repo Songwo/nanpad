@@ -9,6 +9,9 @@
  * not agree on where a possessive or a count belongs.
  */
 export const EN: Record<string, string> = {
+  "至少 10 位": "At least 10 characters",
+  "这个 JSON 里没有有效的 client_id 或 client_secret": "This JSON does not contain a valid client_id or client_secret",
+  "无法读取客户端配置，请选择不超过 256 KB 的有效 JSON 文件。": "Unable to read the client configuration. Choose a valid JSON file no larger than 256 KB.",
   "无法启动登录，请重试。": "Unable to start sign-in. Please try again.",
   "Linux.do 主身份": "Linux.do primary identity",
   "登录成功，请确认主身份": "Signed in. Confirm your primary identity.",
