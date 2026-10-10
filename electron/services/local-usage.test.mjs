@@ -788,10 +788,14 @@ test("超过安全整数范围且舍入相同的目录 inode 不能通过缓存�
 
 test("打开日志时替换为舍入相同的大 inode 文件仍拒绝读取", async (t) => {
   const f = await fixture(t);
-  const path = join(f.roots.codex[0], "session.jsonl");
-  await writeFile(path, codexMeta() + context() + codex(100, 20));
+  const fixturePath = join(f.roots.codex[0], "session.jsonl");
+  await writeFile(fixturePath, codexMeta() + context() + codex(100, 20));
+  // 发现日志会先规范化根目录；Windows 临时目录可能使用短路径或不同大小写。
+  const path = await fs.promises.realpath(fixturePath);
   const originalLstat = fs.promises.lstat;
   const originalOpen = fs.promises.open;
+  let pathStats = 0;
+  let handleStats = 0;
   const replaceId = (stat, id, options) => {
     stat.ino = options?.bigint ? id : Number(id);
     stat.birthtimeMs = options?.bigint ? 1700000000000n : 1700000000000;
@@ -800,20 +804,26 @@ test("打开日志时替换为舍入相同的大 inode 文件仍拒绝读取", a
   };
   fs.promises.lstat = async (file, options) => {
     const stat = await originalLstat(file, options);
-    return file === path ? replaceId(stat, 9007199254740992n, options) : stat;
+    if (file !== path) return stat;
+    pathStats += 1;
+    return replaceId(stat, 9007199254740992n, options);
   };
   fs.promises.open = async (file, ...args) => {
     const handle = await originalOpen(file, ...args);
     if (file === path) {
       const originalStat = handle.stat.bind(handle);
-      handle.stat = async (options) =>
-        replaceId(await originalStat(options), 9007199254740993n, options);
+      handle.stat = async (options) => {
+        handleStats += 1;
+        return replaceId(await originalStat(options), 9007199254740993n, options);
+      };
     }
     return handle;
   };
   syncBuiltinESMExports();
   try {
     const monitor = await enabled(f);
+    assert.ok(pathStats > 0, "必须注入路径侧的大 inode，不能因路径别名静默跳过模拟");
+    assert.ok(handleStats > 0, "必须注入句柄侧的不同 inode，真正覆盖打开时替换场景");
     assert.equal((await monitor.list()).records.length, 0);
     assert.ok(
       (await monitor.status()).sources[0].warnings.some((warning) =>

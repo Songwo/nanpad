@@ -2,10 +2,17 @@ name: Windows 正式版
 on:
   push:
     tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 重新验证并发布的现有正式标签（例如 v1.7.1）
+        required: true
+        default: "v1.7.1"
+        type: string
 permissions:
   contents: read
 concurrency:
-  group: release-${{ github.ref }}
+  group: release-${{ inputs.tag || github.ref_name }}
   cancel-in-progress: false
 jobs:
   windows:
@@ -13,23 +20,41 @@ jobs:
     timeout-minutes: 35
     permissions:
       contents: write
+    env:
+      ZHIYU_RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+          fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
+      - name: 校验版本标签与源码
+        shell: pwsh
+        run: |
+          if ($env:ZHIYU_RELEASE_TAG -notmatch '^v\d+\.\d+\.\d+$') { throw 'Invalid stable release tag' }
+          $version = (Get-Content package.json | ConvertFrom-Json).version
+          if ("v$version" -ne $env:ZHIYU_RELEASE_TAG) { throw 'Version tag mismatch' }
+          $tagCommit = git rev-parse "refs/tags/$($env:ZHIYU_RELEASE_TAG)^{}"
+          if ($LASTEXITCODE -ne 0) { throw 'Release tag missing' }
+          $headCommit = git rev-parse HEAD
+          if ($LASTEXITCODE -ne 0 -or $tagCommit -ne $headCommit) { throw 'Release source mismatch' }
+      - name: 规范 Windows 临时目录
+        shell: pwsh
+        run: |
+          # 短文件名或大小写别名不能让文件系统测试的故障注入静默失效。
+          $taskTempPath = node -p "require('node:fs').realpathSync.native(require('node:os').tmpdir())"
+          if ($LASTEXITCODE -ne 0) { throw 'Cannot resolve temporary directory' }
+          "TEMP=$taskTempPath" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          "TMP=$taskTempPath" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
       - run: npm ci
       - name: 安装独立登录服务依赖
         working-directory: services/identity-login
         run: npm ci --omit=dev --ignore-scripts
       - name: 安装 Electron 运行时
         run: node node_modules/electron/install.js
-      - name: 校验版本标签
-        shell: pwsh
-        run: |
-          $version = (Get-Content package.json | ConvertFrom-Json).version
-          if ("v$version" -ne $env:GITHUB_REF_NAME) { throw 'Version tag mismatch' }
       - run: npx playwright install chromium
       - run: npm run typecheck
       - run: npm run lint
